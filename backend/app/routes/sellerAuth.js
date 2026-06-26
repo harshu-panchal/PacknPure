@@ -1,0 +1,123 @@
+import express from "express";
+import { signupSeller, loginSeller, forgotPasswordOtp, resetPasswordWithOtp } from "../controller/sellerAuthController.js";
+import upload from "../middleware/uploadMiddleware.js";
+import {
+    getSellerProfile,
+    updateSellerProfile,
+    updateSellerPassword,
+    requestWithdrawal,
+    getNearbySellers,
+    sellerReverseGeocode,
+    sellerGeocodeAddress,
+} from "../controller/sellerController.js";
+import { getSellerStats, getSellerEarnings } from "../controller/sellerStatsController.js";
+import {
+    getSellerPurchaseRequests,
+    getPurchaseRequestById,
+    respondSellerPurchaseRequest,
+    markSellerRequestReady,
+    confirmSellerHandover,
+    confirmVendorReturn,
+} from "../controller/purchaseRequestController.js";
+import { verifyToken, allowRoles, isAccountVerified } from "../middleware/authMiddleware.js";
+
+const router = express.Router();
+
+router.post(
+    "/signup",
+    upload.fields([
+        { name: "tradeLicense", maxCount: 1 },
+        { name: "gstCertificate", maxCount: 1 },
+        { name: "idProof", maxCount: 1 },
+    ]),
+    signupSeller
+);
+router.post("/login", loginSeller);
+router.post("/forgot-password", forgotPasswordOtp);
+router.post("/reset-password", resetPasswordWithOtp);
+router.get("/nearby", getNearbySellers);
+
+// Profile routes
+router.get(
+    "/profile",
+    verifyToken,
+    allowRoles("seller"),
+    getSellerProfile
+);
+
+router.put(
+    "/profile",
+    verifyToken,
+    allowRoles("seller"),
+    updateSellerProfile
+);
+
+router.put(
+    "/profile/password",
+    verifyToken,
+    allowRoles("seller"),
+    updateSellerPassword
+);
+
+router.get(
+    "/location/reverse-geocode",
+    verifyToken,
+    allowRoles("seller"),
+    sellerReverseGeocode
+);
+
+router.post(
+    "/location/geocode-address",
+    verifyToken,
+    allowRoles("seller"),
+    sellerGeocodeAddress
+);
+
+// Analytics & Financials
+router.get("/stats", verifyToken, allowRoles("seller"), getSellerStats);
+router.get("/earnings", verifyToken, allowRoles("seller"), getSellerEarnings);
+router.post("/request-withdrawal", verifyToken, allowRoles("seller"), isAccountVerified, requestWithdrawal);
+
+// Procurement / purchase requests (Seller SOP flow)
+router.get(
+    "/purchase-requests",
+    verifyToken,
+    allowRoles("seller"),
+    getSellerPurchaseRequests,
+);
+router.get(
+    "/purchase-requests/:id",
+    verifyToken,
+    allowRoles("seller"),
+    getPurchaseRequestById,
+);
+router.post(
+    "/purchase-requests/:id/respond",
+    verifyToken,
+    allowRoles("seller"),
+    isAccountVerified,
+    respondSellerPurchaseRequest,
+);
+router.post(
+    "/purchase-requests/:id/ready",
+    verifyToken,
+    allowRoles("seller"),
+    isAccountVerified,
+    markSellerRequestReady,
+);
+router.post(
+    "/purchase-requests/:id/handover",
+    verifyToken,
+    allowRoles("seller"),
+    isAccountVerified,
+    confirmSellerHandover,
+);
+router.post(
+    "/purchase-requests/:id/confirm-return",
+    verifyToken,
+    allowRoles("seller"),
+    isAccountVerified,
+    confirmVendorReturn,
+);
+
+export default router;
