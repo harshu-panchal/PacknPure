@@ -1050,6 +1050,11 @@ export const verifyInward = async (req, res) => {
     if (notes !== undefined) pr.notes = String(notes || "");
     await pr.save();
 
+    const { releasePurchaseRequestCommitments } = await import(
+      "../services/hubOrderOrchestrator.js"
+    );
+    await releasePurchaseRequestCommitments(pr);
+
     // Move stock from Reserved to Available in Hub Inventory
     if (verified && inward.receivedItems) {
       for (const item of inward.receivedItems) {

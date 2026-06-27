@@ -13,6 +13,7 @@ import {
   cartKey,
   getVariantPricing,
   getVariantStock,
+  getVariantStockBreakdown,
   isVariantInStock,
   buildVariantCartMap,
   pickDefaultVariant,
@@ -186,6 +187,7 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
           const active = key === selectedKey;
           const { sale, mrp, savings, discountPct } = getVariantPricing(v);
           const stock = getVariantStock(v);
+          const { admin: hubStock, seller: sellerStock, hasSplit } = getVariantStockBreakdown(v);
           const inStock = stock > 0;
           const vId = getVariantId(v);
           const inCartQty = variantCartMap.get(vId) || 0;
@@ -234,14 +236,25 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
                 ) : null}
               </div>
 
-              <p
-                className={cn(
-                  'mt-1 text-[10px] font-semibold',
-                  inStock ? 'text-emerald-700' : 'text-slate-400',
-                )}
-              >
-                {inStock ? `${stock} in stock` : 'Out of stock'}
-              </p>
+              {hasSplit ? (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-[10px] font-semibold text-emerald-700">
+                    Hub: {hubStock}
+                  </p>
+                  <p className="text-[10px] font-semibold text-sky-700">
+                    Seller: {sellerStock}
+                  </p>
+                </div>
+              ) : (
+                <p
+                  className={cn(
+                    'mt-1 text-[10px] font-semibold',
+                    inStock ? 'text-emerald-700' : 'text-slate-400',
+                  )}
+                >
+                  {inStock ? `${stock} in stock` : 'Out of stock'}
+                </p>
+              )}
 
               {discountPct > 0 && inStock ? (
                 <span className="mt-1.5 inline-block rounded-md bg-[#E23744] px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
@@ -679,20 +692,20 @@ const ProductDetailSheet = () => {
       showToast(`Only ${maxQty} available for this pack`, 'info');
       return;
     }
-    updateQuantity(productId, 1, selectedVariantId || undefined);
+    updateQuantity(productId, 1, selectedVariantId || undefined, selectedProduct);
   };
 
   const dec = () => {
     if (!productId) return;
     const vId = selectedVariantId || undefined;
     if (quantity <= 1) removeFromCart(productId, vId);
-    else updateQuantity(productId, -1, vId);
+    else updateQuantity(productId, -1, vId, selectedProduct);
   };
 
   const setQty = (val) => {
     if (!productId) return;
     const vId = selectedVariantId || undefined;
-    return updateQuantity(productId, val - quantity, vId);
+    return updateQuantity(productId, val - quantity, vId, selectedProduct);
   };
 
   if (!selectedProduct) return null;

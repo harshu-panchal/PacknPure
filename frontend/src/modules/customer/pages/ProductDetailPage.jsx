@@ -16,6 +16,7 @@ import {
   cartKey,
   getVariantPricing,
   getVariantStock,
+  getVariantStockBreakdown,
   isVariantInStock,
   buildVariantCartMap,
   pickDefaultVariant,
@@ -94,6 +95,7 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
           const active = key === selectedKey;
           const { sale, mrp, savings, discountPct } = getVariantPricing(v);
           const stock = getVariantStock(v);
+          const { admin: hubStock, seller: sellerStock, hasSplit } = getVariantStockBreakdown(v);
           const inStock = stock > 0;
           const vId = getVariantId(v);
           const inCartQty = variantCartMap.get(vId) || 0;
@@ -142,14 +144,25 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
                 ) : null}
               </div>
 
-              <p
-                className={cn(
-                  'mt-1 text-[10px] font-semibold',
-                  inStock ? 'text-emerald-700' : 'text-slate-400',
-                )}
-              >
-                {inStock ? `${stock} in stock` : 'Out of stock'}
-              </p>
+              {hasSplit ? (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-[10px] font-semibold text-emerald-700">
+                    Hub: {hubStock}
+                  </p>
+                  <p className="text-[10px] font-semibold text-sky-700">
+                    Seller: {sellerStock}
+                  </p>
+                </div>
+              ) : (
+                <p
+                  className={cn(
+                    'mt-1 text-[10px] font-semibold',
+                    inStock ? 'text-emerald-700' : 'text-slate-400',
+                  )}
+                >
+                  {inStock ? `${stock} in stock` : 'Out of stock'}
+                </p>
+              )}
 
               {discountPct > 0 && inStock ? (
                 <span className="mt-1.5 inline-block rounded-md bg-[#E23744] px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
@@ -316,14 +329,14 @@ const ProductDetailPage = () => {
         const val = parseInt(inputValue, 10);
         if (!isNaN(val) && val >= 1 && val !== quantity) {
             const timer = setTimeout(async () => {
-                const res = await updateQuantity(productId, val - quantity, selectedVariantId);
+                const res = await updateQuantity(productId, val - quantity, selectedVariantId, product);
                 if (res === false) {
                     setInputValue(String(quantity));
                 }
             }, 600);
             return () => clearTimeout(timer);
         }
-    }, [inputValue, quantity, productId, updateQuantity, selectedVariantId]);
+    }, [inputValue, quantity, productId, product, updateQuantity, selectedVariantId]);
 
     useEffect(() => {
         if (productId) {
@@ -650,7 +663,7 @@ const ProductDetailPage = () => {
                                         className="w-16 bg-transparent text-center font-black text-xl border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none text-white placeholder-white/50"
                                     />
                                     <button
-                                        onClick={() => updateQuantity(productId, 1, selectedVariantId)}
+                                        onClick={() => updateQuantity(productId, 1, selectedVariantId, product)}
                                         className="w-12 h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
                                     >
                                         <Plus size={24} strokeWidth={3} />

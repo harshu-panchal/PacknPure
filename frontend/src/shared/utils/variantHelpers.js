@@ -22,7 +22,7 @@ export function getVariantPricing(v) {
   return { sale, mrp, savings, discountPct };
 }
 
-export function getVariantStock(v) {
+function readRawVariantStock(v) {
   return Math.max(
     0,
     Number(
@@ -33,6 +33,40 @@ export function getVariantStock(v) {
         0,
     ) || 0,
   );
+}
+
+export function getVariantStockBreakdown(v) {
+  const hasSplit =
+    v?.adminStock != null || v?.hubStock != null || v?.sellerStock != null;
+
+  if (hasSplit) {
+    const admin = Math.max(
+      0,
+      Number(v?.adminStock ?? v?.hubStock ?? 0) || 0,
+    );
+    const seller = Math.max(0, Number(v?.sellerStock ?? 0) || 0);
+    const total = admin + seller;
+    return {
+      admin,
+      seller,
+      total,
+      hasSplit: true,
+    };
+  }
+
+  const total = readRawVariantStock(v);
+  return { admin: total, seller: 0, total, hasSplit: false };
+}
+
+export function formatVariantStockLabel(v) {
+  const { admin, seller, total, hasSplit } = getVariantStockBreakdown(v);
+  if (total <= 0) return "Out of stock";
+  if (!hasSplit) return `${total} in stock`;
+  return `Hub ${admin} + Seller ${seller}`;
+}
+
+export function getVariantStock(v) {
+  return getVariantStockBreakdown(v).total;
 }
 
 export function isVariantInStock(v) {
@@ -57,6 +91,31 @@ export function pickDefaultVariant(variants = []) {
   return variants.find(isVariantInStock) || variants[0];
 }
 
+export function resolveCartStockQty(product, variantId = null) {
+  if (!product) return 0;
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const vId = variantId ? String(variantId) : "";
+  const variant =
+    (vId && variants.find((row) => getVariantId(row) === vId)) ||
+    variants[0] ||
+    null;
+
+  if (variant) {
+    return getVariantStock(variant);
+  }
+
+  return Math.max(
+    0,
+    Number(
+      product.stockQty ??
+        product.totalAvailableQty ??
+        product.availableQty ??
+        product.stock ??
+        0,
+    ) || 0,
+  );
+}
+
 export function applySelectedVariant(product, variant) {
   if (!product) return null;
   const targetVariant = variant || (Array.isArray(product.variants) && product.variants.length > 0 ? product.variants[0] : null);
@@ -64,17 +123,7 @@ export function applySelectedVariant(product, variant) {
   if (!targetVariant) return product;
   
   const { sale, mrp } = getVariantPricing(targetVariant);
-  const stock = getVariantStock(targetVariant);
-  const totalStock = Math.max(
-    0,
-    Number(
-      targetVariant?.totalAvailableQty ??
-        targetVariant?.availableQty ??
-        product?.totalAvailableQty ??
-        product?.availableQty ??
-        stock,
-    ) || 0,
-  );
+  const totalStock = getVariantStock(targetVariant);
   
   return {
     ...product,

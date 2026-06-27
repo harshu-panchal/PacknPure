@@ -1685,17 +1685,19 @@ async function mapSingleProductForCustomerCatalog(productLean) {
 
     let mappedSellerStock = 0;
     let mappedSellerCost = Number(p.purchasePrice) || 0;
-    let variantSellerStockMap = new Map();
+    let variantSellerGrossMap = new Map();
+    let variantSellerAvailableMap = new Map();
+    let totalSellerGross = 0;
+    let totalSStock = 0;
 
     try {
       const sellerDocs = await Product.find({
         masterProductId: pIdStr,
         ownerType: "seller",
         status: "active",
-      }).select("variants stock purchasePrice").lean();
+      }).select("variants stock committedStock purchasePrice").lean();
 
       let minPurchase = null;
-      let totalSStock = 0;
 
       for (const sDoc of sellerDocs) {
         if (sDoc.purchasePrice > 0) {
@@ -1703,29 +1705,72 @@ async function mapSingleProductForCustomerCatalog(productLean) {
             minPurchase = sDoc.purchasePrice;
           }
         }
-        
-        const vSum = Array.isArray(sDoc.variants) 
-          ? sDoc.variants.reduce((acc, v) => acc + Math.max(0, (Number(v.stock) || 0) - (Number(v.committedStock) || 0)), 0) 
+
+        const variantGrossSum = Array.isArray(sDoc.variants)
+          ? sDoc.variants.reduce(
+              (acc, v) => acc + Math.max(0, Number(v.stock) || 0),
+              0,
+            )
           : 0;
-        const rootStock = Math.max(0, (Number(sDoc.stock) || 0) - (Number(sDoc.committedStock) || 0));
-        totalSStock += vSum > 0 ? vSum : rootStock;
+        const variantAvailableSum = Array.isArray(sDoc.variants)
+          ? sDoc.variants.reduce(
+              (acc, v) =>
+                acc +
+                Math.max(
+                  0,
+                  (Number(v.stock) || 0) - (Number(v.committedStock) || 0),
+                ),
+              0,
+            )
+          : 0;
+        const rootGross = Math.max(0, Number(sDoc.stock) || 0);
+        const rootAvailable = Math.max(
+          0,
+          rootGross - (Number(sDoc.committedStock) || 0),
+        );
+        const docGross = variantGrossSum > 0 ? variantGrossSum : rootGross;
+        const docAvailable =
+          variantAvailableSum > 0 ? variantAvailableSum : rootAvailable;
+        totalSellerGross += docGross;
+        totalSStock += docAvailable;
 
         if (Array.isArray(sDoc.variants) && sDoc.variants.length > 0) {
-          sDoc.variants.forEach(v => {
+          sDoc.variants.forEach((v) => {
             const vName = normalizeVariantMatchKey(v.name);
-            const curr = variantSellerStockMap.get(vName) || 0;
-            const availableVStock = Math.max(0, (Number(v.stock) || 0) - (Number(v.committedStock) || 0));
-            variantSellerStockMap.set(vName, curr + availableVStock);
+            const gross = Math.max(0, Number(v.stock) || 0);
+            const available = Math.max(
+              0,
+              gross - (Number(v.committedStock) || 0),
+            );
+            variantSellerGrossMap.set(
+              vName,
+              (variantSellerGrossMap.get(vName) || 0) + gross,
+            );
+            variantSellerAvailableMap.set(
+              vName,
+              (variantSellerAvailableMap.get(vName) || 0) + available,
+            );
           });
         } else if (Array.isArray(p.variants) && p.variants.length === 1) {
           // If seller has no variants but master has exactly 1 variant, assume seller's root stock belongs to it
           const vName = normalizeVariantMatchKey(p.variants[0].name);
-          const curr = variantSellerStockMap.get(vName) || 0;
-          variantSellerStockMap.set(vName, curr + rootStock);
+          const gross = Math.max(0, Number(sDoc.stock) || 0);
+          const available = Math.max(
+            0,
+            gross - (Number(sDoc.committedStock) || 0),
+          );
+          variantSellerGrossMap.set(
+            vName,
+            (variantSellerGrossMap.get(vName) || 0) + gross,
+          );
+          variantSellerAvailableMap.set(
+            vName,
+            (variantSellerAvailableMap.get(vName) || 0) + available,
+          );
         }
       }
 
-      mappedSellerStock = totalSStock;
+      mappedSellerStock = totalSellerGross;
       if (minPurchase !== null) {
         mappedSellerCost = minPurchase;
       }
@@ -1733,20 +1778,31 @@ async function mapSingleProductForCustomerCatalog(productLean) {
       console.warn("[getProductById] seller stock aggregation:", err.message);
     }
 
-    const fulfillableQty = hubQty + mappedSellerStock;
+    const fulfillableQty = hubQty + totalSStock;
+    const customerCartQty = hubQty + totalSellerGross;
     const dynamicPrice =
       hubRow?.sellPrice && hubRow.sellPrice > 0
         ? hubRow.sellPrice
         : p.salePrice || p.price;
     const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
 
-    const variantsWithTotalStock = (p.variants || []).map(v => {
+    const variantsWithTotalStock = (p.variants || []).map((v) => {
       const vName = normalizeVariantMatchKey(v.name);
-      const sStock = variantSellerStockMap.get(vName) || 0;
-      const hStock = Number(v.stock) || 0;
+      const sellerStock = Math.max(0, Number(variantSellerGrossMap.get(vName) || 0));
+      const sellerAvailableStock = Math.max(
+        0,
+        Number(variantSellerAvailableMap.get(vName) || 0),
+      );
+      const adminStock = Math.max(0, Number(v.stock) || 0);
+      const grossStock = adminStock + sellerStock;
       return {
         ...v,
-        stock: hStock + sStock, // Show Hub + Seller stock to customer
+        adminStock,
+        hubStock: adminStock,
+        sellerStock,
+        sellerAvailableStock,
+        stock: grossStock,
+        totalAvailableQty: grossStock,
       };
     });
 
@@ -1756,11 +1812,12 @@ async function mapSingleProductForCustomerCatalog(productLean) {
       salePrice: hasVariants ? p.salePrice || p.price : dynamicPrice,
       purchasePrice: Number(p.purchasePrice) || 0,
       vendorMinSupplyPrice: mappedSellerCost,
-      stock: hubQty + mappedSellerStock,
-      catalogStock: hubQty + mappedSellerStock,
+      stock: customerCartQty,
+      catalogStock: hubQty,
       availableQtyHub: hubQty,
-      availableQtySeller: mappedSellerStock,
-      totalAvailableQty: fulfillableQty,
+      availableQtySeller: totalSellerGross,
+      sellerFulfillableQty: fulfillableQty,
+      totalAvailableQty: customerCartQty,
       totalFulfillmentQty: fulfillableQty,
       variants: mapVariantsForResponse(variantsWithTotalStock),
       fulfillmentSource:

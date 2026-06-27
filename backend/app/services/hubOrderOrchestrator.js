@@ -24,6 +24,72 @@ const buildRequestId = () =>
 export const HUB_ORDER_MODE = () =>
   String(process.env.HUB_FIRST_ORDER_ROUTING || "false").toLowerCase() === "true";
 
+/** Physical seller variant stock (matches seller/admin portal UI). */
+export function sellerProcurementCapacity(
+  sellerProduct,
+  masterVariantId,
+  masterProduct,
+) {
+  if (!sellerProduct) return 0;
+
+  let masterVariantName = null;
+  if (masterVariantId && Array.isArray(masterProduct?.variants)) {
+    const masterVar = masterProduct.variants.find(
+      (v) => String(v._id || v.id) === String(masterVariantId),
+    );
+    masterVariantName = masterVar?.name
+      ? normalizeVariantMatchKey(masterVar.name)
+      : null;
+  }
+
+  if (masterVariantName && Array.isArray(sellerProduct.variants)) {
+    const sellerVar = sellerProduct.variants.find(
+      (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
+    );
+    if (sellerVar) {
+      return Math.max(0, Number(sellerVar.stock) || 0);
+    }
+  }
+
+  if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length) {
+    return sellerProduct.variants.reduce(
+      (sum, v) => sum + Math.max(0, Number(v?.stock) || 0),
+      0,
+    );
+  }
+
+  return Math.max(0, Number(sellerProduct.stock) || 0);
+}
+
+/** Seller fulfillable qty for a master catalog variant (stock minus committed). */
+export function sellerAvailableForMasterVariant(sellerProduct, masterVariantId, masterProduct) {
+  if (!sellerProduct) return 0;
+
+  let masterVariantName = null;
+  if (masterVariantId && Array.isArray(masterProduct?.variants)) {
+    const masterVar = masterProduct.variants.find(
+      (v) => String(v._id || v.id) === String(masterVariantId),
+    );
+    masterVariantName = masterVar?.name
+      ? normalizeVariantMatchKey(masterVar.name)
+      : null;
+  }
+
+  if (masterVariantName && Array.isArray(sellerProduct.variants)) {
+    const sellerVar = sellerProduct.variants.find(
+      (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
+    );
+    if (sellerVar) {
+      return Math.max(
+        0,
+        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
+      );
+    }
+  }
+
+  return effectiveProductStock(sellerProduct);
+}
+
 /**
  * Build stock snapshot and shortages for an order's items.
  */
@@ -191,9 +257,15 @@ export const createAutoPurchaseRequests = async ({
     String(candidate?.categoryId || "") === String(base?.categoryId || "") &&
     String(candidate?.subcategoryId || "") === String(base?.subcategoryId || "");
 
-  const selectCheapestSellers = async (baseProduct, shortageQty, hubLat, hubLng) => {
+  const selectCheapestSellers = async (
+    baseProduct,
+    shortageQty,
+    hubLat,
+    hubLng,
+    variantId = null,
+  ) => {
     if (!baseProduct) return [];
-    const matchOr = [];
+    const matchOr = [{ masterProductId: baseProduct._id }];
     if (String(baseProduct.name || "").trim()) {
       matchOr.push({ name: String(baseProduct.name).trim() });
     }
@@ -203,7 +275,6 @@ export const createAutoPurchaseRequests = async ({
         subcategoryId: baseProduct.subcategoryId,
       });
     }
-    if (!matchOr.length) return [];
 
     const candidates = await Product.find({
       ownerType: "seller",
@@ -215,7 +286,9 @@ export const createAutoPurchaseRequests = async ({
       .populate("sellerId", "location rating createdAt")
       .lean();
 
-    const inStock = candidates.filter((row) => effectiveProductStock(row) > 0);
+    const inStock = candidates.filter(
+      (row) => sellerProcurementCapacity(row, variantId, baseProduct) > 0,
+    );
     if (!inStock.length) return [];
 
     const scored = inStock.map((row) => {
@@ -255,7 +328,11 @@ export const createAutoPurchaseRequests = async ({
     
     for (const vendor of scored) {
       if (remainingShortage <= 0) break;
-      const vendorStock = effectiveProductStock(vendor);
+      const vendorStock = sellerProcurementCapacity(
+        vendor,
+        variantId,
+        baseProduct,
+      );
       const allocateQty = Math.min(vendorStock, remainingShortage);
       
       allocations.push({
@@ -321,7 +398,13 @@ export const createAutoPurchaseRequests = async ({
       });
     } else {
       // eslint-disable-next-line no-await-in-loop
-      const selections = await selectCheapestSellers(baseProduct, item.shortageQty, hubLat, hubLng);
+      const selections = await selectCheapestSellers(
+        baseProduct,
+        item.shortageQty,
+        hubLat,
+        hubLng,
+        item.variantId || null,
+      );
       if (selections.length === 0) {
         enrichedShortages.push({
           ...item,

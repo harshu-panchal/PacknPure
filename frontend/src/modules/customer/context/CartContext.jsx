@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer } fro
 import { customerApi } from "../services/customerApi";
 import { useAuth } from "../../../core/context/AuthContext";
 import { toast } from "sonner";
+import { resolveCartStockQty } from "@shared/utils/variantHelpers";
 
 const CartContext = createContext();
 
@@ -59,42 +60,24 @@ function resolveVariant(product, variantId) {
 
 function applyVariantToProduct(product, variantId) {
   if (!product) return product;
+  const stock = resolveCartStockQty(product, variantId);
   const v = resolveVariant(product, variantId);
   if (!v) {
-    const fallbackStock = Math.max(
-      0,
-      Number(product.totalAvailableQty ?? product.availableQty ?? product.stockQty ?? product.stock ?? 0) || 0,
-    );
-    return { 
-      ...product, 
+    return {
+      ...product,
       selectedVariantId: variantId || null,
-      price: Number(product.price || 0),
-      originalPrice: Number(product.originalPrice || 0),
-      stockQty: fallbackStock,
-      inStock: fallbackStock > 0,
+      stockQty: stock,
+      inStock: stock > 0,
     };
   }
   const saleBase = Number(v.salePrice ?? v.price) || 0;
   const mrpBase = Number(v.price) || saleBase;
-  
-  const sale = saleBase;
-  const mrp = mrpBase;
-  const stock = Math.max(
-    0,
-    Number(
-      v.totalAvailableQty ??
-        v.availableQty ??
-        product.totalAvailableQty ??
-        product.availableQty ??
-        v.stock ??
-        0,
-    ) || 0,
-  );
+
   return {
     ...product,
     selectedVariantId: String(v?._id || v?.id || variantId || ""),
-    price: sale || Number(product.price || 0),
-    originalPrice: mrp || Number(product.originalPrice || 0),
+    price: saleBase || Number(product.price || 0),
+    originalPrice: mrpBase || Number(product.originalPrice || 0),
     weight: v.name || product.weight,
     variantLabel: v.name || product.variantLabel,
     stockQty: stock,
@@ -128,6 +111,9 @@ export const CartProvider = ({ children }) => {
         key: cartKey(productId, variantId),
         quantity: item.quantity,
         image: item.productId.mainImage, // Handle mapping for frontend
+        variants: Array.isArray(item.productId?.variants)
+          ? item.productId.variants
+          : withVariant.variants,
       };
     });
   };
@@ -201,34 +187,41 @@ export const CartProvider = ({ children }) => {
     const id = product.id || product._id;
     const variantId = product.selectedVariantId || product.variantId || null;
     const key = cartKey(id, variantId);
+    const stockCap = resolveCartStockQty(product, variantId);
 
     // Optimistic UI update for instant feedback
     const existingItem = cart.find((item) => (item?.key || "") === key);
     if (existingItem) {
-      const p = applyVariantToProduct({ ...existingItem, ...product }, variantId);
+      const merged = {
+        ...existingItem,
+        ...product,
+        variants: product.variants || existingItem.variants,
+      };
+      const p = applyVariantToProduct(merged, variantId);
       const newQty = Number(existingItem.quantity || 0) + 1;
-      if (typeof p.stockQty === 'number' && newQty > p.stockQty) {
-        toast.error(`Insufficient stock! Only ${p.stockQty} available.`);
+      if (typeof stockCap === "number" && newQty > stockCap) {
+        toast.error(`Insufficient stock! Only ${stockCap} available.`);
         return;
       }
       dispatch({
         type: "upsert",
         item: {
-          ...existingItem,
           ...p,
+          variants: merged.variants,
           quantity: newQty,
         },
       });
     } else {
       const p = applyVariantToProduct(product, variantId);
-      if (typeof p.stockQty === 'number' && 1 > p.stockQty) {
-        toast.error(`Insufficient stock! Only ${p.stockQty} available.`);
+      if (typeof stockCap === "number" && 1 > stockCap) {
+        toast.error(`Insufficient stock! Only ${stockCap} available.`);
         return;
       }
       dispatch({
         type: "upsert",
         item: {
           ...p,
+          variants: product.variants,
           id,
           productId: id,
           variantId,
@@ -283,10 +276,19 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const updateQuantity = async (productId, delta, variantId) => {
+  const updateQuantity = async (productId, delta, variantId, freshProduct = null) => {
     const key = cartKey(productId, variantId);
     const currentItem = cart.find((item) => (item?.key || "") === key);
     if (!currentItem) return;
+
+    const merged = freshProduct
+      ? {
+          ...currentItem,
+          ...freshProduct,
+          variants: freshProduct.variants || currentItem.variants,
+        }
+      : currentItem;
+    const stockCap = resolveCartStockQty(merged, variantId || merged.variantId || merged.selectedVariantId);
 
     let newQty = Math.max(0, currentItem.quantity + delta);
 
@@ -298,16 +300,30 @@ export const CartProvider = ({ children }) => {
       return true;
     }
 
-    if (delta > 0 && typeof currentItem.stockQty === 'number' && newQty > currentItem.stockQty) {
-      toast.error(`Insufficient stock! Only ${currentItem.stockQty} available.`);
-      if (currentItem.quantity >= currentItem.stockQty) {
+    if (delta > 0 && typeof stockCap === "number" && newQty > stockCap) {
+      toast.error(`Insufficient stock! Only ${stockCap} available.`);
+      if (currentItem.quantity >= stockCap) {
         return false;
       }
-      newQty = currentItem.stockQty;
+      newQty = stockCap;
     }
 
+    const refreshed = applyVariantToProduct(merged, variantId || merged.variantId || merged.selectedVariantId);
+
     // Optimistic update
-    dispatch({ type: "set_qty", key, quantity: newQty });
+    dispatch({
+      type: "upsert",
+      item: {
+        ...refreshed,
+        variants: merged.variants,
+        id: productId,
+        productId,
+        variantId: variantId || currentItem.variantId || currentItem.selectedVariantId,
+        key,
+        quantity: newQty,
+        image: currentItem.image || refreshed.mainImage,
+      },
+    });
 
     if (isAuthenticated) {
       pendingRequestsRef.current += 1;

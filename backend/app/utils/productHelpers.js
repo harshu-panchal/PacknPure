@@ -455,7 +455,7 @@ export function effectiveProductStock(product) {
   return 0;
 }
 
-/** Calculate Total Fulfillable Quantity (Hub + Sellers) */
+/** Calculate customer cart cap: hub variant stock + gross seller stock (matches admin/seller UIs). */
 export async function calculateTotalAvailableStock(masterProduct, variantId = null) {
   if (!masterProduct) return 0;
   
@@ -490,15 +490,20 @@ export async function calculateTotalAvailableStock(masterProduct, variantId = nu
                 )
               : null;
             if (sVar) {
-               sumSellerQty += Math.max(0, (Number(sVar.stock) || 0) - (Number(sVar.committedStock) || 0));
+               sumSellerQty += Math.max(0, Number(sVar.stock) || 0);
             } else if (!Array.isArray(sDoc.variants) || sDoc.variants.length === 0) {
                if (Array.isArray(masterProduct.variants) && masterProduct.variants.length === 1) {
                  // Seller has no variants but master exactly 1, assume seller's root stock applies
-                 sumSellerQty += Math.max(0, (Number(sDoc.stock) || 0) - (Number(sDoc.committedStock) || 0));
+                 sumSellerQty += Math.max(0, Number(sDoc.stock) || 0);
                }
             }
          } else {
-            const vSum = Array.isArray(sDoc.variants) ? sDoc.variants.reduce((acc, v) => acc + Math.max(0, (Number(v.stock) || 0) - (Number(v.committedStock) || 0)), 0) : 0;
+            const vSum = Array.isArray(sDoc.variants)
+              ? sDoc.variants.reduce(
+                  (acc, v) => acc + Math.max(0, Number(v.stock) || 0),
+                  0,
+                )
+              : 0;
             sumSellerQty += vSum;
          }
        }
