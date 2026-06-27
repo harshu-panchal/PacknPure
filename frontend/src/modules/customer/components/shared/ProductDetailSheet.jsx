@@ -439,10 +439,7 @@ function ProductDetailFooter({
   onClose,
   compact,
 }) {
-  const { sale, mrp, savings } = getVariantPricing({
-    price: effectiveProduct?.originalPrice,
-    salePrice: effectiveProduct?.price,
-  });
+  const { sale, mrp, savings } = getVariantPricing(effectiveProduct);
 
   const effectiveQty = Math.max(1, quantity || 1);
   const displaySale = sale * effectiveQty;
