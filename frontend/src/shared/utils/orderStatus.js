@@ -28,10 +28,9 @@ function legacyFromWorkflow(workflowStatus) {
   switch (workflowStatus) {
     case WORKFLOW_STATUS.CREATED:
     case WORKFLOW_STATUS.SELLER_PENDING:
-    case WORKFLOW_STATUS.DELIVERY_SEARCH:
       return "pending";
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
-      return "confirmed";
+    case WORKFLOW_STATUS.DELIVERY_SEARCH:
     case WORKFLOW_STATUS.DELIVERY_ASSIGNED:
     case WORKFLOW_STATUS.PICKUP_READY:
       return "confirmed";

@@ -72,6 +72,18 @@ function resolveFulfillmentLabel(source) {
   return '';
 }
 
+function resolveVariantAvailableQty(v) {
+  if (v?.totalAvailableQty !== undefined || v?.availableQty !== undefined || v?.stockQty !== undefined) {
+    return Math.max(
+      0,
+      Number(v?.totalAvailableQty ?? v?.availableQty ?? v?.stockQty ?? 0) || 0,
+    );
+  }
+  const stock = Number(v?.stock) || 0;
+  const committed = Number(v?.committedStock) || 0;
+  return Number.isFinite(stock) ? Math.max(0, stock - committed) : 0;
+}
+
 function resolveStockQty(p, variants) {
   const totalAvailableQty = Number(p.totalAvailableQty);
   if (Number.isFinite(totalAvailableQty)) return totalAvailableQty;
@@ -86,14 +98,18 @@ function resolveStockQty(p, variants) {
     );
   }
 
-  const catalogStock = Number(p.catalogStock);
-  if (Number.isFinite(catalogStock)) return catalogStock;
-
   const stock = Number(p.stock);
-  if (Number.isFinite(stock)) return stock;
+  const committed = Number(p.committedStock);
+  if (Number.isFinite(stock)) {
+    if (Number.isFinite(committed)) return Math.max(0, stock - committed);
+    return stock;
+  }
 
   if (variants.length) {
-    return variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    return variants.reduce(
+      (sum, v) => sum + resolveVariantAvailableQty(v),
+      0,
+    );
   }
   return null;
 }
@@ -154,7 +170,7 @@ export function normalizeCustomerProduct(p) {
       inStock:
         p.inStock !== false &&
         ((Number(p.stock) || 0) > 0 ||
-          variants.some((v) => (Number(v.stock) || 0) > 0) ||
+          variants.some((v) => resolveVariantAvailableQty(v) > 0) ||
           (stockQty != null && stockQty > 0)),
       variants,
     };

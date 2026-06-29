@@ -42,6 +42,11 @@ const purchaseRequestItemSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+    rejectedQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     selectedSellerProductId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
@@ -192,6 +197,11 @@ const purchaseRequestSchema = new mongoose.Schema(
     },
     returnDetails: {
       returnRequestedAt: Date,
+      rejectedQty: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
       returnPickupPartnerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "PickupPartner",

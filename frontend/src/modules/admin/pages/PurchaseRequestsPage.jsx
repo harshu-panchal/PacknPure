@@ -30,6 +30,8 @@ const PurchaseRequestsPage = () => {
   const [vendorForm, setVendorForm] = useState({ vendorId: "" });
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoMessage, setInfoMessage] = useState("");
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [receiveForm, setReceiveForm] = useState({ receivedQty: 0, damagedQty: 0, notes: "" });
 
   const fetchRows = async () => {
     try {
@@ -173,11 +175,38 @@ const PurchaseRequestsPage = () => {
     }
   };
 
-  const markReceivedAtHub = async (row) => {
+  const openReceive = (row) => {
+    setCurrentRow(row);
+    const totalQty = row.quantity || 0;
+    setReceiveForm({ receivedQty: totalQty, damagedQty: 0, notes: "" });
+    setReceiveOpen(true);
+  };
+
+  const submitReceiveAtHub = async () => {
+    if (!currentRow?._id) return;
     const loadingToast = toast.loading("Processing hub inward...");
     try {
-      await adminApi.receivePurchaseRequestAtHub(row._id, { items: [] });
-      toast.success(`Received at hub · ${row.requestId}`, { id: loadingToast });
+      const items = (currentRow.items || []).map((it, idx) => {
+        if (idx === 0) {
+          return {
+            productId: it.productId?._id || it.productId,
+            receivedQty: Number(receiveForm.receivedQty || 0),
+            damagedQty: Number(receiveForm.damagedQty || 0),
+          };
+        }
+        return {
+          productId: it.productId?._id || it.productId,
+          receivedQty: Number(it.shortageQty || it.requiredQty || 0),
+          damagedQty: 0,
+        };
+      });
+
+      await adminApi.receivePurchaseRequestAtHub(currentRow._id, { 
+        items, 
+        notes: receiveForm.notes 
+      });
+      toast.success(`Received at hub · ${currentRow.requestId}`, { id: loadingToast });
+      setReceiveOpen(false);
       fetchRows();
     } catch (err) {
       toast.error(err.response?.data?.message || "Inward failed", { id: loadingToast });
@@ -367,7 +396,7 @@ const PurchaseRequestsPage = () => {
               {needsReceive && (
                 <button
                   type="button"
-                  onClick={() => markReceivedAtHub(row)}
+                  onClick={() => openReceive(row)}
                   className="inline-flex items-center gap-1.5 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-sky-700"
                 >
                   <PackageCheck size={14} /> Receive
@@ -472,6 +501,21 @@ const PurchaseRequestsPage = () => {
         values={assignForm}
         onChange={(k, v) => setAssignForm(prev => ({ ...prev, [k]: v }))}
         onSubmit={currentRow?.rawStatus === "return_requested" ? submitAssignReturn : submitAssign}
+      />
+
+      <SupplyFormModal
+        isOpen={receiveOpen}
+        onClose={() => setReceiveOpen(false)}
+        title="Receive & QA at Hub"
+        submitLabel="Receive Items"
+        fields={[
+          { key: "receivedQty", label: "Total Received Qty", type: "number" },
+          { key: "damagedQty", label: "Damaged / Rejected Qty", type: "number" },
+          { key: "notes", label: "QA Notes", type: "text", placeholder: "e.g. 2 boxes crushed" }
+        ]}
+        values={receiveForm}
+        onChange={(k, v) => setReceiveForm((prev) => ({ ...prev, [k]: v }))}
+        onSubmit={submitReceiveAtHub}
       />
 
       <SupplyConfirmModal

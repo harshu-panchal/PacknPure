@@ -23,28 +23,40 @@ export function getVariantPricing(v) {
 }
 
 function readRawVariantStock(v) {
+  if (v?.totalAvailableQty !== undefined || v?.availableQty !== undefined || v?.stockQty !== undefined) {
+    return Math.max(
+      0,
+      Number(v?.totalAvailableQty ?? v?.availableQty ?? v?.stockQty ?? 0) || 0,
+    );
+  }
+  const stock = Number(v?.stock) || 0;
+  const committed = Number(v?.committedStock) || 0;
+  if (v?.committedStock != null) {
+    return Math.max(0, stock - committed);
+  }
   return Math.max(
     0,
-    Number(
-      v?.totalAvailableQty ??
-        v?.availableQty ??
-        v?.stockQty ??
-        v?.stock ??
-        0,
-    ) || 0,
+    stock,
   );
 }
 
 export function getVariantStockBreakdown(v) {
   const hasSplit =
-    v?.adminStock != null || v?.hubStock != null || v?.sellerStock != null;
+    v?.adminStock != null ||
+    v?.hubStock != null ||
+    v?.sellerStock != null ||
+    v?.sellerAvailableStock != null ||
+    v?.availableQtySeller != null;
 
   if (hasSplit) {
     const admin = Math.max(
       0,
-      Number(v?.adminStock ?? v?.hubStock ?? 0) || 0,
+      Number(v?.adminStock ?? v?.hubStock ?? v?.availableQtyHub ?? 0) || 0,
     );
-    const seller = Math.max(0, Number(v?.sellerStock ?? 0) || 0);
+    const seller = Math.max(
+      0,
+      Number(v?.sellerAvailableStock ?? v?.availableQtySeller ?? v?.sellerStock ?? 0) || 0,
+    );
     const total = admin + seller;
     return {
       admin,
@@ -56,13 +68,6 @@ export function getVariantStockBreakdown(v) {
 
   const total = readRawVariantStock(v);
   return { admin: total, seller: 0, total, hasSplit: false };
-}
-
-export function formatVariantStockLabel(v) {
-  const { admin, seller, total, hasSplit } = getVariantStockBreakdown(v);
-  if (total <= 0) return "Out of stock";
-  if (!hasSplit) return `${total} in stock`;
-  return `Hub ${admin} + Seller ${seller}`;
 }
 
 export function getVariantStock(v) {
@@ -102,6 +107,17 @@ export function resolveCartStockQty(product, variantId = null) {
 
   if (variant) {
     return getVariantStock(variant);
+  }
+
+  if (
+    product.totalAvailableQty !== undefined ||
+    product.availableQtyHub !== undefined ||
+    product.availableQtySeller !== undefined
+  ) {
+    const hub = Number(product.availableQtyHub ?? 0) || 0;
+    const seller = Number(product.availableQtySeller ?? 0) || 0;
+    const total = Number(product.totalAvailableQty ?? hub + seller) || 0;
+    return Math.max(0, total);
   }
 
   return Math.max(
