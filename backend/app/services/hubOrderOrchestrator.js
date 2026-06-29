@@ -164,23 +164,6 @@ export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
       },
       { new: true },
     );
-    
-    if (updated) {
-      // Keep Product root stock and variant stock in sync for Admin view consistency
-      try {
-        const p = await Product.findById(row.productId);
-        if (p) {
-          p.stock = Math.max(0, p.stock - row.reserveQty);
-          if (row.variantId) {
-            const v = p.variants.id ? p.variants.id(row.variantId) : p.variants.find(v => String(v._id) === String(row.variantId));
-            if (v) v.stock = Math.max(0, v.stock - row.reserveQty);
-          }
-          await p.save();
-        }
-      } catch (e) {
-        console.warn("[reserveHubInventory] Master product stock sync failed:", e.message);
-      }
-    }
     if (!updated) {
       // Roll back partial reservations when any line fails (race-safe best effort).
       for (const applied of reservedRows) {
@@ -193,31 +176,6 @@ export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
             },
           },
         );
-        
-        // Rollback Product stock
-        if (applied.variantId) {
-          try {
-            const res = await Product.updateOne(
-              { _id: applied.productId },
-              {
-                $inc: {
-                  stock: applied.reserveQty,
-                  "variants.$[elem].stock": applied.reserveQty
-                }
-              },
-              { arrayFilters: [{ "elem._id": applied.variantId }] }
-            );
-            if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
-          } catch (e) {
-             await Product.findByIdAndUpdate(applied.productId, {
-               $inc: { stock: applied.reserveQty }
-             });
-          }
-        } else {
-          await Product.findByIdAndUpdate(applied.productId, {
-            $inc: { stock: applied.reserveQty }
-          });
-        }
       }
       return { ok: false, reservedRows: [] };
     }

@@ -51,46 +51,6 @@ import { resolveVariantIndex } from "../utils/productHelpers.js";
 const ORDER_CART_POPULATE =
   "name slug price salePrice purchasePrice mainImage stock gstRate unit variants";
 
-async function reverseOrderItemStock(item, order) {
-  const qty = Number(item.quantity) || 0;
-  if (qty <= 0) return;
-
-  const productId = item.product?._id || item.product;
-  if (!productId) return;
-
-  if (item.variantId) {
-    const product = await Product.findById(productId)
-      .select("variants sellerId")
-      .lean();
-    const idx = resolveVariantIndex(product, { variantId: item.variantId });
-    if (idx >= 0) {
-      await Product.updateOne(
-        { _id: productId },
-        {
-          $inc: {
-            [`variants.${idx}.stock`]: qty,
-            stock: qty,
-          },
-        },
-      );
-    } else {
-      await Product.findByIdAndUpdate(productId, { $inc: { stock: qty } });
-    }
-  } else {
-    await Product.findByIdAndUpdate(productId, { $inc: { stock: qty } });
-  }
-
-  await StockHistory.create({
-    product: productId,
-    seller: order.seller,
-    type: "Correction",
-    quantity: qty,
-    note: `Order #${order.orderId} Cancelled`,
-    order: order._id,
-    variantId: item.variantId || undefined,
-  });
-}
-
 /* ===============================
    PLACE ORDER
 ================================ */
@@ -407,26 +367,6 @@ export const placeOrder = async (req, res) => {
             { hubId: hubPlan.hubId, productId: applied.productId },
             { $inc: { availableQty: applied.reserveQty, reservedQty: -applied.reserveQty } },
           );
-          // eslint-disable-next-line no-await-in-loop
-          if (applied.variantId) {
-            try {
-              const res = await Product.updateOne(
-                { _id: applied.productId },
-                {
-                  $inc: {
-                    stock: applied.reserveQty,
-                    "variants.$[elem].stock": applied.reserveQty
-                  }
-                },
-                { arrayFilters: [{ "elem._id": applied.variantId }] }
-              );
-              if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
-            } catch (e) {
-              await Product.findByIdAndUpdate(applied.productId, { $inc: { stock: applied.reserveQty } });
-            }
-          } else {
-            await Product.findByIdAndUpdate(applied.productId, { $inc: { stock: applied.reserveQty } });
-          }
         }
       }
 
@@ -1236,12 +1176,8 @@ export const updateOrderStatus = async (req, res) => {
       else if (status === "out_for_delivery") order.deliveryRiderStep = 3;
     }
 
-    // Handle Cancellation (Stock Reversal & Transaction Update)
+    // Handle Cancellation (Transaction Update only in frozen lifecycle)
     if (status === "cancelled" && oldStatus !== "cancelled") {
-      for (const item of order.items) {
-        await reverseOrderItemStock(item, order);
-      }
-
       // 2. Update Transaction
       await Transaction.findOneAndUpdate(
         { reference: canonicalOrderId },

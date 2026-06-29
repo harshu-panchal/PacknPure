@@ -1,6 +1,12 @@
 import PickupPartner from "../models/pickupPartner.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import Delivery from "../models/delivery.js";
+import Product from "../models/product.js";
+import {
+  resolveVariantIndex,
+  setVariantStockAtIndex,
+  totalVariantStock,
+} from "../utils/productHelpers.js";
 
 async function resolvePickupPartnerId(user) {
   if (!user) return null;
@@ -517,29 +523,53 @@ export const markAssignmentPicked = async (req, res) => {
 
     // --- DEDUCT SELLER STOCK ---
     try {
-      const Product = (await import("../models/product.js")).default;
       for (const item of pr.items) {
-        if (item.productId && pickedQty > 0) {
-          const sellerProduct = await Product.findOne({
-            sellerId: pr.vendorId?._id || pr.vendorId,
-            $or: [
-              { _id: item.productId },
-              { masterProductId: item.productId }
-            ]
-          });
+        if (!item.productId || pickedQty <= 0) continue;
 
-          if (sellerProduct) {
-            const currentStock = Number(sellerProduct.stock || 0);
-            if (currentStock < pickedQty) {
-              await Product.findByIdAndUpdate(sellerProduct._id, { $set: { stock: 0 } });
-              console.log(`[InventorySync] Stock was insufficient (${currentStock}). Set to 0 for product ${sellerProduct._id}`);
-            } else {
-              await Product.findByIdAndUpdate(sellerProduct._id, {
-                $inc: { stock: -pickedQty }
-              });
-              console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProduct._id}`);
+        const sellerProduct = await Product.findOne({
+          sellerId: pr.vendorId?._id || pr.vendorId,
+          $or: [{ _id: item.selectedSellerProductId || item.productId }, { masterProductId: item.productId }],
+        }).select("variants stock");
+
+        if (!sellerProduct) continue;
+
+        if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length) {
+          const masterProduct = await Product.findById(item.productId).select("variants").lean();
+          const masterVariantId = item.variantId || null;
+          const idx = resolveVariantIndex(masterProduct, { variantId: masterVariantId });
+          let sellerVariantIndex = idx;
+          if (sellerVariantIndex < 0) {
+            const fallbackName = masterProduct?.variants?.find((v) => String(v._id) === String(masterVariantId))?.name;
+            if (fallbackName) {
+              sellerVariantIndex = resolveVariantIndex(sellerProduct, { variantName: fallbackName });
             }
           }
+          if (sellerVariantIndex < 0) {
+            sellerVariantIndex = 0;
+          }
+
+          const currentVariantStock = Math.max(0, Number(sellerProduct.variants[sellerVariantIndex]?.stock) || 0);
+          const currentCommitted = Math.max(0, Number(sellerProduct.variants[sellerVariantIndex]?.committedStock) || 0);
+          const nextVariantStock = Math.max(0, currentVariantStock - pickedQty);
+          const nextCommitted = Math.max(0, currentCommitted - pickedQty);
+          sellerProduct.variants = setVariantStockAtIndex(sellerProduct.variants, sellerVariantIndex, nextVariantStock).map((v, index) => ({
+            ...v,
+            committedStock:
+              index === sellerVariantIndex
+                ? nextCommitted
+                : Math.max(0, Number(v.committedStock) || 0),
+          }));
+          sellerProduct.stock = totalVariantStock(sellerProduct.variants);
+          sellerProduct.markModified("variants");
+          await sellerProduct.save();
+          console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} variant ${sellerProduct.variants[sellerVariantIndex]?.name || sellerVariantIndex}`);
+        } else {
+          const currentStock = Math.max(0, Number(sellerProduct.stock || 0));
+          const nextStock = Math.max(0, currentStock - pickedQty);
+          sellerProduct.stock = nextStock;
+          sellerProduct.committedStock = Math.max(0, Number(sellerProduct.committedStock || 0) - pickedQty);
+          await sellerProduct.save();
+          console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProduct._id}`);
         }
       }
     } catch (err) {
