@@ -90,6 +90,7 @@ export const customerApi = {
     getWithDedupe(`/reviews/check/${productId}`, params, { ttl: 0 }),
   submitReview: (formData) => {
     invalidateCache("/reviews");
+    invalidateCache("/products");
     return axiosInstance.post("/reviews/submit", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });

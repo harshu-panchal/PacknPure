@@ -51,6 +51,9 @@ export const submitReview = async (req, res) => {
 
         await newReview.save();
 
+        // Ensure product stats are updated before responding so frontend gets fresh data
+        await Review.calculateAverageRating(productId, variantId);
+
         // Populate user info for instant response
         await newReview.populate("userId", "name image");
 

@@ -69,11 +69,14 @@ reviewSchema.statics.calculateAverageRating = async function (productId, variant
     if (!productId || !variantId) return;
 
     try {
+        const pId = new mongoose.Types.ObjectId(productId.toString());
+        const vId = new mongoose.Types.ObjectId(variantId.toString());
+
         const stats = await this.aggregate([
             {
                 $match: {
-                    productId: new mongoose.Types.ObjectId(productId),
-                    variantId: new mongoose.Types.ObjectId(variantId),
+                    productId: pId,
+                    variantId: vId,
                     status: "approved"
                 }
             },
@@ -93,9 +96,18 @@ reviewSchema.statics.calculateAverageRating = async function (productId, variant
 
         if (stats.length > 0) {
             await mongoose.model("Product").findOneAndUpdate(
-                { _id: productId, "variants._id": variantId },
+                { _id: pId, "variants._id": vId },
                 {
                     $set: {
+                        "averageRating": stats[0].averageRating,
+                        "totalReviews": stats[0].totalReviews,
+                        "ratingDistribution": {
+                            "1": stats[0].count1,
+                            "2": stats[0].count2,
+                            "3": stats[0].count3,
+                            "4": stats[0].count4,
+                            "5": stats[0].count5
+                        },
                         "variants.$.averageRating": stats[0].averageRating,
                         "variants.$.totalReviews": stats[0].totalReviews,
                         "variants.$.ratingDistribution": {
@@ -110,9 +122,12 @@ reviewSchema.statics.calculateAverageRating = async function (productId, variant
             );
         } else {
             await mongoose.model("Product").findOneAndUpdate(
-                { _id: productId, "variants._id": variantId },
+                { _id: pId, "variants._id": vId },
                 {
                     $set: {
+                        "averageRating": 0,
+                        "totalReviews": 0,
+                        "ratingDistribution": { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
                         "variants.$.averageRating": 0,
                         "variants.$.totalReviews": 0,
                         "variants.$.ratingDistribution": { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 }
