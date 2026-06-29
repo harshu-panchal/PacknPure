@@ -327,9 +327,6 @@ export const getProducts = async (req, res) => {
 
     if (enforceHubOnly) {
       const coords = parseCustomerCoordinates({ lat, lng });
-      if (!coords.valid) {
-        return handleResponse(res, 400, "lat and lng are required for customer product visibility");
-      }
       
       const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
       const [hubRows, sellerMasterIds] = await Promise.all([

@@ -2024,7 +2024,13 @@ const ProductManagement = () => {
 
                                             {formData.variants?.length > 0 ? (
                                                 <div className="space-y-3">
-                                                    {formData.variants.map((variant, idx) => (
+                                                    {formData.variants.map((variant, idx) => {
+                                                        const isSellerOwned = editingItem?.ownerType === 'seller' || !!editingItem?.sellerId;
+                                                        const vendorCostValue = isSellerOwned 
+                                                            ? (variant.finalSupplyPrice || variant.purchasePrice || '') 
+                                                            : (variant.purchasePrice ?? '');
+
+                                                        return (
                                                         <div key={variant.id || idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-12 gap-3 items-end group relative transition-all hover:bg-slate-100/50">
                                                             <div className="col-span-full lg:col-span-3 space-y-1">
                                                                 <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest ml-1">Variant Name</label>
@@ -2044,10 +2050,10 @@ const ProductManagement = () => {
                                                                 <input
                                                                     type="number"
                                                                     min="0"
-                                                                    value={variant.purchasePrice ?? ''}
-                                                                    readOnly={editingItem?.ownerType === 'seller' || !!editingItem?.sellerId}
+                                                                    value={vendorCostValue}
+                                                                    readOnly={isSellerOwned}
                                                                     onChange={(e) => {
-                                                                        if (editingItem?.ownerType === 'seller' || !!editingItem?.sellerId) return;
+                                                                        if (isSellerOwned) return;
                                                                         const val = e.target.value;
                                                                         const newVariants = [...formData.variants];
                                                                         newVariants[idx].purchasePrice = val;
@@ -2056,11 +2062,11 @@ const ProductManagement = () => {
                                                                     placeholder="0.00"
                                                                     className={cn(
                                                                         "w-full px-3 py-2.5 ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10",
-                                                                        (editingItem?.ownerType === 'seller' || !!editingItem?.sellerId) ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                                                                        isSellerOwned ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
                                                                     )}
                                                                 />
                                                             </div>
-                                                            {!(editingItem?.ownerType === 'seller' || !!editingItem?.sellerId) && (
+                                                            {!isSellerOwned && (
                                                                 <>
                                                                     <div className="col-span-3 lg:col-span-2 space-y-1">
                                                                         <label className="text-[8px] font-bold text-primary uppercase tracking-widest ml-1">Sell price (₹) <span className="text-rose-500">*</span></label>
@@ -2107,7 +2113,7 @@ const ProductManagement = () => {
                                                                         <div className="w-full px-3 py-2.5 bg-emerald-50 ring-1 ring-emerald-100 rounded-xl text-xs font-black text-emerald-700 flex items-center justify-between">
                                                                             {(() => {
                                                                                 const sell = Number(variant.salePrice ?? variant.price ?? 0);
-                                                                                const buy = Number(variant.purchasePrice || 0);
+                                                                                const buy = Number(vendorCostValue || 0);
                                                                                 const gstAmt = variant.gstEnabled ? Math.round((buy * (Number(variant.gstRate) || 0)) / 100) : 0;
                                                                                 const cost = buy + gstAmt;
                                                                                 const profit = sell - cost;
@@ -2175,7 +2181,7 @@ const ProductManagement = () => {
                                                                 <VariantGstFields
                                                                     variant={variant}
                                                                     gstRates={gstRates}
-                                                                    taxablePrice={Number(variant.purchasePrice) || 0}
+                                                                    taxablePrice={Number(vendorCostValue) || 0}
                                                                     compact
                                                                     onChange={(patch) => {
                                                                         const newVariants = [...formData.variants];
@@ -2185,7 +2191,8 @@ const ProductManagement = () => {
                                                                 />
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             ) : (
                                                 <div className="p-12 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center justify-center text-center">

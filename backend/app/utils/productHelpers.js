@@ -256,7 +256,8 @@ export function validateAdminCatalogPricing(productData) {
   if (sell <= 0) {
     return { ok: false, message: "Customer sale price (salePrice) must be greater than 0" };
   }
-  const mrp = Number(productData?.price) || 0;
+  const firstVariant = productData?.variants?.[0];
+  const mrp = Number(firstVariant?.price) || Number(productData?.price) || 0;
   if (mrp <= 0) {
     return { ok: false, message: "MRP (price) must be greater than 0" };
   }
