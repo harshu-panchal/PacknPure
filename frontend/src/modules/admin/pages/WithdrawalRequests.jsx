@@ -20,7 +20,8 @@ import {
     CheckCircle,
     FileText,
     AlertCircle,
-    RotateCw
+    RotateCw,
+    Package
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';

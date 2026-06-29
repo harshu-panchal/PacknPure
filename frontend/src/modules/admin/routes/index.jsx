@@ -99,7 +99,7 @@ const OffersManagement = React.lazy(
   () => import("../pages/OffersManagement"),
 );
 const AdminSettings = React.lazy(() => import("../pages/AdminSettings"));
-const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
+
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const HubSettings = React.lazy(() => import("../pages/HubSettings"));
 const Reports = React.lazy(() => import("../pages/Reports"));
@@ -258,12 +258,6 @@ const navItems = [
     icon: Settings,
     color: "slate",
   },
-  {
-    label: "System Settings",
-    path: "/admin/env",
-    icon: Terminal,
-    color: "dark",
-  },
 ];
 
 const BillingCharges = React.lazy(() => import("../pages/BillingCharges"));
@@ -324,7 +318,6 @@ const AdminRoutes = () => {
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/hub-settings" element={<HubSettings />} />
-        <Route path="/env" element={<EnvSettings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

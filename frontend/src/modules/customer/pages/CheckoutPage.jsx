@@ -80,7 +80,6 @@ const CheckoutPage = () => {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [coupons, setCoupons] = useState([]);
@@ -1079,13 +1078,57 @@ const CheckoutPage = () => {
                     )}
                   </>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => setIsCouponModalOpen(true)}
-                  className="w-full rounded-lg bg-brand-600 py-2.5 text-xs font-semibold text-white hover:bg-brand-700"
-                >
-                  Browse coupons
-                </button>
+                <div className="relative mb-3">
+                  <Search
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    size={16}
+                  />
+                  <Input
+                    placeholder="Enter coupon code manually"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                    className="pl-10 h-12 rounded-xl focus-visible:ring-[#E23744]"
+                  />
+                  <button
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#E23744] font-bold text-xs"
+                    onClick={async () => {
+                      if (!manualCode.trim()) {
+                        showToast("Please enter a coupon code", "error");
+                        return;
+                      }
+                      try {
+                        const res = await customerApi.validatePromotion({
+                          code: manualCode.trim(),
+                          cartTotal,
+                          items: cart,
+                          customerId: user?._id,
+                        });
+                        if (res.data.success) {
+                          const data = res.data.result;
+                          setSelectedCoupon({
+                            code: manualCode.trim(),
+                            description: "Applied manually",
+                            ...data,
+                          });
+                          setManualCode(""); // clear after success
+                          showToast(
+                            `Coupon ${manualCode.trim()} applied!`,
+                            "success",
+                          );
+                        } else {
+                          showToast(res.data.message || "Invalid coupon", "error");
+                        }
+                      } catch (error) {
+                        showToast(
+                          error.response?.data?.message || "Invalid coupon",
+                          "error",
+                        );
+                      }
+                    }}>
+                    CHECK
+                  </button>
+                </div>
+
                 {coupons.slice(0, 2).map((coupon) => (
                   <div
                     key={coupon.code}
@@ -1388,110 +1431,6 @@ const CheckoutPage = () => {
               </Button>
             </DialogFooter>
           </motion.div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Coupon Selection Modal */}
-      <Dialog open={isCouponModalOpen} onOpenChange={setIsCouponModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Apply Coupon</DialogTitle>
-            <DialogDescription>
-              Browse available offers and save more.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-            {coupons.map((coupon) => (
-              <div
-                key={coupon.code}
-                className={`p-4 rounded-2xl border-2 transition-all relative overflow-hidden ${selectedCoupon?.code === coupon.code
-                  ? "border-[#E23744] bg-rose-50 shadow-sm"
-                  : "border-slate-100 bg-white hover:border-slate-200"
-                  }`}>
-                {selectedCoupon?.code === coupon.code && (
-                  <div className="absolute top-0 right-0 p-1.5 bg-[#E23744] text-white rounded-bl-xl">
-                    <Check size={12} strokeWidth={4} />
-                  </div>
-                )}
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`p-3 rounded-2xl ${selectedCoupon?.code === coupon.code ? "bg-[#E23744]/10 text-[#E23744]" : "bg-brand-50 text-brand-600"}`}>
-                    <Tag size={20} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-black text-slate-800 tracking-wider mb-1">
-                      {coupon.code}
-                    </p>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-3">
-                      {coupon.description}
-                    </p>
-                    <button
-                      onClick={() => handleApplyCoupon(coupon)}
-                      disabled={selectedCoupon?.code === coupon.code}
-                      className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${selectedCoupon?.code === coupon.code
-                        ? "bg-white text-[#E23744] border-2 border-[#E23744] cursor-default"
-                        : "bg-[#E23744] text-white hover:bg-[#C41E35]"
-                        }`}>
-                      {selectedCoupon?.code === coupon.code
-                        ? "Applied"
-                        : "Apply Now"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="pt-2">
-            <div className="relative">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
-              />
-              <Input
-                placeholder="Enter coupon code manually"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                className="pl-10 h-12 rounded-xl focus-visible:ring-[#E23744]"
-              />
-              <button
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#E23744] font-bold text-xs"
-                onClick={async () => {
-                  if (!manualCode.trim()) {
-                    showToast("Please enter a coupon code", "error");
-                    return;
-                  }
-                  try {
-                    const res = await customerApi.validateCoupon({
-                      code: manualCode.trim(),
-                      cartTotal,
-                      items: cart,
-                      customerId: user?._id,
-                    });
-                    if (res.data.success) {
-                      const data = res.data.result;
-                      setSelectedCoupon({
-                        code: manualCode.trim(),
-                        description: "Applied manually",
-                        ...data,
-                      });
-                      showToast(
-                        `Coupon ${manualCode.trim()} applied!`,
-                        "success",
-                      );
-                    } else {
-                      showToast(res.data.message || "Invalid coupon", "error");
-                    }
-                  } catch (error) {
-                    showToast(
-                      error.response?.data?.message || "Invalid coupon",
-                      "error",
-                    );
-                  }
-                }}>
-                CHECK
-              </button>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
