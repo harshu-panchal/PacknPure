@@ -18,11 +18,6 @@ import {
   mapPrKeyDates,
   buildPrTimeline,
 } from "../utils/purchaseRequestHelpers.js";
-import {
-  resolveVariantIndex,
-  setVariantStockAtIndex,
-  totalVariantStock,
-} from "../utils/productHelpers.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 
@@ -1092,9 +1087,21 @@ export const verifyInward = async (req, res) => {
             hubRow.reservedQty = Math.max(0, (hubRow.reservedQty || 0) - acceptedQty);
             hubRow.availableQty = (hubRow.availableQty || 0) + acceptedQty;
             
-            const masterProduct = await Product.findById(productId).select("price salePrice").lean();
+            // Re-sync price with Master Catalog just in case
+            const masterProduct = await Product.findById(productId);
             if (masterProduct) {
               hubRow.sellPrice = masterProduct.price || masterProduct.salePrice || hubRow.sellPrice;
+              
+              // Also sync Master Product stock
+              masterProduct.stock = hubRow.availableQty;
+              await masterProduct.save();
+              
+              // Propagation: Sync Master Price to all linked seller products (Downward Sync)
+              // This ensures if Admin changed master price during inwarding, it propagates.
+              const { propagatePriceUpdates } = await import('./productController.js');
+              if (propagatePriceUpdates) {
+                 await propagatePriceUpdates(masterProduct);
+              }
             }
 
             // Update status based on new available quantity
@@ -1569,35 +1576,21 @@ export const confirmVendorReturn = async (req, res) => {
 
     // --- RESTORE STOCK ---
     try {
+      const Product = (await import("../models/product.js")).default;
       for (const item of pr.items) {
         if (item.productId && item.actualPickedQty > 0) {
           const sellerProduct = await Product.findOne({
             sellerId: pr.vendorId?._id || pr.vendorId,
             $or: [
-              { _id: item.selectedSellerProductId || item.productId },
+              { _id: item.productId },
               { masterProductId: item.productId }
             ]
-          }).select("variants stock committedStock");
+          });
 
           if (sellerProduct) {
-            if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length) {
-              const masterProduct = await Product.findById(item.productId).select("variants").lean();
-              const idx = resolveVariantIndex(masterProduct, { variantId: item.variantId });
-              const targetIndex = idx >= 0 ? idx : 0;
-              const currentStock = Math.max(0, Number(sellerProduct.variants[targetIndex]?.stock) || 0);
-              const nextStock = currentStock + Number(item.actualPickedQty || 0);
-              sellerProduct.variants = setVariantStockAtIndex(
-                sellerProduct.variants,
-                targetIndex,
-                nextStock,
-              );
-              sellerProduct.stock = totalVariantStock(sellerProduct.variants);
-              sellerProduct.markModified("variants");
-              await sellerProduct.save();
-            } else {
-              sellerProduct.stock = Math.max(0, Number(sellerProduct.stock || 0)) + Number(item.actualPickedQty || 0);
-              await sellerProduct.save();
-            }
+            await Product.findByIdAndUpdate(sellerProduct._id, {
+              $inc: { stock: item.actualPickedQty }
+            });
             console.log(`[Reverse Logistics] Restored ${item.actualPickedQty} to Seller ${pr.vendorId}`);
           }
         }
