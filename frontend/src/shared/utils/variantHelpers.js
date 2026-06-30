@@ -136,9 +136,9 @@ export function applySelectedVariant(product, variant) {
     unit: targetVariant.unit || product.unit,
     stockQty: totalStock,
     inStock: totalStock > 0,
-    averageRating: targetVariant.averageRating ?? product.averageRating,
-    totalReviews: targetVariant.totalReviews ?? product.totalReviews,
-    ratingDistribution: targetVariant.ratingDistribution ?? product.ratingDistribution,
+    averageRating: (targetVariant.totalReviews > 0 ? targetVariant.averageRating : product.averageRating) || 0,
+    totalReviews: targetVariant.totalReviews > 0 ? targetVariant.totalReviews : (product.totalReviews || 0),
+    ratingDistribution: targetVariant.totalReviews > 0 ? targetVariant.ratingDistribution : (product.ratingDistribution || {}),
   };
 }
 // for product detail page

@@ -404,16 +404,10 @@ export function setVariantStockAtIndex(variants, index, stock) {
   const qty = Math.max(0, Number(stock) || 0);
   return (variants || []).map((v, i) => {
     const plain = v?.toObject ? v.toObject() : { ...v };
-    const row = {
-      name: plain.name,
-      unit: plain.unit,
-      price: plain.price,
-      salePrice: plain.salePrice,
-      purchasePrice: plain.purchasePrice,
+    return {
+      ...plain,
       stock: i === index ? qty : Math.max(0, Number(plain.stock) || 0),
     };
-    if (plain._id) row._id = plain._id;
-    return row;
   });
 }
 
@@ -461,15 +455,20 @@ export async function calculateTotalAvailableStock(masterProduct, variantId = nu
   if (!masterProduct) return 0;
   
   const Product = (await import("../models/product.js")).default;
+  const HubInventory = (await import("../models/hubInventory.js")).default;
 
   // 1. Hub Available Qty
   let hubAvailableQty = 0;
   let masterVar = null;
+  const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
+  const hubRow = await HubInventory.findOne({ hubId, productId: masterProduct._id }).lean();
+  const hubTotalQty = hubRow ? Math.max(0, Number(hubRow.availableQty || 0)) : 0;
+
   if (variantId && Array.isArray(masterProduct.variants)) {
      masterVar = masterProduct.variants.find(v => String(v._id) === String(variantId) || String(v.id) === String(variantId));
-     hubAvailableQty = Math.max(0, Number(masterVar?.stock) || 0);
+     hubAvailableQty = Math.min(hubTotalQty, Math.max(0, Number(masterVar?.stock) || 0));
   } else {
-     hubAvailableQty = Math.max(0, totalVariantStock(masterProduct.variants));
+     hubAvailableQty = Math.min(hubTotalQty, Math.max(0, totalVariantStock(masterProduct.variants)));
   }
 
   // 2. Sum(SellerAvailableQty)
@@ -738,9 +737,11 @@ export function enrichCustomerProduct(item) {
         ? `${variants.length} options`
         : variants[0]?.name || null;
 
-  const availableQty = item.totalAvailableQty !== undefined 
-    ? Number(item.totalAvailableQty)
-    : totalVariantStock(variants);
+  const availableQty = variants.length > 0
+    ? Number(variants[0].totalAvailableQty ?? variants[0].stock ?? 0)
+    : (item.totalAvailableQty !== undefined 
+      ? Number(item.totalAvailableQty)
+      : totalVariantStock(variants));
 
   const hasGstVariant = variants.some((v) => v.gstEnabled === true && (Number(v.gstRate) || 0) > 0);
   const gstEnabled = hasGstVariant || first.gstEnabled;

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Product from "../models/product.js";
 import StockHistory from "../models/stockHistory.js";
 import Transaction from "../models/transaction.js";
@@ -15,7 +16,7 @@ export async function compensateOrderCancellation(order, orderIdString) {
         await Product.updateOne(
           { _id: item.product },
           { $inc: { stock: reservedToRelease, "variants.$[elem].stock": reservedToRelease } },
-          { arrayFilters: [{ "elem._id": item.variantId }] }
+          { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(item.variantId) }] }
         );
       } else {
         await Product.findByIdAndUpdate(item.product, {

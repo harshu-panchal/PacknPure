@@ -327,30 +327,8 @@ export const getProducts = async (req, res) => {
 
     if (enforceHubOnly) {
       const coords = parseCustomerCoordinates({ lat, lng });
-      
-      const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
-      const [hubRows, sellerMasterIds] = await Promise.all([
-        HubInventory.find({ hubId, availableQty: { $gt: 0 } })
-          .select("productId")
-          .lean(),
-        Product.distinct("masterProductId", {
-          ownerType: "seller",
-          status: "active",
-          stock: { $gt: 0 },
-          masterProductId: { $ne: null },
-        }),
-      ]);
-
-      const eligibleIds = Array.from(
-        new Set([
-          ...(hubRows || []).map((row) => row?.productId && String(row.productId)).filter(Boolean),
-          ...(sellerMasterIds || []).map((id) => id && String(id)).filter(Boolean),
-        ]),
-      );
-
       query.ownerType = "admin";
       query.status = "active";
-      query._id = { $in: eligibleIds };
     } else {
       if (status) query.status = status;
       if (req.query.ownerType === "admin") {
@@ -567,8 +545,25 @@ export const getProducts = async (req, res) => {
           (row) => row.needsAdminReview,
         ).length;
 
+        const variantsWithSellerStock = (p.variants || []).map((v) => {
+          const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
+          if (row.ratingDistribution instanceof Map) {
+            row.ratingDistribution = Object.fromEntries(row.ratingDistribution);
+          }
+          const vName = normalizeVariantMatchKey(row.name);
+          const sellerStockForV = variantStockMap.get(`${pIdStr}_${vName}`) || 0;
+          // row.stock is Hub variant stock (synced by reserveHubInventory)
+          row.totalAvailableQty = Math.max(0, Number(row.stock) || 0) + sellerStockForV;
+          return row;
+        });
+
+        const pRatingDist = p.ratingDistribution instanceof Map 
+          ? Object.fromEntries(p.ratingDistribution) 
+          : p.ratingDistribution;
+
         return {
           ...p,
+          ratingDistribution: pRatingDist,
           price: p.price,
           salePrice: hasVariants ? p.salePrice || p.price : dynamicPrice,
           // Hub procurement cost — admin-set only; do not replace with seller supply quotes.
@@ -580,7 +575,7 @@ export const getProducts = async (req, res) => {
           availableQtySeller: mappedSellerStock,
           totalAvailableQty: fulfillableQty,
           totalFulfillmentQty: fulfillableQty,
-          variants: mapVariantsForResponse(p.variants),
+          variants: mapVariantsForResponse(variantsWithSellerStock),
           fulfillmentSource:
             hubQty > 0 ? "hub" : mappedSellerStock > 0 ? "procure" : "out_of_stock",
           sellerSupplyBreakdown,
@@ -620,8 +615,13 @@ export const getProducts = async (req, res) => {
         return row;
       });
 
+      const pRatingDist = p.ratingDistribution instanceof Map 
+        ? Object.fromEntries(p.ratingDistribution) 
+        : p.ratingDistribution;
+
       return {
         ...p,
+        ratingDistribution: pRatingDist,
         price: customerPrice || p.price,
         salePrice: customerPrice || p.salePrice,
         masterSalePrice: customerPrice,
@@ -947,7 +947,8 @@ export const createProduct = async (req, res) => {
       }
 
       if (productData.masterProductId) {
-        productData.status = "active";
+        // Default to pending_approval to require admin review before going live.
+        productData.status = "pending_approval";
       }
     }
 
@@ -1292,6 +1293,24 @@ export const updateProduct = async (req, res) => {
             productData.purchasePrice = productData.variants[0].purchasePrice;
           }
         }
+        
+        // Preserve variant review fields from the old product
+        if (Array.isArray(product.variants) && product.variants.length > 0) {
+          productData.variants.forEach((newV) => {
+            const oldV = product.variants.find(
+              (old) =>
+                (old._id && newV._id && String(old._id) === String(newV._id)) ||
+                (old.name && newV.name && String(old.name).trim().toLowerCase() === String(newV.name).trim().toLowerCase())
+            );
+            if (oldV) {
+              newV.averageRating = oldV.averageRating || 0;
+              newV.totalReviews = oldV.totalReviews || 0;
+              if (oldV.ratingDistribution) {
+                newV.ratingDistribution = oldV.ratingDistribution;
+              }
+            }
+          });
+        }
       } else {
         productData.variants = [];
         productData.stock = Math.max(0, Number(productData.stock ?? product.stock) || 0);
@@ -1430,6 +1449,10 @@ export const updateProduct = async (req, res) => {
           return handleResponse(res, 400, marginCheck.message);
         }
       }
+    }
+
+    if (role !== "admin" && product.ownerType === "seller") {
+      productData.status = "pending_approval";
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(
@@ -1905,27 +1928,7 @@ export const getProductById = async (req, res) => {
         return handleResponse(res, 404, "Product not available");
       }
 
-      if (productLean.ownerType === "admin") {
-        const hubRow = await HubInventory.findOne({
-          hubId: DEFAULT_HUB_ID,
-          productId: productLean._id,
-          availableQty: { $gt: 0 },
-        }).lean();
-        const hasHubStock = Boolean(hubRow);
-        let hasSellerStock = false;
-        if (!hasHubStock) {
-          hasSellerStock =
-            (await Product.countDocuments({
-              masterProductId: productLean._id,
-              ownerType: "seller",
-              status: "active",
-              stock: { $gt: 0 },
-            })) > 0;
-        }
-        if (!hasHubStock && !hasSellerStock) {
-          return handleResponse(res, 404, "Product not available");
-        }
-      } else {
+      if (productLean.ownerType === "seller") {
         const sellerIdForProduct = String(
           productLean.sellerId?._id || productLean.sellerId,
         );

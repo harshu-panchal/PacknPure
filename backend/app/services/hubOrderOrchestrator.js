@@ -116,10 +116,24 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
   for (const item of orderItems) {
     const productId = String(item.product);
     const requiredQty = Number(item.quantity || 0);
-    const availableQty = Math.max(0, Number(invMap.get(productId) || 0));
+    const variantId = item.variantId || null;
+    const baseProduct = productMap.get(productId) || null;
+    
+    const hubProductQty = Math.max(0, Number(invMap.get(productId) || 0));
+    let variantMaxQty = hubProductQty;
+    if (variantId && baseProduct && Array.isArray(baseProduct.variants)) {
+      const v = baseProduct.variants.find(
+        (v) => String(v._id) === String(variantId) || String(v.id) === String(variantId)
+      );
+      if (v) {
+        variantMaxQty = Math.max(0, Number(v.stock) || 0);
+      }
+    }
+    
+    const availableQty = Math.min(hubProductQty, variantMaxQty);
     const reserveQty = Math.min(availableQty, requiredQty);
     const shortageQty = Math.max(0, requiredQty - reserveQty);
-    const variantId = item.variantId || null;
+    
     allocations.push({ productId, variantId, reserveQty });
     if (shortageQty > 0) {
       shortages.push({
@@ -129,7 +143,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
         availableQtyAtHub: availableQty,
         shortageQty,
         vendorId: sellerMap.get(productId) || null,
-        baseProduct: productMap.get(productId) || null,
+        baseProduct,
       });
     }
   }
@@ -168,14 +182,20 @@ export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
     if (updated) {
       // Keep Product root stock and variant stock in sync for Admin view consistency
       try {
-        const p = await Product.findById(row.productId);
-        if (p) {
-          p.stock = Math.max(0, p.stock - row.reserveQty);
-          if (row.variantId) {
-            const v = p.variants.id ? p.variants.id(row.variantId) : p.variants.find(v => String(v._id) === String(row.variantId));
-            if (v) v.stock = Math.max(0, v.stock - row.reserveQty);
-          }
-          await p.save();
+        if (row.variantId) {
+          const res = await Product.updateOne(
+            { _id: row.productId },
+            {
+              $inc: {
+                stock: -row.reserveQty,
+                "variants.$[elem].stock": -row.reserveQty
+              }
+            },
+            { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(row.variantId) }] }
+          );
+          if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
+        } else {
+          await Product.findByIdAndUpdate(row.productId, { $inc: { stock: -row.reserveQty } });
         }
       } catch (e) {
         console.warn("[reserveHubInventory] Master product stock sync failed:", e.message);
@@ -205,7 +225,7 @@ export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
                   "variants.$[elem].stock": applied.reserveQty
                 }
               },
-              { arrayFilters: [{ "elem._id": applied.variantId }] }
+              { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(applied.variantId) }] }
             );
             if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
           } catch (e) {

@@ -45,51 +45,14 @@ import {
   resolveOrderItemPrice,
 } from "../utils/orderItemHelpers.js";
 import { resolveVariantIndex } from "../utils/productHelpers.js";
+import { compensateOrderCancellation } from "../services/orderCompensation.js";
 
 // COD strike logic now handled in orderService.js
 
 const ORDER_CART_POPULATE =
   "name slug price salePrice purchasePrice mainImage stock gstRate unit variants";
 
-async function reverseOrderItemStock(item, order) {
-  const qty = Number(item.quantity) || 0;
-  if (qty <= 0) return;
 
-  const productId = item.product?._id || item.product;
-  if (!productId) return;
-
-  if (item.variantId) {
-    const product = await Product.findById(productId)
-      .select("variants sellerId")
-      .lean();
-    const idx = resolveVariantIndex(product, { variantId: item.variantId });
-    if (idx >= 0) {
-      await Product.updateOne(
-        { _id: productId },
-        {
-          $inc: {
-            [`variants.${idx}.stock`]: qty,
-            stock: qty,
-          },
-        },
-      );
-    } else {
-      await Product.findByIdAndUpdate(productId, { $inc: { stock: qty } });
-    }
-  } else {
-    await Product.findByIdAndUpdate(productId, { $inc: { stock: qty } });
-  }
-
-  await StockHistory.create({
-    product: productId,
-    seller: order.seller,
-    type: "Correction",
-    quantity: qty,
-    note: `Order #${order.orderId} Cancelled`,
-    order: order._id,
-    variantId: item.variantId || undefined,
-  });
-}
 
 /* ===============================
    PLACE ORDER
@@ -418,7 +381,7 @@ export const placeOrder = async (req, res) => {
                     "variants.$[elem].stock": applied.reserveQty
                   }
                 },
-                { arrayFilters: [{ "elem._id": applied.variantId }] }
+                { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(applied.variantId) }] }
               );
               if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
             } catch (e) {
@@ -1163,6 +1126,8 @@ export const updateOrderStatus = async (req, res) => {
               status: "created",
             });
             if (pr) {
+              const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
+              await releasePurchaseRequestCommitments(pr);
               pr.vendorResponse = {
                 status: "rejected",
                 respondedAt: new Date(),
@@ -1238,15 +1203,7 @@ export const updateOrderStatus = async (req, res) => {
 
     // Handle Cancellation (Stock Reversal & Transaction Update)
     if (status === "cancelled" && oldStatus !== "cancelled") {
-      for (const item of order.items) {
-        await reverseOrderItemStock(item, order);
-      }
-
-      // 2. Update Transaction
-      await Transaction.findOneAndUpdate(
-        { reference: canonicalOrderId },
-        { status: "Failed" },
-      );
+      await compensateOrderCancellation(order, canonicalOrderId);
     }
 
     // Handle Confirmation/Delivery (Settle Transaction for Demo)

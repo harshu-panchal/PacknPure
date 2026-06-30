@@ -244,7 +244,7 @@ export function buildSellerProductFormData(formData, { editingItem } = {}) {
 
   const cleanVariants = variants.map((v, index) => {
     const supply = Number(v.supplyPrice ?? v.price) || resolvedPrice;
-    return {
+    const row = {
       name: String(v.name || '').trim() || `Variant ${index + 1}`,
       unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
       supplyPrice: supply,
@@ -254,6 +254,11 @@ export function buildSellerProductFormData(formData, { editingItem } = {}) {
       gstEnabled: Boolean(v.gstEnabled),
       gstRate: v.gstEnabled ? Math.max(0, Number(v.gstRate) || 0) : 0,
     };
+    const variantId = v._id || v.id;
+    if (variantId && String(variantId).length === 24) {
+      row._id = String(variantId);
+    }
+    return row;
   });
 
   const fields = {

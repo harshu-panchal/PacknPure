@@ -804,27 +804,6 @@ export async function customerCancelV2(customerId, orderId, reason) {
   await removeSellerTimeoutJob(orderId);
   await compensateOrderCancellation(updated, orderId);
 
-  // --- HUB-FIRST LOGIC: Cancel related Purchase Requests ---
-  try {
-    const PurchaseRequest = (await import("../models/purchaseRequest.js")).default;
-    const { releasePurchaseRequestCommitments } = await import("./hubOrderOrchestrator.js");
-    
-    // Find PRs that are open/pending and haven't been completed yet
-    const pendingPRs = await PurchaseRequest.find({
-      orderId: updated._id,
-      status: { $nin: ["verified", "closed", "cancelled", "seller_rejected", "expired"] }
-    });
-    
-    for (const pr of pendingPRs) {
-      await releasePurchaseRequestCommitments(pr);
-      pr.status = "cancelled";
-      pr.notes = (pr.notes || "") + ` | Auto-cancelled due to order cancellation: ${reason || "No reason provided"}`;
-      await pr.save();
-    }
-    console.log(`[OrderWorkflow] Cancelled and released ${pendingPRs.length} procurement requests for order: ${orderId}`);
-  } catch (prErr) {
-    console.warn("[OrderWorkflow] Failed to auto-cancel related PRs:", prErr.message);
-  }
 
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
   return updated;
