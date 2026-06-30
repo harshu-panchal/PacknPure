@@ -124,11 +124,28 @@ const settingSchema = new mongoose.Schema(
             type: Number,
             default: 15, // Default 15km
         },
-        sellerTimeoutMinutes: {
+        sellerResponseTimeout: {
             type: Number,
             default: 15,
         },
-        autoCancelProcurementFailure: {
+        pickupTimeout: {
+            type: Number,
+            default: 120, // default 2 hours in minutes
+        },
+        hubReceiveTimeout: {
+            type: Number,
+            default: 180, // default 3 hours in minutes
+        },
+        returnConfirmationTimeout: {
+            type: Number,
+            default: 1440, // default 24 hours in minutes
+        },
+        procurementFailureAction: {
+            type: String,
+            enum: ["auto_cancel", "put_on_hold"],
+            default: "auto_cancel",
+        },
+        enableMultiSellerAllocation: {
             type: Boolean,
             default: false,
         },

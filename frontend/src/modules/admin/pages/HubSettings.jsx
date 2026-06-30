@@ -40,6 +40,12 @@ const HubSettings = () => {
     gstPercentage: 5,
     gstRates: [0, 5, 12, 18, 28],
     maxServiceRadius: 15,
+    sellerResponseTimeout: 15,
+    pickupTimeout: 120,
+    hubReceiveTimeout: 180,
+    returnConfirmationTimeout: 1440,
+    procurementFailureAction: "auto_cancel",
+    enableMultiSellerAllocation: false,
     address: "Indore Main Hub, Industrial Area",
   });
 
@@ -68,6 +74,12 @@ const HubSettings = () => {
           gstPercentage: data.result.gstPercentage ?? 5,
           gstRates: Array.isArray(data.result.gstRates) ? data.result.gstRates : [0, 5, 12, 18, 28],
           maxServiceRadius: data.result.maxServiceRadius ?? 15,
+          sellerResponseTimeout: data.result.sellerResponseTimeout ?? 15,
+          pickupTimeout: data.result.pickupTimeout ?? 120,
+          hubReceiveTimeout: data.result.hubReceiveTimeout ?? 180,
+          returnConfirmationTimeout: data.result.returnConfirmationTimeout ?? 1440,
+          procurementFailureAction: data.result.procurementFailureAction || "auto_cancel",
+          enableMultiSellerAllocation: data.result.enableMultiSellerAllocation ?? false,
           address: data.result.address || "Indore Main Hub, Industrial Area",
         });
       }
@@ -408,6 +420,78 @@ const HubSettings = () => {
                   <p className="text-[10px] text-slate-400 font-medium italic">
                     These options will appear in the product management dropdowns for Sellers and Admins.
                   </p>
+                </div>
+             </Card>
+
+             <Card className="p-6 border-none shadow-xl ring-1 ring-slate-100 rounded-2xl bg-white">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
+                    <HiOutlineAdjustmentsVertical className="h-6 w-6" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Procurement Matrix</h4>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Enable Multi-Seller Allocation</label>
+                    <input
+                      type="checkbox"
+                      checked={settings.enableMultiSellerAllocation}
+                      onChange={(e) => setSettings({ ...settings, enableMultiSellerAllocation: e.target.checked })}
+                      className="h-4 w-4 text-primary rounded border-slate-300 focus:ring-primary"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Seller Timeout (mins)</label>
+                        <input
+                          type="number"
+                          value={settings.sellerResponseTimeout}
+                          onChange={(e) => setSettings({ ...settings, sellerResponseTimeout: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-black text-slate-900 outline-none"
+                        />
+                     </div>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pickup Timeout (mins)</label>
+                        <input
+                          type="number"
+                          value={settings.pickupTimeout}
+                          onChange={(e) => setSettings({ ...settings, pickupTimeout: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-black text-slate-900 outline-none"
+                        />
+                     </div>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hub Receive Timeout (mins)</label>
+                        <input
+                          type="number"
+                          value={settings.hubReceiveTimeout}
+                          onChange={(e) => setSettings({ ...settings, hubReceiveTimeout: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-black text-slate-900 outline-none"
+                        />
+                     </div>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Return Timeout (mins)</label>
+                        <input
+                          type="number"
+                          value={settings.returnConfirmationTimeout}
+                          onChange={(e) => setSettings({ ...settings, returnConfirmationTimeout: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-black text-slate-900 outline-none"
+                        />
+                     </div>
+                  </div>
+
+                  <div className="space-y-2 pt-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Procurement Failure Action</label>
+                    <select
+                      value={settings.procurementFailureAction}
+                      onChange={(e) => setSettings({ ...settings, procurementFailureAction: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-black text-slate-900 outline-none"
+                    >
+                      <option value="auto_cancel">Auto Cancel Order</option>
+                      <option value="put_on_hold">Put On Hold (Manual)</option>
+                    </select>
+                  </div>
                 </div>
              </Card>
           </div>

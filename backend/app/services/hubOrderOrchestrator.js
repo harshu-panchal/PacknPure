@@ -257,7 +257,7 @@ export const createAutoPurchaseRequests = async ({
 }) => {
   const Setting = (await import("../models/setting.js")).default;
   const settings = await Setting.findOne().lean();
-  const sellerTimeoutMinutes = settings?.sellerTimeoutMinutes || 15;
+  const sellerResponseTimeout = settings?.sellerResponseTimeout || 15;
   const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
   const effectiveCatalogPrice = (row) => {
     // Priority 1: Use purchasePrice if available (this is the true vendor cost/procurement rate)
@@ -446,7 +446,7 @@ export const createAutoPurchaseRequests = async ({
         let remainingToAssign = item.shortageQty;
         for (let i = 0; i < selections.length; i++) {
           const choice = selections[i];
-          const allocated = choice.allocatedQty;
+          const allocated = settings?.enableMultiSellerAllocation ? choice.allocatedQty : remainingToAssign;
           remainingToAssign -= allocated;
           const fallbacks = selections.slice(i + 1).map(s => s.vendorId);
           
@@ -472,9 +472,10 @@ export const createAutoPurchaseRequests = async ({
             marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
             rankedSellers: fallbacks,
           });
+          if (!settings?.enableMultiSellerAllocation) break;
         }
         
-        if (remainingToAssign > 0) {
+        if (remainingToAssign > 0 && settings?.enableMultiSellerAllocation) {
           const fallbackCost = normalizeMoney(effectiveCatalogPrice(baseProduct));
           const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
           const baseGstAmount = Number((fallbackCost * (baseRate / 100)).toFixed(2));
@@ -526,7 +527,7 @@ export const createAutoPurchaseRequests = async ({
       vendorId: item.vendorId,
       rankedSellers: item.rankedSellers || [],
       status: "created",
-      expiresAt: new Date(Date.now() + sellerTimeoutMinutes * 60 * 1000),
+      expiresAt: new Date(Date.now() + sellerResponseTimeout * 60 * 1000),
       items: [{
         productId: item.productId,
         variantId: item.variantId || undefined,
@@ -611,7 +612,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       const order = await Order.findById(pr.orderId);
       
       if (order) {
-        if (settings?.autoCancelProcurementFailure) {
+        if (settings?.procurementFailureAction === "auto_cancel") {
           const { compensateOrderCancellation } = await import("./orderCompensation.js");
           const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
           order.status = "cancelled";
@@ -648,6 +649,10 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   if (qtyToProcure <= 0) return null;
 
+  const Setting2 = (await import("../models/setting.js")).default;
+  const settingsFallback = await Setting2.findOne().lean();
+  const fallbackTimeout = settingsFallback?.sellerResponseTimeout || 15;
+
   const newPr = await PurchaseRequest.create({
     requestId: buildRequestId(),
     orderId: pr.orderId,
@@ -655,7 +660,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     vendorId: nextVendorId,
     rankedSellers: pr.rankedSellers,
     status: "created",
-    expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
+    expiresAt: new Date(Date.now() + fallbackTimeout * 60 * 1000),
     items: [{
       productId: pr.items[0].productId,
       requiredQty: pr.items[0].requiredQty,

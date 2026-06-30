@@ -43,6 +43,11 @@ const orderSchema = new mongoose.Schema(
         variantSlot: String, // Human-readable variant label (e.g. "1 kg")
         hubReservedQty: { type: Number, default: 0 },
         vendorProcuredQty: { type: Number, default: 0 },
+        vendorReceivedQty: { type: Number, default: 0 },
+        qaAcceptedQty: { type: Number, default: 0 },
+        qaRejectedQty: { type: Number, default: 0 },
+        deliveryQty: { type: Number, default: 0 },
+        returnedQty: { type: Number, default: 0 },
         variantId: {
           type: mongoose.Schema.Types.ObjectId,
           required: false,

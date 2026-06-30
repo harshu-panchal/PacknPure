@@ -4,8 +4,6 @@ import Notification from "../models/notification.js";
 import { fallbackPurchaseRequest, releasePurchaseRequestCommitments } from "../services/hubOrderOrchestrator.js";
 
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
-const PICKUP_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
-const HUB_RECEIVE_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 const notifyAdmins = async (title, message, data = {}) => {
   const admins = await Admin.find({}).select("_id").lean();
@@ -49,7 +47,10 @@ const processExpirations = async () => {
 };
 
 const processPickupTimeouts = async () => {
-  const cutoff = new Date(Date.now() - PICKUP_TIMEOUT_MS);
+  const Setting = (await import("../models/setting.js")).default;
+  const settings = await Setting.findOne().lean();
+  const timeoutMs = (settings?.pickupTimeout || 120) * 60 * 1000;
+  const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await PurchaseRequest.find({
       status: "pickup_assigned",
@@ -73,7 +74,10 @@ const processPickupTimeouts = async () => {
 };
 
 const processHubReceiveTimeouts = async () => {
-  const cutoff = new Date(Date.now() - HUB_RECEIVE_TIMEOUT_MS);
+  const Setting = (await import("../models/setting.js")).default;
+  const settings = await Setting.findOne().lean();
+  const timeoutMs = (settings?.hubReceiveTimeout || 180) * 60 * 1000;
+  const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await PurchaseRequest.find({
       status: "picked",

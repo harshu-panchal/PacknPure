@@ -531,11 +531,11 @@ export const markAssignmentPicked = async (req, res) => {
           if (sellerProduct) {
             const currentStock = Number(sellerProduct.stock || 0);
             if (currentStock < pickedQty) {
-              await Product.findByIdAndUpdate(sellerProduct._id, { $set: { stock: 0 } });
+              await Product.findByIdAndUpdate(sellerProduct._id, { $set: { stock: 0 }, $inc: { committedStock: -pickedQty } });
               console.log(`[InventorySync] Stock was insufficient (${currentStock}). Set to 0 for product ${sellerProduct._id}`);
             } else {
               await Product.findByIdAndUpdate(sellerProduct._id, {
-                $inc: { stock: -pickedQty }
+                $inc: { stock: -pickedQty, committedStock: -pickedQty }
               });
               console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProduct._id}`);
             }

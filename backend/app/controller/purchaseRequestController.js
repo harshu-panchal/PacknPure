@@ -1050,10 +1050,7 @@ export const verifyInward = async (req, res) => {
     if (notes !== undefined) pr.notes = String(notes || "");
     await pr.save();
 
-    const { releasePurchaseRequestCommitments } = await import(
-      "../services/hubOrderOrchestrator.js"
-    );
-    await releasePurchaseRequestCommitments(pr);
+    // Commitment was already consumed at pickup, no need to release here.
 
     // Move stock from Reserved to Available in Hub Inventory
     if (verified && inward.receivedItems) {
@@ -1083,18 +1080,13 @@ export const verifyInward = async (req, res) => {
           });
 
           if (hubRow) {
-            // Deduct from reserved and add to available
+            // Deduct from reserved ONLY. Do NOT add to availableQty (stays allocated to customer order)
             hubRow.reservedQty = Math.max(0, (hubRow.reservedQty || 0) - acceptedQty);
-            hubRow.availableQty = (hubRow.availableQty || 0) + acceptedQty;
             
             // Re-sync price with Master Catalog just in case
             const masterProduct = await Product.findById(productId);
             if (masterProduct) {
               hubRow.sellPrice = masterProduct.price || masterProduct.salePrice || hubRow.sellPrice;
-              
-              // Also sync Master Product stock
-              masterProduct.stock = hubRow.availableQty;
-              await masterProduct.save();
               
               // Propagation: Sync Master Price to all linked seller products (Downward Sync)
               // This ensures if Admin changed master price during inwarding, it propagates.
@@ -1102,6 +1094,14 @@ export const verifyInward = async (req, res) => {
               if (propagatePriceUpdates) {
                  await propagatePriceUpdates(masterProduct);
               }
+            }
+
+            if (pr.orderId) {
+              const Order = (await import("../models/order.js")).default;
+              await Order.updateOne(
+                { _id: pr.orderId, "items.product": productId },
+                { $inc: { "items.$.qaAcceptedQty": acceptedQty } }
+              );
             }
 
             // Update status based on new available quantity

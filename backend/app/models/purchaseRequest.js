@@ -101,6 +101,13 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Seller",
     }],
+    timeoutVersion: {
+      type: Number,
+      default: 0,
+    },
+    sellerSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+    },
     expiresAt: {
       type: Date,
       index: true,

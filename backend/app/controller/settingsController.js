@@ -39,6 +39,12 @@ const ALLOWED_KEYS = [
   "platformFee",
   "gstPercentage",
   "maxServiceRadius",
+  "sellerResponseTimeout",
+  "pickupTimeout",
+  "hubReceiveTimeout",
+  "returnConfirmationTimeout",
+  "procurementFailureAction",
+  "enableMultiSellerAllocation"
 ];
 
 /** Joi schema for validating settings update payload */
@@ -80,6 +86,12 @@ const updateSettingsSchema = Joi.object({
   platformFee: Joi.number().min(0),
   gstPercentage: Joi.number().min(0).max(100),
   maxServiceRadius: Joi.number().min(0),
+  sellerResponseTimeout: Joi.number().min(1),
+  pickupTimeout: Joi.number().min(1),
+  hubReceiveTimeout: Joi.number().min(1),
+  returnConfirmationTimeout: Joi.number().min(1),
+  procurementFailureAction: Joi.string().valid("auto_cancel", "put_on_hold"),
+  enableMultiSellerAllocation: Joi.boolean(),
 }).unknown(false);
 
 /**
@@ -96,7 +108,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout procurementFailureAction enableMultiSellerAllocation createdAt",
       )
       .lean();
 
