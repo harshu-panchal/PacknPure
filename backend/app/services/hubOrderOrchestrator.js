@@ -161,83 +161,16 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
  * Returns false if any reserve check fails (race-safe).
  */
 export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
+  const { freezeHubInventory, releaseHubReservation } = await import("./inventoryLifecycleService.js");
   const reservedRows = [];
   for (const row of allocations) {
     if (!row.reserveQty || row.reserveQty <= 0) continue;
-    const updated = await HubInventory.findOneAndUpdate(
-      {
-        hubId,
-        productId: row.productId,
-        availableQty: { $gte: row.reserveQty },
-      },
-      {
-        $inc: {
-          availableQty: -row.reserveQty,
-          reservedQty: row.reserveQty,
-        },
-      },
-      { new: true },
-    );
+    const updated = await freezeHubInventory(row.productId, row.variantId, row.reserveQty);
     
-    if (updated) {
-      // Keep Product root stock and variant stock in sync for Admin view consistency
-      try {
-        if (row.variantId) {
-          const res = await Product.updateOne(
-            { _id: row.productId },
-            {
-              $inc: {
-                stock: -row.reserveQty,
-                "variants.$[elem].stock": -row.reserveQty
-              }
-            },
-            { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(row.variantId) }] }
-          );
-          if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
-        } else {
-          await Product.findByIdAndUpdate(row.productId, { $inc: { stock: -row.reserveQty } });
-        }
-      } catch (e) {
-        console.warn("[reserveHubInventory] Master product stock sync failed:", e.message);
-      }
-    }
     if (!updated) {
       // Roll back partial reservations when any line fails (race-safe best effort).
       for (const applied of reservedRows) {
-        await HubInventory.findOneAndUpdate(
-          { hubId, productId: applied.productId },
-          {
-            $inc: {
-              availableQty: applied.reserveQty,
-              reservedQty: -applied.reserveQty,
-            },
-          },
-        );
-        
-        // Rollback Product stock
-        if (applied.variantId) {
-          try {
-            const res = await Product.updateOne(
-              { _id: applied.productId },
-              {
-                $inc: {
-                  stock: applied.reserveQty,
-                  "variants.$[elem].stock": applied.reserveQty
-                }
-              },
-              { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(applied.variantId) }] }
-            );
-            if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
-          } catch (e) {
-             await Product.findByIdAndUpdate(applied.productId, {
-               $inc: { stock: applied.reserveQty }
-             });
-          }
-        } else {
-          await Product.findByIdAndUpdate(applied.productId, {
-            $inc: { stock: applied.reserveQty }
-          });
-        }
+         await releaseHubReservation(applied.productId, applied.variantId, applied.reserveQty);
       }
       return { ok: false, reservedRows: [] };
     }
@@ -554,6 +487,7 @@ export const createAutoPurchaseRequests = async ({
   if (!docs.length) return [];
   const insertedDocs = await PurchaseRequest.insertMany(docs);
 
+  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
   // Immediately reserve seller quantity by creating a commitment
   for (const item of enrichedShortages) {
     if (!item.vendorId || !item.selectedSellerProductId) continue;
@@ -570,18 +504,14 @@ export const createAutoPurchaseRequests = async ({
               (v) => normalizeVariantMatchKey(v.name) === masterKey,
             );
             if (sellerVar) {
-              await Product.updateOne(
-                { _id: item.selectedSellerProductId },
-                { $inc: { "variants.$[elem].committedStock": item.shortageQty, committedStock: item.shortageQty } },
-                { arrayFilters: [{ "elem._id": sellerVar._id }] }
-              );
+              await freezeSellerInventory(item.selectedSellerProductId, sellerVar._id, item.shortageQty);
             } else {
-              await Product.updateOne({ _id: item.selectedSellerProductId }, { $inc: { committedStock: item.shortageQty } });
+              await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
             }
           }
         }
       } else {
-        await Product.updateOne({ _id: item.selectedSellerProductId }, { $inc: { committedStock: item.shortageQty } });
+        await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
       }
     } catch (err) {
       console.warn("[createAutoPurchaseRequests] Failed to update seller committedStock:", err.message);
@@ -693,6 +623,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 export const releasePurchaseRequestCommitments = async (pr) => {
   if (!pr || !pr.items) return;
   const Product = (await import("../models/product.js")).default;
+  const { releaseSellerReservation } = await import("./inventoryLifecycleService.js");
   for (const item of pr.items) {
     if (!item.selectedSellerProductId) continue;
     try {
@@ -710,18 +641,14 @@ export const releasePurchaseRequestCommitments = async (pr) => {
               (v) => normalizeVariantMatchKey(v.name) === masterKey,
             );
             if (sellerVar) {
-              await Product.updateOne(
-                { _id: item.selectedSellerProductId },
-                { $inc: { "variants.$[elem].committedStock": -releaseQty, committedStock: -releaseQty } },
-                { arrayFilters: [{ "elem._id": sellerVar._id }] }
-              );
+              await releaseSellerReservation(item.selectedSellerProductId, sellerVar._id, releaseQty);
             } else {
-              await Product.updateOne({ _id: item.selectedSellerProductId }, { $inc: { committedStock: -releaseQty } });
+              await releaseSellerReservation(item.selectedSellerProductId, null, releaseQty);
             }
           }
         }
       } else {
-        await Product.updateOne({ _id: item.selectedSellerProductId }, { $inc: { committedStock: -releaseQty } });
+        await releaseSellerReservation(item.selectedSellerProductId, null, releaseQty);
       }
     } catch (err) {
       console.warn(`[releasePurchaseRequestCommitments] Failed to release PR ${pr.requestId} commitments:`, err.message);

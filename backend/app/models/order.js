@@ -47,7 +47,10 @@ const orderSchema = new mongoose.Schema(
         qaAcceptedQty: { type: Number, default: 0 },
         qaRejectedQty: { type: Number, default: 0 },
         deliveryQty: { type: Number, default: 0 },
+        deliveredQty: { type: Number, default: 0 },
         returnedQty: { type: Number, default: 0 },
+        sellerCommittedQty: { type: Number, default: 0 },
+        sellerPickedQty: { type: Number, default: 0 },
         variantId: {
           type: mongoose.Schema.Types.ObjectId,
           required: false,

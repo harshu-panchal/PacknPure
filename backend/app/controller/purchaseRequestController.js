@@ -923,8 +923,6 @@ export const receiveAtHub = async (req, res) => {
           
         const masterProduct = await Product.findById(resolvedMasterProductId).select('price salePrice');
         const sellPrice = masterProduct?.price || masterProduct?.salePrice || incomingCost;
-
-        hubRow.reservedQty = Math.max(0, Number(hubRow.reservedQty || 0) + acceptedQty);
         hubRow.lastPurchaseCost = incomingCost;
         hubRow.avgPurchaseCost = weightedAvgCost;
         hubRow.sellPrice = sellPrice;
@@ -942,13 +940,13 @@ export const receiveAtHub = async (req, res) => {
           hubId: pr.hubId || DEFAULT_HUB_ID,
           productId: resolvedMasterProductId,
           availableQty: 0,
-          reservedQty: acceptedQty,
+          reservedQty: 0,
           reorderLevel: 10,
           lastPurchaseCost: incomingCost,
           avgPurchaseCost: incomingCost,
           sellPrice,
           priceUpdatedAt: new Date(),
-          status: acceptedQty > 0 ? "healthy" : "out_of_stock",
+          status: "out_of_stock",
         });
       }
 
@@ -1080,8 +1078,7 @@ export const verifyInward = async (req, res) => {
           });
 
           if (hubRow) {
-            // Deduct from reserved ONLY. Do NOT add to availableQty (stays allocated to customer order)
-            hubRow.reservedQty = Math.max(0, (hubRow.reservedQty || 0) - acceptedQty);
+            // Do NOT add to availableQty or reservedQty (stays allocated to customer order)
             
             // Re-sync price with Master Catalog just in case
             const masterProduct = await Product.findById(productId);
@@ -1576,23 +1573,12 @@ export const confirmVendorReturn = async (req, res) => {
 
     // --- RESTORE STOCK ---
     try {
-      const Product = (await import("../models/product.js")).default;
+      const { restoreSellerInventory } = await import("../services/inventoryLifecycleService.js");
       for (const item of pr.items) {
         if (item.productId && item.actualPickedQty > 0) {
-          const sellerProduct = await Product.findOne({
-            sellerId: pr.vendorId?._id || pr.vendorId,
-            $or: [
-              { _id: item.productId },
-              { masterProductId: item.productId }
-            ]
-          });
-
-          if (sellerProduct) {
-            await Product.findByIdAndUpdate(sellerProduct._id, {
-              $inc: { stock: item.actualPickedQty }
-            });
-            console.log(`[Reverse Logistics] Restored ${item.actualPickedQty} to Seller ${pr.vendorId}`);
-          }
+          const sellerProductId = item.selectedSellerProductId || item.productId;
+          await restoreSellerInventory(sellerProductId, item.variantId, item.actualPickedQty);
+          console.log(`[Reverse Logistics] Restored ${item.actualPickedQty} to Seller ${pr.vendorId}`);
         }
       }
     } catch (err) {

@@ -1184,11 +1184,8 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
           const qtyToDeduct = Number(item.quantity || 0);
 
           if (qtyToDeduct > 0) {
-            const hubStock = await HubInventory.findOneAndUpdate(
-              { hubId, productId },
-              { $inc: { reservedQty: -qtyToDeduct } },
-              { new: true }
-            );
+            const { completeHubDelivery } = await import("./inventoryLifecycleService.js");
+            const hubStock = await completeHubDelivery(productId, qtyToDeduct);
             
             if (hubStock) {
               // Auto-update status based on remaining stock

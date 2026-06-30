@@ -8,54 +8,26 @@ import Transaction from "../models/transaction.js";
  * after stock was deducted at placement.
  */
 export async function compensateOrderCancellation(order, orderIdString) {
+  const { handleCustomerCancellation } = await import("./inventoryLifecycleService.js");
   for (const item of order.items) {
-    const reservedToRelease = order.hubFlowEnabled && item.hubReservedQty !== undefined ? item.hubReservedQty : item.quantity;
+    const qtyToRelease = order.hubFlowEnabled && item.hubReservedQty !== undefined ? item.hubReservedQty : item.quantity;
 
-    if (reservedToRelease > 0) {
-      if (item.variantId) {
-        await Product.updateOne(
-          { _id: item.product },
-          { $inc: { stock: reservedToRelease, "variants.$[elem].stock": reservedToRelease } },
-          { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(item.variantId) }] }
-        );
+    if (qtyToRelease > 0) {
+      if (order.hubFlowEnabled) {
+        await handleCustomerCancellation(item.product, item.variantId, qtyToRelease, "before_pickup_hub");
       } else {
-        await Product.findByIdAndUpdate(item.product, {
-          $inc: { stock: reservedToRelease },
-        });
+        await handleCustomerCancellation(item.product, item.variantId, qtyToRelease, "before_pickup_seller");
       }
 
       await StockHistory.create({
         product: item.product,
         seller: order.seller,
         type: "Correction",
-        quantity: reservedToRelease,
-        note: `Order #${orderIdString} Cancelled (Reversed Hub Qty)`,
+        quantity: qtyToRelease,
+        note: `Order #${orderIdString} Cancelled (Reversed Qty)`,
         order: order._id,
       });
     }
-    // --- HUB STOCK REVERSAL ---
-    if (order.hubFlowEnabled) {
-      try {
-        const HubInventory = (await import("../models/hubInventory.js")).default;
-        const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
-        
-        if (reservedToRelease > 0) {
-          await HubInventory.findOneAndUpdate(
-            { hubId, productId: item.product },
-            { 
-              $inc: { 
-                availableQty: reservedToRelease,
-                reservedQty: -reservedToRelease
-              } 
-            }
-          );
-          console.log(`[InventorySync] Reversed ${reservedToRelease} units from reserved to available for Order #${orderIdString}`);
-        }
-      } catch (err) {
-        console.warn("[InventorySync] Hub reversal failed during compensation:", err.message);
-      }
-    }
-  }
 
   // Cancel any open Purchase Requests for this order
   if (order.hubFlowEnabled) {

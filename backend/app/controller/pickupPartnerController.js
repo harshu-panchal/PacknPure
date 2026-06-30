@@ -482,7 +482,8 @@ export const markAssignmentPicked = async (req, res) => {
       await pr.save();
 
       try {
-        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+        const { fallbackPurchaseRequest, releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
+        await releasePurchaseRequestCommitments(pr);
         await fallbackPurchaseRequest(pr._id, remainingQty);
       } catch (err) {
         console.warn("[Auto Fallback] Failed after seller_failed:", err.message);
@@ -517,28 +518,20 @@ export const markAssignmentPicked = async (req, res) => {
 
     // --- DEDUCT SELLER STOCK ---
     try {
-      const Product = (await import("../models/product.js")).default;
+      const { deductSellerInventoryAfterPickup, releaseSellerReservation } = await import("../services/inventoryLifecycleService.js");
       for (const item of pr.items) {
-        if (item.productId && pickedQty > 0) {
-          const sellerProduct = await Product.findOne({
-            sellerId: pr.vendorId?._id || pr.vendorId,
-            $or: [
-              { _id: item.productId },
-              { masterProductId: item.productId }
-            ]
-          });
-
-          if (sellerProduct) {
-            const currentStock = Number(sellerProduct.stock || 0);
-            if (currentStock < pickedQty) {
-              await Product.findByIdAndUpdate(sellerProduct._id, { $set: { stock: 0 }, $inc: { committedStock: -pickedQty } });
-              console.log(`[InventorySync] Stock was insufficient (${currentStock}). Set to 0 for product ${sellerProduct._id}`);
-            } else {
-              await Product.findByIdAndUpdate(sellerProduct._id, {
-                $inc: { stock: -pickedQty, committedStock: -pickedQty }
-              });
-              console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProduct._id}`);
-            }
+        if (item.productId) {
+          const sellerProductId = item.selectedSellerProductId || item.productId;
+          
+          if (pickedQty > 0) {
+            await deductSellerInventoryAfterPickup(sellerProductId, item.variantId, pickedQty);
+            console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProductId}`);
+          }
+          
+          if (remainingQty > 0) {
+            // Release the commitment for the part the seller couldn't fulfill
+            await releaseSellerReservation(sellerProductId, item.variantId, remainingQty);
+            console.log(`[InventorySync] Released unfulfilled commitment of ${remainingQty} for product ${sellerProductId}`);
           }
         }
       }
