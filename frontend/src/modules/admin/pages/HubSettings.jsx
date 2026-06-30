@@ -424,11 +424,17 @@ const HubSettings = () => {
              </Card>
 
              <Card className="p-6 border-none shadow-xl ring-1 ring-slate-100 rounded-2xl bg-white">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
-                    <HiOutlineAdjustmentsVertical className="h-6 w-6" />
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
+                      <HiOutlineAdjustmentsVertical className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Procurement Matrix</h4>
                   </div>
-                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Procurement Matrix</h4>
+                  <Badge className="bg-emerald-50 text-emerald-600 border-none font-bold text-[9px] px-2 h-5 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    ACTIVE
+                  </Badge>
                 </div>
                 
                 <div className="space-y-4">
@@ -491,6 +497,27 @@ const HubSettings = () => {
                       <option value="auto_cancel">Auto Cancel Order</option>
                       <option value="put_on_hold">Put On Hold (Manual)</option>
                     </select>
+                  </div>
+                  
+                  <div className="pt-6">
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className={cn(
+                        "w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2",
+                        isSaving && "opacity-70 cursor-not-allowed"
+                      )}
+                    >
+                      {isSaving ? (
+                        <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <HiOutlineShieldCheck className="h-4 w-4 text-emerald-400" />
+                      )}
+                      {isSaving ? "Locking..." : "Lock Matrix Rules"}
+                    </button>
+                    <p className="text-[10px] text-center text-slate-400 font-medium italic mt-3">
+                      This enforces the Procurement rules globally across the system.
+                    </p>
                   </div>
                 </div>
              </Card>
