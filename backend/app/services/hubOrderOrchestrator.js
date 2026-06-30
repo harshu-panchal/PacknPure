@@ -24,18 +24,7 @@ const buildRequestId = () =>
 export const HUB_ORDER_MODE = () =>
   String(process.env.HUB_FIRST_ORDER_ROUTING || "false").toLowerCase() === "true";
 
-async function loadSellerTimeoutMinutes() {
-  try {
-    const Setting = (await import("../models/setting.js")).default;
-    const settings = await Setting.findOne().lean();
-    const timeout = Number(settings?.sellerTimeoutMinutes || 15);
-    return Number.isFinite(timeout) && timeout > 0 ? timeout : 15;
-  } catch {
-    return 15;
-  }
-}
-
-/** Seller available stock (physical stock minus committed stock). */
+/** Physical seller variant stock (matches seller/admin portal UI). */
 export function sellerProcurementCapacity(
   sellerProduct,
   masterVariantId,
@@ -58,25 +47,18 @@ export function sellerProcurementCapacity(
       (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
     );
     if (sellerVar) {
-      return Math.max(
-        0,
-        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
-      );
+      return Math.max(0, Number(sellerVar.stock) || 0);
     }
   }
 
   if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length) {
     return sellerProduct.variants.reduce(
-      (sum, v) =>
-        sum + Math.max(0, (Number(v?.stock) || 0) - (Number(v?.committedStock) || 0)),
+      (sum, v) => sum + Math.max(0, Number(v?.stock) || 0),
       0,
     );
   }
 
-  return Math.max(
-    0,
-    (Number(sellerProduct.stock) || 0) - (Number(sellerProduct.committedStock) || 0),
-  );
+  return Math.max(0, Number(sellerProduct.stock) || 0);
 }
 
 /** Seller fulfillable qty for a master catalog variant (stock minus committed). */
@@ -211,7 +193,9 @@ export const createAutoPurchaseRequests = async ({
   hubId = HUB_ID,
   allowUnassigned = false,
 }) => {
-  const sellerTimeoutMinutes = await loadSellerTimeoutMinutes();
+  const Setting = (await import("../models/setting.js")).default;
+  const settings = await Setting.findOne().lean();
+  const sellerTimeoutMinutes = settings?.sellerTimeoutMinutes || 15;
   const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
   const effectiveCatalogPrice = (row) => {
     // Priority 1: Use purchasePrice if available (this is the true vendor cost/procurement rate)
@@ -347,11 +331,7 @@ export const createAutoPurchaseRequests = async ({
     const productId = String(item.productId || "");
     const baseProduct = item.baseProduct || fallbackProductMap.get(productId) || null;
 
-    if (
-      item.vendorId &&
-      sellerProcurementCapacity(baseProduct, item.variantId || null, baseProduct) >=
-        Number(item.shortageQty || 0)
-    ) {
+    if (item.vendorId && Number(baseProduct?.stock || 0) >= Number(item.shortageQty || 0)) {
       const selfCost = normalizeMoney(effectiveCatalogPrice(baseProduct));
       const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
       const baseGstAmount = Number((selfCost * (baseRate / 100)).toFixed(2));
@@ -613,7 +593,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     vendorId: nextVendorId,
     rankedSellers: pr.rankedSellers,
     status: "created",
-    expiresAt: new Date(Date.now() + (await loadSellerTimeoutMinutes()) * 60 * 1000),
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
     items: [{
       productId: pr.items[0].productId,
       requiredQty: pr.items[0].requiredQty,

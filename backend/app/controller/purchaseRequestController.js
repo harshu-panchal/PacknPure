@@ -921,15 +921,15 @@ export const receiveAtHub = async (req, res) => {
       if (hubRow) {
         const prevQty = Math.max(0, Number(hubRow.availableQty || 0));
         const prevAvgCost = Math.max(0, Number(hubRow.avgPurchaseCost || hubRow.lastPurchaseCost || 0));
-        const nextReservedQty = Math.max(0, Number(hubRow.reservedQty || 0) + acceptedQty);
-        const weightedAvgCost = prevQty > 0
-          ? toMoney((prevQty * prevAvgCost + acceptedQty * incomingCost) / (prevQty + acceptedQty))
+        const nextQty = prevQty + acceptedQty;
+        const weightedAvgCost = nextQty > 0 
+          ? toMoney((prevQty * prevAvgCost + acceptedQty * incomingCost) / nextQty) 
           : incomingCost;
           
         const masterProduct = await Product.findById(resolvedMasterProductId).select('price salePrice');
         const sellPrice = masterProduct?.price || masterProduct?.salePrice || incomingCost;
 
-        hubRow.reservedQty = nextReservedQty;
+        hubRow.reservedQty = Math.max(0, Number(hubRow.reservedQty || 0) + acceptedQty);
         hubRow.lastPurchaseCost = incomingCost;
         hubRow.avgPurchaseCost = weightedAvgCost;
         hubRow.sellPrice = sellPrice;
@@ -1060,15 +1060,7 @@ export const verifyInward = async (req, res) => {
     );
     await releasePurchaseRequestCommitments(pr);
 
-    const totalRejectedQty = Array.isArray(inward.receivedItems)
-      ? inward.receivedItems.reduce((sum, item) => {
-          const acceptedQty = Number(item.acceptedQty || 0);
-          const expectedQty = Number(item.expectedQty || acceptedQty);
-          return sum + Math.max(0, expectedQty - acceptedQty);
-        }, 0)
-      : 0;
-
-    // Move stock from Reserved to Available in Hub Inventory only after QA acceptance.
+    // Move stock from Reserved to Available in Hub Inventory
     if (verified && inward.receivedItems) {
       for (const item of inward.receivedItems) {
         const productId = String(item.productId?._id || item.productId);
@@ -1077,18 +1069,10 @@ export const verifyInward = async (req, res) => {
         const rejectedQty = Math.max(0, expectedQty - acceptedQty);
 
         if (rejectedQty > 0) {
-          pr.status = "return_requested";
           pr.returnDetails = {
             returnRequestedAt: new Date(),
-            rejectedQty: (pr.returnDetails?.rejectedQty || 0) + rejectedQty,
-            notes: `QA partially rejected ${rejectedQty} units.`,
+            notes: `QA partially rejected ${rejectedQty} units.`
           };
-          const prLine = (pr.items || []).find(
-            (line) => String(line.productId?._id || line.productId) === productId,
-          );
-          if (prLine) {
-            prLine.rejectedQty = Math.max(0, Number(prLine.rejectedQty || 0) + rejectedQty);
-          }
           try {
             const { fallbackPurchaseRequest } = await import('../services/hubOrderOrchestrator.js');
             await fallbackPurchaseRequest(pr._id, rejectedQty);
@@ -1104,7 +1088,7 @@ export const verifyInward = async (req, res) => {
           });
 
           if (hubRow) {
-            // Deduct from reserved and add to available only for accepted QA stock.
+            // Deduct from reserved and add to available
             hubRow.reservedQty = Math.max(0, (hubRow.reservedQty || 0) - acceptedQty);
             hubRow.availableQty = (hubRow.availableQty || 0) + acceptedQty;
             
@@ -1125,9 +1109,7 @@ export const verifyInward = async (req, res) => {
       }
     }
 
-    // Financial Settlement:
-    // - Full QA pass: settle immediately.
-    // - Partial QA: hold pending until seller confirms the returned rejected goods.
+    // Financial Settlement: If verified, update the Pending transaction to 'Settled'
     if (pr.vendorId) {
       const existingTxn = await Transaction.findOne({
         user: pr.vendorId,
@@ -1136,33 +1118,29 @@ export const verifyInward = async (req, res) => {
       });
 
       if (verified) {
-        const totalAcceptedValue = (inward.receivedItems || []).reduce((acc, item) => {
-          return acc + (Number(item.acceptedQty || 0) * Number(item.purchaseUnitCost || 0));
-        }, 0);
+        if (existingTxn) {
+          existingTxn.status = "Settled";
+          existingTxn.meta.verifiedAt = new Date();
+          await existingTxn.save();
+          console.log(`[Settlement] Updated transaction to Settled for Seller ${pr.vendorId}: PR ${pr.requestId}`);
+        } else {
+          // Fallback: If for some reason receipt didn't create a txn, create it now
+          let totalProcurementCost = (inward.receivedItems || []).reduce((acc, item) => {
+            return acc + (Number(item.acceptedQty || 0) * Number(item.purchaseUnitCost || 0));
+          }, 0);
 
-        if (totalRejectedQty === 0) {
-          if (existingTxn) {
-            existingTxn.status = "Settled";
-            existingTxn.meta.verifiedAt = new Date();
-            existingTxn.meta.acceptedQty = (inward.receivedItems || []).reduce((acc, item) => acc + Number(item.acceptedQty || 0), 0);
-            await existingTxn.save();
-            console.log(`[Settlement] Updated transaction to Settled for Seller ${pr.vendorId}: PR ${pr.requestId}`);
-          } else if (totalAcceptedValue > 0) {
+          if (totalProcurementCost > 0) {
             await Transaction.create({
               user: pr.vendorId,
               userModel: "Seller",
               order: pr.orderId || undefined,
               type: "Supply Earning",
-              amount: totalAcceptedValue,
+              amount: totalProcurementCost,
               status: "Settled",
               reference: `PR-SETTLE-${pr.requestId}`,
               meta: { purchaseRequestId: pr._id, verifiedAt: new Date() }
             });
           }
-        } else if (existingTxn) {
-          existingTxn.meta.verifiedAt = new Date();
-          existingTxn.meta.rejectedQty = totalRejectedQty;
-          await existingTxn.save();
         }
       } else {
         // Verification failed, QA rejected. Cancel the pending transaction.
@@ -1589,18 +1567,10 @@ export const confirmVendorReturn = async (req, res) => {
     pr.status = "seller_confirmed_return";
     await pr.save();
 
-    const inward = await HubInward.findOne({ purchaseRequestId: pr._id }).sort({
-      createdAt: -1,
-    }).lean();
-
     // --- RESTORE STOCK ---
     try {
       for (const item of pr.items) {
-        const restoreQty = Math.max(
-          0,
-          Number(item.rejectedQty || pr.returnDetails?.rejectedQty || item.actualPickedQty || 0),
-        );
-        if (item.productId && restoreQty > 0) {
+        if (item.productId && item.actualPickedQty > 0) {
           const sellerProduct = await Product.findOne({
             sellerId: pr.vendorId?._id || pr.vendorId,
             $or: [
@@ -1615,7 +1585,7 @@ export const confirmVendorReturn = async (req, res) => {
               const idx = resolveVariantIndex(masterProduct, { variantId: item.variantId });
               const targetIndex = idx >= 0 ? idx : 0;
               const currentStock = Math.max(0, Number(sellerProduct.variants[targetIndex]?.stock) || 0);
-              const nextStock = currentStock + restoreQty;
+              const nextStock = currentStock + Number(item.actualPickedQty || 0);
               sellerProduct.variants = setVariantStockAtIndex(
                 sellerProduct.variants,
                 targetIndex,
@@ -1625,65 +1595,15 @@ export const confirmVendorReturn = async (req, res) => {
               sellerProduct.markModified("variants");
               await sellerProduct.save();
             } else {
-              sellerProduct.stock = Math.max(0, Number(sellerProduct.stock || 0)) + restoreQty;
+              sellerProduct.stock = Math.max(0, Number(sellerProduct.stock || 0)) + Number(item.actualPickedQty || 0);
               await sellerProduct.save();
             }
-            console.log(`[Reverse Logistics] Restored ${restoreQty} to Seller ${pr.vendorId}`);
+            console.log(`[Reverse Logistics] Restored ${item.actualPickedQty} to Seller ${pr.vendorId}`);
           }
         }
       }
     } catch (err) {
       console.warn("[Reverse Logistics] Failed to restore seller stock:", err.message);
-    }
-
-    // Financial settlement happens after seller confirms the return path.
-    try {
-      const supplyValue = (inward?.receivedItems || []).reduce(
-        (sum, item) => sum + (Number(item.acceptedQty || 0) * Number(item.purchaseUnitCost || 0)),
-        0,
-      );
-      const pendingTxn = await Transaction.findOne({
-        user: pr.vendorId,
-        reference: `PR-REC-${pr.requestId}`,
-        status: "Pending",
-      });
-      if (pendingTxn && supplyValue > 0) {
-        pendingTxn.status = "Settled";
-        pendingTxn.meta = {
-          ...(pendingTxn.meta || {}),
-          settledAt: new Date(),
-          acceptedQty: (inward?.receivedItems || []).reduce(
-            (sum, item) => sum + Number(item.acceptedQty || 0),
-            0,
-          ),
-          rejectedQty: Math.max(0, Number(pr.returnDetails?.rejectedQty || 0)),
-        };
-        await pendingTxn.save();
-      } else if (!pendingTxn && supplyValue > 0) {
-        await Transaction.create({
-          user: pr.vendorId,
-          userModel: "Seller",
-          order: pr.orderId || undefined,
-          type: "Supply Earning",
-          amount: supplyValue,
-          status: "Settled",
-          reference: `PR-SETTLE-${pr.requestId}`,
-          meta: {
-            purchaseRequestId: pr._id,
-            settledAt: new Date(),
-            acceptedQty: (inward?.receivedItems || []).reduce(
-              (sum, item) => sum + Number(item.acceptedQty || 0),
-              0,
-            ),
-            rejectedQty: Math.max(
-              0,
-              Number(pr.returnDetails?.rejectedQty || 0),
-            ),
-          },
-        });
-      }
-    } catch (settleErr) {
-      console.warn("[Reverse Logistics] Failed to settle seller payment:", settleErr.message);
     }
 
     return handleResponse(res, 200, "Return confirmed and stock restored", pr);

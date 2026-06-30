@@ -343,37 +343,10 @@ export const placeOrder = async (req, res) => {
     }
 
     // Reserve whatever hub stock is currently available (full or partial).
-    let reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId);
-    let finalPlan = hubPlan;
-
-    if (!reserveResult.ok) {
-      finalPlan = await planHubFulfillment(orderItems, hubPlan.hubId);
-      reserveResult = await reserveHubInventory(finalPlan.allocations, finalPlan.hubId);
-    }
-
-    const finalizedAllocations = new Map();
-    for (const alloc of finalPlan.allocations) {
-      finalizedAllocations.set(
-        alloc.productId + (alloc.variantId || ""),
-        alloc.reserveQty,
-      );
-    }
-    const finalizedShortages = new Map();
-    for (const short of finalPlan.shortages) {
-      finalizedShortages.set(
-        short.productId + (short.variantId || ""),
-        short.shortageQty,
-      );
-    }
-    orderItems = orderItems.map((item) => {
-      const key = String(item.product) + (item.variantId ? String(item.variantId) : "");
-      return {
-        ...item,
-        hubReservedQty: finalizedAllocations.get(key) || 0,
-        vendorProcuredQty: finalizedShortages.get(key) || 0,
-      };
-    });
-    newOrder.items = orderItems;
+    const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId);
+    const finalPlan = reserveResult.ok
+      ? hubPlan
+      : await planHubFulfillment(orderItems, hubPlan.hubId);
 
     let purchaseRequests = [];
     try {
@@ -399,6 +372,16 @@ export const placeOrder = async (req, res) => {
 
       await Order.deleteOne({ _id: newOrder._id });
       return handleResponse(res, 400, procurementErr.message || "Unable to procure items for this order.");
+    }
+
+    if (finalPlan.shortages.length === 0) {
+      try {
+        await startHubDeliverySearchAtomic(orderId);
+      } catch (e) {
+        console.warn(
+          `[placeOrder] delivery dispatch skipped for ${orderId}: ${e.message}`,
+        );
+      }
     }
 
     if (purchaseRequests.length > 0) {
@@ -432,9 +415,6 @@ export const placeOrder = async (req, res) => {
     newOrder.hubStatus =
       finalPlan.shortages.length > 0 ? "procurement_required" : "inventory_reserved";
     newOrder.procurementRequired = finalPlan.shortages.length > 0;
-    newOrder.supplyChainStatus = finalPlan.shortages.length > 0
-      ? "WAITING_VENDOR"
-      : "READY_FOR_DELIVERY";
     await newOrder.save();
 
     await createNotification({

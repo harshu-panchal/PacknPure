@@ -596,7 +596,7 @@ export const getProducts = async (req, res) => {
       const customerPrice = masterProduct
         ? masterProduct.salePrice || masterProduct.price
         : p.salePrice || p.price;
-      const sellerListingStock = effectiveProductStock(p);
+      const sellerListingStock = catalogStockFromProduct(p);
       const hubQtyForSeller = p.masterProductId
         ? hubMap.get(String(p.masterProductId)) ?? 0
         : 0;
@@ -1830,7 +1830,7 @@ async function mapSingleProductForCustomerCatalog(productLean) {
   const customerPrice = masterProduct
     ? masterProduct.salePrice || masterProduct.price
     : p.salePrice || p.price;
-  const sellerListingStock = effectiveProductStock(p);
+  const sellerListingStock = catalogStockFromProduct(p);
   let hubQtyForSeller = 0;
   if (masterId) {
     const hubRow = await HubInventory.findOne({

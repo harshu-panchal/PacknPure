@@ -19,7 +19,6 @@ import {
   Loader2,
   Store,
   Navigation2,
-  PackageX,
 } from "lucide-react";
 import { customerApi } from "../services/customerApi";
 import { toast } from "sonner";
@@ -181,9 +180,7 @@ const OrderDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [returnDetails, setReturnDetails] = useState(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
   const [requestingReturn, setRequestingReturn] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
   const [selectedReturnItems, setSelectedReturnItems] = useState({});
   const [returnReason, setReturnReason] = useState("");
   const [returnImages, setReturnImages] = useState([]);
@@ -466,29 +463,6 @@ const OrderDetailPage = () => {
       return false;
     }
     return true;
-  };
-
-  const canCancelOrder = () => {
-    if (!order) return false;
-    const wf = String(order.workflowStatus || "").toUpperCase();
-    return wf === "CREATED" || wf === "SELLER_PENDING";
-  };
-
-  const handleCancelOrder = async () => {
-    if (!order) return;
-    try {
-      setCancelling(true);
-      await customerApi.cancelOrder(order.orderId, { reason: "Cancelled by customer" });
-      toast.success("Order cancelled successfully");
-      setShowCancelModal(false);
-      const res = await customerApi.getOrderDetails(orderId);
-      setOrder(res.data.result);
-    } catch (error) {
-      console.error("Failed to cancel order", error);
-      toast.error(error.response?.data?.message || "Failed to cancel order");
-    } finally {
-      setCancelling(false);
-    }
   };
 
   const toggleItemSelection = (index) => {
@@ -840,14 +814,14 @@ const OrderDetailPage = () => {
           </div>
         </div>
 
-        <div className={cn("grid gap-3", canCancelOrder() ? "grid-cols-3" : "grid-cols-2")}>
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => setShowInvoice(true)}
             className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
           >
             <Download size={18} />
-            <span className="hidden sm:inline">Invoice</span>
+            Invoice
           </button>
           <button
             type="button"
@@ -855,17 +829,8 @@ const OrderDetailPage = () => {
             className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
           >
             <HelpCircle size={18} />
-            <span className="hidden sm:inline">Help</span>
+            Help
           </button>
-          {canCancelOrder() && (
-            <button
-              type="button"
-              onClick={() => setShowCancelModal(true)}
-              className="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 py-3 text-sm font-bold text-rose-700 shadow-sm hover:bg-rose-100"
-            >
-              Cancel
-            </button>
-          )}
         </div>
 
         {(canRequestReturn() ||
@@ -916,50 +881,6 @@ const OrderDetailPage = () => {
         order={order}
       />
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
-
-      {/* Cancel Order Modal */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => !cancelling && setShowCancelModal(false)}
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative z-10 w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4 text-center"
-          >
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 mb-4">
-              <PackageX size={28} className="text-rose-600" />
-            </div>
-            <h3 className="text-xl font-black text-slate-900">
-              Cancel this order?
-            </h3>
-            <p className="text-sm text-slate-500">
-              Are you sure you want to cancel this order? This action cannot be undone.
-            </p>
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => !cancelling && setShowCancelModal(false)}
-                className="flex-1 rounded-xl py-3 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-                disabled={cancelling}
-              >
-                No, keep it
-              </button>
-              <button
-                onClick={handleCancelOrder}
-                className="flex-1 rounded-xl py-3 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-70 transition-colors flex justify-center items-center gap-2"
-                disabled={cancelling}
-              >
-                {cancelling && <Loader2 size={16} className="animate-spin" />}
-                Yes, cancel
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
 
       {/* Return Request Modal */}
       {showReturnModal && (

@@ -1,7 +1,15 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { CheckCircle, Circle, Clock, Truck, Home, Package } from "lucide-react";
+import { CheckCircle, Circle, Clock, Truck, Home } from "lucide-react";
 import { getLegacyStatusFromOrder } from "@/shared/utils/orderStatus";
+
+const STATUS_TO_STAGE = {
+  pending: "confirmed",
+  confirmed: "confirmed",
+  packed: "confirmed",
+  out_for_delivery: "out_for_delivery",
+  delivered: "delivered",
+};
 
 const OrderProgressTracker = ({
   order,
@@ -10,26 +18,26 @@ const OrderProgressTracker = ({
   totalDistanceText = "—",
 }) => {
   const status = getLegacyStatusFromOrder(order);
+  const currentStage = STATUS_TO_STAGE[status] || "confirmed";
+
   const steps = [
     {
       id: "confirmed",
       label: "Order Confirmed",
       icon: CheckCircle,
-    },
-    {
-      id: "packed",
-      label: "Packed & Ready",
-      icon: Package,
+      statuses: ["confirmed"],
     },
     {
       id: "out_for_delivery",
       label: "Out for delivery",
       icon: Truck,
+      statuses: ["out_for_delivery", "delivered"],
     },
     {
       id: "delivered",
       label: "Delivered",
       icon: Home,
+      statuses: ["delivered"],
     },
   ];
 
@@ -37,23 +45,26 @@ const OrderProgressTracker = ({
     if (status === "cancelled") return "cancelled";
 
     const stepIndex = steps.findIndex((s) => s.id === step.id);
-    let currentStepIndex = 0;
 
-    if (status === "pending" || status === "confirmed") {
-      if (order?.hubStatus === "ready_for_packing") {
-        currentStepIndex = 1;
-      } else {
-        currentStepIndex = 0;
-      }
-    } else if (status === "out_for_delivery") {
-      currentStepIndex = 2;
-    } else if (status === "delivered") {
-      currentStepIndex = 3;
+    if (status === "pending") {
+      return stepIndex === 0 ? "active" : "pending";
     }
 
-    if (stepIndex < currentStepIndex) return "completed";
-    if (stepIndex === currentStepIndex) return "active";
-    return "pending";
+    if (status === "confirmed" || status === "packed") {
+      return stepIndex === 0 ? "completed" : "pending";
+    }
+
+    if (status === "out_for_delivery") {
+      if (stepIndex === 0) return "completed";
+      if (stepIndex === 1) return "active";
+      return "pending";
+    }
+
+    if (status === "delivered") {
+      return "completed";
+    }
+
+    return step.id === "confirmed" ? "active" : "pending";
   };
 
   if (status === "cancelled") {

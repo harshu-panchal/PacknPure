@@ -336,16 +336,6 @@ export function mapSellerVariantsForResponse(variants = []) {
   return (variants || []).map((v) => {
     const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
     const supplyPrice = resolveSupplyPriceFromVariantRow(row);
-    const availableQty =
-      row.totalAvailableQty !== undefined || row.availableQty !== undefined
-        ? Math.max(
-            0,
-            Number(row.totalAvailableQty ?? row.availableQty ?? 0) || 0,
-          )
-        : Math.max(
-            0,
-            (Number(row.stock) || 0) - (Number(row.committedStock) || 0),
-          );
     return {
       ...row,
       unit: normalizeUnit(row.unit),
@@ -354,7 +344,6 @@ export function mapSellerVariantsForResponse(variants = []) {
       salePrice: supplyPrice,
       purchasePrice: supplyPrice,
       stock: Math.max(0, Number(row.stock) || 0),
-      totalAvailableQty: availableQty,
     };
   });
 }
@@ -448,18 +437,6 @@ export function totalVariantStock(variants) {
   return variants.reduce((sum, v) => sum + (Number(v?.stock) || 0), 0);
 }
 
-export function totalVariantAvailableStock(variants) {
-  if (!Array.isArray(variants) || !variants.length) return 0;
-  return variants.reduce((sum, v) => {
-    if (v?.totalAvailableQty !== undefined || v?.availableQty !== undefined) {
-      return sum + Math.max(0, Number(v.totalAvailableQty ?? v.availableQty) || 0);
-    }
-    const stock = Number(v?.stock) || 0;
-    const committed = Number(v?.committedStock) || 0;
-    return sum + Math.max(0, stock - committed);
-  }, 0);
-}
-
 export function totalVariantCommitted(variants) {
   if (!Array.isArray(variants) || !variants.length) return 0;
   return variants.reduce((sum, v) => sum + (Number(v?.committedStock) || 0), 0);
@@ -468,11 +445,15 @@ export function totalVariantCommitted(variants) {
 /** Sellable quantity: sum of variant stocks, else root product stock. Minus commitments. */
 export function effectiveProductStock(product) {
   if (Array.isArray(product?.variants) && product.variants.length > 0) {
-    return totalVariantAvailableStock(product.variants);
+    // If it has variants, we consider the sum of variant stock minus sum of variant commitments
+    const variantStockSum = totalVariantStock(product.variants);
+    const variantCommittedSum = totalVariantCommitted(product.variants);
+    // If variant stock exists, calculate from variants. If variant stock is 0, fallback to root stock.
+    if (variantStockSum > 0) {
+      return Math.max(0, variantStockSum - variantCommittedSum);
+    }
   }
-  const stock = Number(product?.stock) || 0;
-  const committed = Number(product?.committedStock) || 0;
-  return Math.max(0, stock - committed);
+  return 0;
 }
 
 /** Calculate customer cart cap: hub variant stock + gross seller stock (matches admin/seller UIs). */
@@ -510,21 +491,21 @@ export async function calculateTotalAvailableStock(masterProduct, variantId = nu
                 )
               : null;
             if (sVar) {
-               sumSellerQty += Math.max(
-                 0,
-                 (Number(sVar.stock) || 0) - (Number(sVar.committedStock) || 0),
-               );
+               sumSellerQty += Math.max(0, Number(sVar.stock) || 0);
             } else if (!Array.isArray(sDoc.variants) || sDoc.variants.length === 0) {
                if (Array.isArray(masterProduct.variants) && masterProduct.variants.length === 1) {
                  // Seller has no variants but master exactly 1, assume seller's root stock applies
-                 sumSellerQty += Math.max(0, Number(sDoc.stock || 0) - Number(sDoc.committedStock || 0));
+                 sumSellerQty += Math.max(0, Number(sDoc.stock) || 0);
                }
             }
          } else {
-            const vSum = totalVariantAvailableStock(sDoc.variants);
-            const rootAvailable = Math.max(0, Number(sDoc.stock || 0) - Number(sDoc.committedStock || 0));
-            sumSellerQty += vSum > 0 ? vSum : rootAvailable;
-            continue;
+            const vSum = Array.isArray(sDoc.variants)
+              ? sDoc.variants.reduce(
+                  (acc, v) => acc + Math.max(0, Number(v.stock) || 0),
+                  0,
+                )
+              : 0;
+            sumSellerQty += vSum;
          }
        }
     } catch (err) {
@@ -757,9 +738,9 @@ export function enrichCustomerProduct(item) {
         ? `${variants.length} options`
         : variants[0]?.name || null;
 
-  const availableQty = item.totalAvailableQty !== undefined
+  const availableQty = item.totalAvailableQty !== undefined 
     ? Number(item.totalAvailableQty)
-    : totalVariantAvailableStock(variants);
+    : totalVariantStock(variants);
 
   const hasGstVariant = variants.some((v) => v.gstEnabled === true && (Number(v.gstRate) || 0) > 0);
   const gstEnabled = hasGstVariant || first.gstEnabled;

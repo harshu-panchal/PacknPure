@@ -1,16 +1,8 @@
 import { jest } from "@jest/globals";
 
-jest.setTimeout(15000);
-
 function mockMongooseFind(rows = []) {
   return {
     select: () => ({
-      populate: () => ({
-        lean: async () => rows,
-      }),
-      lean: async () => rows,
-    }),
-    populate: () => ({
       lean: async () => rows,
     }),
     lean: async () => rows,
@@ -26,12 +18,6 @@ jest.unstable_mockModule("../app/models/product.js", () => ({
 jest.unstable_mockModule("../app/models/purchaseRequest.js", () => ({
   default: {
     insertMany: jest.fn(async () => []),
-  },
-}));
-
-jest.unstable_mockModule("../app/models/setting.js", () => ({
-  default: {
-    findOne: jest.fn(() => ({ lean: async () => ({ sellerTimeoutMinutes: 15 }) })),
   },
 }));
 
