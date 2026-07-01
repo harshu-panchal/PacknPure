@@ -6,9 +6,24 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+function mimeTypeFix() {
+  return {
+    name: 'mime-type-fix',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url.split('?')[0];
+        if (pathname.endsWith('.jsx') || pathname.endsWith('.js') || pathname.endsWith('.ts') || pathname.endsWith('.tsx')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        }
+        next();
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), mimeTypeFix()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
