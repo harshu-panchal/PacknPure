@@ -831,8 +831,23 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
     workflowVersion: { $gte: 2 },
   });
 
-  if (!order || order.workflowStatus !== WORKFLOW_STATUS.DELIVERY_ASSIGNED) {
-    const err = new Error("Invalid state: arrive at store first");
+  if (!order) {
+    const err = new Error("Order not found or not assigned to you");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const postAssigned = new Set([
+    WORKFLOW_STATUS.PICKUP_READY,
+    WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+    WORKFLOW_STATUS.DELIVERED,
+  ]);
+  if (postAssigned.has(order.workflowStatus)) {
+    return order; // Idempotent success
+  }
+
+  if (order.workflowStatus !== WORKFLOW_STATUS.DELIVERY_ASSIGNED) {
+    const err = new Error(`Order cannot be marked arrived. Current status: ${order.workflowStatus}`);
     err.statusCode = 409;
     throw err;
   }
@@ -905,12 +920,26 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
     workflowVersion: { $gte: 2 },
   });
 
+  if (!order) {
+    const err = new Error("Order not found or not assigned to you");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const postPickup = new Set([
+    WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+    WORKFLOW_STATUS.DELIVERED,
+  ]);
+  if (postPickup.has(order.workflowStatus)) {
+    return order; // Idempotent success
+  }
+
   const prePickup = new Set([
     WORKFLOW_STATUS.DELIVERY_ASSIGNED,
     WORKFLOW_STATUS.PICKUP_READY,
   ]);
-  if (!order || !prePickup.has(order.workflowStatus)) {
-    const err = new Error("Invalid state for pickup confirmation");
+  if (!prePickup.has(order.workflowStatus)) {
+    const err = new Error(`Invalid state for pickup confirmation: ${order.workflowStatus}`);
     err.statusCode = 409;
     throw err;
   }

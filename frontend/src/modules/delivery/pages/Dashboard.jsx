@@ -26,6 +26,7 @@ const Dashboard = () => {
   const [isOnline, setIsOnline] = useState(user?.isOnline || false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [availableOrders, setAvailableOrders] = useState([]);
+  const [activeDeliveries, setActiveDeliveries] = useState([]);
   const [pickupAssignments, setPickupAssignments] = useState([]);
   const [earnings, setEarnings] = useState({
     today: 0,
@@ -69,6 +70,18 @@ const Dashboard = () => {
     }
   };
 
+  const fetchActiveDeliveries = async () => {
+    try {
+      const response = await deliveryApi.getOrderHistory({ status: 'active' });
+      if (response.data?.success) {
+        const orders = response.data.results || response.data.result || [];
+        setActiveDeliveries(orders);
+      }
+    } catch (error) {
+      console.error("Failed to fetch active deliveries:", error);
+    }
+  };
+
   const fetchPickupAssignments = async () => {
     try {
       const response = await pickupApi.getAssignments({ status: "active" });
@@ -97,12 +110,14 @@ const Dashboard = () => {
     fetchNotifications();
     if (user?.isVerified) {
       fetchAvailableOrders();
+      fetchActiveDeliveries();
       fetchPickupAssignments();
     }
     const interval = setInterval(() => {
       fetchNotifications();
       if (user?.isVerified) {
         fetchAvailableOrders();
+        fetchActiveDeliveries();
         fetchPickupAssignments();
       }
     }, 30000);
@@ -320,6 +335,37 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
+        {/* Active Deliveries Banner */}
+        <AnimatePresence>
+          {activeDeliveries.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-emerald-600 rounded-2xl p-5 text-white shadow-lg shadow-emerald-200 relative overflow-hidden cursor-pointer"
+              onClick={() => navigate("/delivery/history")}
+            >
+              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white dark:bg-gray-800/10 rounded-full blur-xl"></div>
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white dark:bg-gray-800/20 p-3 rounded-xl">
+                    <Package size={24} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight">Active Deliveries</h3>
+                    <p className="text-emerald-100 text-xs font-medium">
+                      You have {activeDeliveries.length} active delivery task(s).
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 text-emerald-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider">
+                  View Tasks
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Active Order / Status */}
         <AnimatePresence mode="wait">
           {isOnline ? (
@@ -365,11 +411,10 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <h3 className="ds-h3 mb-2 text-gray-800 dark:text-gray-100">
-                    Finding Orders Nearby...
+                    {activeDeliveries.length > 0 ? "You have active tasks." : "Finding Orders Nearby..."}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[220px] mx-auto mb-6">
-                    We're looking for delivery requests in your area. Stay
-                    online!
+                    {activeDeliveries.length > 0 ? "Please complete your active assignments." : "We're looking for delivery requests in your area. Stay online!"}
                   </p>
                 </div>
               </motion.div>

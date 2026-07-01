@@ -249,6 +249,14 @@ export const getMyDeliveryOrders = async (req, res) => {
                     { returnDeliveryBoy: deliveryBoyId },
                 ],
             };
+        } else if (normalized === "active") {
+            query = {
+                $and: [
+                    assignedToPartner,
+                    { status: { $nin: ["delivered", "cancelled"] } },
+                    { workflowStatus: { $nin: ["DELIVERED", "CANCELLED"] } }
+                ]
+            };
         } else {
             query = assignedToPartner;
         }

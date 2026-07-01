@@ -45,47 +45,38 @@ export async function generateDeliveryOtp(orderId, deliveryLocation) {
     }
 
     // Check if order has delivery location
+    let proximityCheckPassed = true;
     if (!order.address?.location?.lat || !order.address?.location?.lng) {
-      console.error('Order location validation failed:', {
-        orderId: order.orderId,
-        hasAddress: !!order.address,
-        hasLocation: !!order.address?.location,
-        location: order.address?.location,
-        lat: order.address?.location?.lat,
-        lng: order.address?.location?.lng
-      });
-      return {
-        success: false,
-        error: 'This order does not have delivery coordinates saved. Please contact support or ask the customer to provide their exact location. The order was likely created before location tracking was enabled.'
+      console.warn(`Order ${order.orderId} is missing delivery coordinates. Bypassing proximity check.`);
+    } else {
+      const customerLocation = {
+        lat: order.address.location.lat,
+        lng: order.address.location.lng
       };
+
+      // Validate proximity
+      try {
+        const proximityCheck = checkProximity(deliveryLocation, customerLocation);
+        if (!proximityCheck.inRange) {
+          const threshold = parseInt(process.env.PROXIMITY_THRESHOLD_METERS || "5000", 10);
+          return {
+            success: false,
+            error: `Delivery person must be within 0-${threshold} meters of delivery location. Current distance: ${Math.round(proximityCheck.distance)}m`
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: `Proximity check failed: ${error.message}`
+        };
+      }
     }
 
-    const customerLocation = {
-      lat: order.address.location.lat,
-      lng: order.address.location.lng
-    };
 
-    // Validate proximity
-    let proximityCheck;
-    try {
-      proximityCheck = checkProximity(deliveryLocation, customerLocation);
-    } catch (error) {
-      return {
-        success: false,
-        error: `Proximity check failed: ${error.message}`
-      };
-    }
-
-    if (!proximityCheck.inRange) {
-      const threshold = parseInt(process.env.PROXIMITY_THRESHOLD_METERS || "5000", 10);
-      return {
-        success: false,
-        error: `Delivery person must be within 0-${threshold} meters of delivery location. Current distance: ${Math.round(proximityCheck.distance)}m`
-      };
-    }
 
     // Generate secure 4-digit OTP using crypto.randomInt
     const otp = String(crypto.randomInt(0, 10000)).padStart(4, '0');
+    console.log("Generated OTP:", otp);
 
     // Hash the OTP for storage
     const codeHash = OrderOtp.hashCode(otp);

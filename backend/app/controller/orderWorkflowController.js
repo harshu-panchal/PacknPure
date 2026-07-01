@@ -131,7 +131,8 @@ export const getOrderRoute = async (req, res) => {
         !Number.isFinite(c.lat) ||
         !Number.isFinite(c.lng)
       ) {
-        return handleResponse(res, 400, "Customer location missing");
+        // Return gracefully when missing coordinates (e.g. legacy/test orders)
+        return handleResponse(res, 200, "Route unavailable - Missing customer location", null);
       }
       dest = { lat: c.lat, lng: c.lng };
     }

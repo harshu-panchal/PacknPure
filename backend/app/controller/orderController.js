@@ -1168,6 +1168,7 @@ export const updateOrderStatus = async (req, res) => {
     const oldStatus = order.status;
 
     // Manual rider assignment (Admin fallback when auto-assign fails)
+    let newDeliveryBoyAssigned = false;
     if (deliveryBoyId && role === "admin" && order.workflowVersion >= 2) {
       if (String(order.status || "").toLowerCase() === "cancelled") {
         return handleResponse(res, 400, "Cannot assign rider to a cancelled order.");
@@ -1181,6 +1182,7 @@ export const updateOrderStatus = async (req, res) => {
       order.deliveryBoy = deliveryBoyId;
       order.workflowStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
       order.assignedAt = new Date();
+      newDeliveryBoyAssigned = true;
 
       // Keep legacy status flow consistent if order is still pending.
       if (String(order.status || "").toLowerCase() === "pending") {
@@ -1251,6 +1253,17 @@ export const updateOrderStatus = async (req, res) => {
 
     console.log("Saving order with new status:", status);
     await order.save();
+
+    if (newDeliveryBoyAssigned) {
+      await createNotification({
+        recipient: deliveryBoyId,
+        recipientModel: "Delivery",
+        title: "New Order Assigned",
+        message: `An admin has manually assigned you to order #${order.orderId}.`,
+        type: "order",
+        data: { orderId: order.orderId, mongoOrderId: order._id },
+      });
+    }
 
     if (status === "confirmed" && role === "seller") {
       // This order is now 'Automatic' for delivery partners

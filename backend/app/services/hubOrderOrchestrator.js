@@ -103,7 +103,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
   ]);
 
   const invMap = new Map(
-    inventoryRows.map((row) => [String(row.productId), Number(row.availableQty || 0)]),
+    inventoryRows.map((row) => [String(row.productId), Math.max(0, Number(row.availableQty || 0) - Number(row.reservedQty || 0))]),
   );
   const sellerMap = new Map(
     products.map((p) => [String(p._id), p?.sellerId ? String(p.sellerId) : null]),
@@ -192,14 +192,44 @@ export const createAutoPurchaseRequests = async ({
   const settings = await Setting.findOne().lean();
   const sellerResponseTimeout = settings?.sellerResponseTimeout || 15;
   const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
-  const effectiveCatalogPrice = (row) => {
-    // Priority 1: Use purchasePrice if available (this is the true vendor cost/procurement rate)
-    const cost = Number(row?.purchasePrice || 0);
-    if (cost > 0) return cost;
+  const effectiveCatalogPrice = (sellerProduct, masterVariantId = null, baseProduct = null) => {
+    let sellerVar = null;
+    if (masterVariantId && Array.isArray(baseProduct?.variants)) {
+      const masterVar = baseProduct.variants.find(
+        (v) => String(v._id || v.id) === String(masterVariantId)
+      );
+      if (masterVar?.name && Array.isArray(sellerProduct?.variants)) {
+        const masterVariantName = normalizeVariantMatchKey(masterVar.name);
+        sellerVar = sellerProduct.variants.find(
+          (v) => normalizeVariantMatchKey(v.name) === masterVariantName
+        );
+      }
+    }
+    
+    // Priority 1: Use matched variant price
+    if (sellerVar) {
+      const vCost = Number(sellerVar.purchasePrice || 0);
+      if (vCost > 0) return vCost;
+      const vSale = Number(sellerVar.salePrice || 0);
+      const vMrp = Number(sellerVar.price || 0);
+      return vSale > 0 && vSale < vMrp ? vSale : vMrp;
+    }
 
-    // Fallback: Use salePrice or base price
-    const sale = Number(row?.salePrice || 0);
-    const base = Number(row?.price || 0);
+    // Priority 2: If no variant match, use first variant if exists
+    if (sellerProduct?.variants?.length > 0) {
+      const v = sellerProduct.variants[0];
+      const vCost = Number(v.purchasePrice || 0);
+      if (vCost > 0) return vCost;
+      const vSale = Number(v.salePrice || 0);
+      const vMrp = Number(v.price || 0);
+      return vSale > 0 && vSale < vMrp ? vSale : vMrp;
+    }
+
+    // Priority 3: Root price
+    const cost = Number(sellerProduct?.purchasePrice || 0);
+    if (cost > 0) return cost;
+    const sale = Number(sellerProduct?.salePrice || 0);
+    const base = Number(sellerProduct?.price || 0);
     return sale > 0 && sale < base ? sale : base;
   };
   const normalizeText = (value) =>
@@ -240,12 +270,12 @@ export const createAutoPurchaseRequests = async ({
       .lean();
 
     const inStock = candidates.filter(
-      (row) => sellerProcurementCapacity(row, variantId, baseProduct) > 0,
+      (row) => sellerAvailableForMasterVariant(row, variantId, baseProduct) > 0,
     );
     if (!inStock.length) return [];
 
     const scored = inStock.map((row) => {
-      const unitCost = normalizeMoney(effectiveCatalogPrice(row));
+      const unitCost = normalizeMoney(effectiveCatalogPrice(row, variantId, baseProduct));
       const seller = row.sellerId || {};
       
       // Calculate distance to Hub
@@ -281,7 +311,7 @@ export const createAutoPurchaseRequests = async ({
     
     for (const vendor of scored) {
       if (remainingShortage <= 0) break;
-      const vendorStock = sellerProcurementCapacity(
+      const vendorStock = sellerAvailableForMasterVariant(
         vendor,
         variantId,
         baseProduct,
@@ -326,8 +356,8 @@ export const createAutoPurchaseRequests = async ({
     const productId = String(item.productId || "");
     const baseProduct = item.baseProduct || fallbackProductMap.get(productId) || null;
 
-    if (item.vendorId && Number(baseProduct?.stock || 0) >= Number(item.shortageQty || 0)) {
-      const selfCost = normalizeMoney(effectiveCatalogPrice(baseProduct));
+    if (item.vendorId && sellerAvailableForMasterVariant(baseProduct, item.variantId, baseProduct) >= Number(item.shortageQty || 0)) {
+      const selfCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
       const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
       const baseGstAmount = Number((selfCost * (baseRate / 100)).toFixed(2));
       const finalSupply = Number((selfCost + baseGstAmount).toFixed(2));
@@ -363,14 +393,14 @@ export const createAutoPurchaseRequests = async ({
           ...item,
           vendorId: null,
           selectedSellerProductId: null,
-          vendorUnitCost: normalizeMoney(effectiveCatalogPrice(baseProduct)),
-          vendorQuotedPrice: normalizeMoney(effectiveCatalogPrice(baseProduct)),
+          vendorUnitCost: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
+          vendorQuotedPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
           pricingStrategy: "fallback_catalog_price",
           gstRate: baseProduct?.gstRate || 0,
-          gstAmount: Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
-          baseSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct)),
-          finalSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
-          totalProcurementCost: (normalizeMoney(effectiveCatalogPrice(baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct)) * ((baseProduct?.gstRate || 0) / 100))) * Number(item.shortageQty || 0),
+          gstAmount: Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
+          baseSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
+          finalSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
+          totalProcurementCost: (normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100))) * Number(item.shortageQty || 0),
           marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
           marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
           rankedSellers: [],
@@ -409,7 +439,7 @@ export const createAutoPurchaseRequests = async ({
         }
         
         if (remainingToAssign > 0 && settings?.enableMultiSellerAllocation) {
-          const fallbackCost = normalizeMoney(effectiveCatalogPrice(baseProduct));
+          const fallbackCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
           const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
           const baseGstAmount = Number((fallbackCost * (baseRate / 100)).toFixed(2));
           const finalSupply = Number((fallbackCost + baseGstAmount).toFixed(2));
