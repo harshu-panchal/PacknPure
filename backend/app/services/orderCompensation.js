@@ -28,6 +28,7 @@ export async function compensateOrderCancellation(order, orderIdString) {
         order: order._id,
       });
     }
+  }
 
   // Cancel any open Purchase Requests for this order
   if (order.hubFlowEnabled) {
