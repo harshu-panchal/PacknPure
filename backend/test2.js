@@ -38,7 +38,7 @@ async function test() {
       { $group: { _id: null, totalEarnings: { $sum: "$amount" } } }
     ]);
     const todayAggr = await Transaction.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(id), userModel: "Delivery", type: "Delivery Earning", createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } } },
+      { $match: { user: new mongoose.Types.ObjectId(id), userModel: "Delivery", type: "Delivery Earning", createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
       { $group: { _id: null, todayEarnings: { $sum: "$amount" } } }
     ]);
 

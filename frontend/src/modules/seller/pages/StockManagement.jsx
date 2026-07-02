@@ -111,6 +111,7 @@ const StockManagement = () => {
 
     const stats = useMemo(() => [
         { label: 'Total Inventory', value: inventory.reduce((acc, item) => acc + item.stock, 0), icon: HiOutlineCube, color: 'text-indigo-600', bg: 'bg-indigo-50', status: 'All' },
+        { label: 'Committed Stock', value: inventory.reduce((acc, item) => acc + (item.committedStock || 0), 0), icon: HiOutlineClipboardDocumentList, color: 'text-amber-600', bg: 'bg-amber-50', status: 'All' },
         { label: 'Low Stock Items', value: inventory.filter(i => i.stock > 0 && i.stock <= i.threshold).length, icon: HiOutlineExclamationTriangle, color: 'text-amber-600', bg: 'bg-amber-50', status: 'Low Stock' },
         { label: 'Out of Stock', value: inventory.filter(i => i.stock === 0).length, icon: HiOutlineArchiveBoxXMark, color: 'text-rose-600', bg: 'bg-rose-50', status: 'Out of Stock' },
         { label: 'Stock Valuation', value: `₹${inventory.reduce((acc, item) => acc + (item.stock * item.price), 0).toLocaleString()}`, icon: HiOutlineArrowsUpDown, color: 'text-emerald-600', bg: 'bg-emerald-50', status: 'In Stock' }
@@ -336,6 +337,11 @@ const StockManagement = () => {
                                                         <span className={cn("text-base font-black", item.stock <= item.threshold ? "text-rose-600" : "text-slate-900")}>
                                                             {item.stock} units
                                                         </span>
+                                                        {item.committedStock > 0 && (
+                                                            <span className="text-[10px] font-bold text-amber-600 tracking-wide mt-0.5">
+                                                                {item.committedStock} COMMITTED
+                                                            </span>
+                                                        )}
                                                         {item.stock <= item.threshold && (
                                                             <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
                                                                 Low Stock
@@ -427,6 +433,11 @@ const StockManagement = () => {
                                                                         >
                                                                             {item.stock} units
                                                                         </span>
+                                                                        {item.committedStock > 0 && (
+                                                                            <span className="text-[10px] font-bold text-amber-600 tracking-wide mt-0.5">
+                                                                                {item.committedStock} COMMITTED
+                                                                            </span>
+                                                                        )}
                                                                         {item.stock <= item.threshold && (
                                                                             <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
                                                                                 Low Stock

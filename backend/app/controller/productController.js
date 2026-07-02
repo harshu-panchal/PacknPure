@@ -402,9 +402,11 @@ export const getProducts = async (req, res) => {
     }).lean();
 
     const hubMap = new Map();
+    const hubReservedMap = new Map();
     hubRowsForResult.forEach((r) => {
       if (r.productId) {
         hubMap.set(String(r.productId), hubQtyFromInventoryRow(r));
+        hubReservedMap.set(String(r.productId), Number(r.reservedQty) || 0);
       }
     });
 
@@ -455,6 +457,21 @@ export const getProducts = async (req, res) => {
                   }
                 }
               },
+              totalSellerCommitted: {
+                $sum: {
+                  $cond: {
+                    if: { $and: [{ $isArray: "$variants" }, { $gt: [{ $size: "$variants" }, 0] }] },
+                    then: {
+                      $reduce: {
+                        input: "$variants",
+                        initialValue: 0,
+                        in: { $add: ["$$value", { $ifNull: ["$$this.committedStock", 0] }] }
+                      }
+                    },
+                    else: { $ifNull: ["$committedStock", 0] }
+                  }
+                }
+              },
               minPurchasePrice: { $min: "$purchasePrice" },
               avgPurchasePrice: { $avg: "$purchasePrice" }
             },
@@ -464,6 +481,7 @@ export const getProducts = async (req, res) => {
           if (s._id) {
             sellerStockMap.set(String(s._id), {
               stock: Number(s.totalSellerStock || 0),
+              committed: Number(s.totalSellerCommitted || 0),
               cost: Number(s.minPurchasePrice || s.avgPurchasePrice || 0)
             });
           }
@@ -545,6 +563,9 @@ export const getProducts = async (req, res) => {
           (row) => row.needsAdminReview,
         ).length;
 
+        const hubReserved = hubReservedMap.get(pIdStr) ?? 0;
+        const mappedSellerCommitted = mappedSellerData.committed ?? 0;
+
         const variantsWithSellerStock = (p.variants || []).map((v) => {
           const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
           if (row.ratingDistribution instanceof Map) {
@@ -572,7 +593,9 @@ export const getProducts = async (req, res) => {
           stock: hubQty,
           catalogStock: hubQty,
           availableQtyHub: hubQty,
+          reservedQtyHub: hubReserved,
           availableQtySeller: mappedSellerStock,
+          committedQtySeller: mappedSellerCommitted,
           totalAvailableQty: fulfillableQty,
           totalFulfillmentQty: fulfillableQty,
           variants: mapVariantsForResponse(variantsWithSellerStock),

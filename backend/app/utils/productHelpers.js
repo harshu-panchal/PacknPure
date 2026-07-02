@@ -558,9 +558,14 @@ export function enrichSellerProductRow(product) {
   const catalogStock = catalogStockFromProduct(product);
   const supplyPrice = resolveSupplyPriceFromInput(product);
   const variants = mapSellerVariantsForResponse(product.variants);
+  const committedStock = Array.isArray(product.variants) && product.variants.length > 0
+    ? product.variants.reduce((sum, v) => sum + (Number(v?.committedStock) || 0), 0)
+    : Number(product.committedStock || 0);
+
   return {
     ...product,
     stock: catalogStock,
+    committedStock,
     catalogStock,
     availableQtySeller: catalogStock,
     pricingMode: PRICING_MODE_SUPPLY,

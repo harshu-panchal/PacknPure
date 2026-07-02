@@ -613,6 +613,16 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const settingsFallback = await Setting2.findOne().lean();
   const fallbackTimeout = settingsFallback?.sellerResponseTimeout || 15;
 
+  const Product = (await import("../models/product.js")).default;
+  const masterProduct = await Product.findById(pr.items[0].productId).select("variants").lean();
+  let selectedSellerProductId = null;
+  
+  // Find the new seller's product ID for the same master product
+  const nextVendorProduct = await Product.findOne({ sellerId: nextVendorId, masterProductId: pr.items[0].productId }).select("_id").lean();
+  if (nextVendorProduct) {
+    selectedSellerProductId = nextVendorProduct._id;
+  }
+
   const newPr = await PurchaseRequest.create({
     requestId: buildRequestId(),
     orderId: pr.orderId,
@@ -623,6 +633,8 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     expiresAt: new Date(Date.now() + fallbackTimeout * 60 * 1000),
     items: [{
       productId: pr.items[0].productId,
+      variantId: pr.items[0].variantId || undefined,
+      selectedSellerProductId: selectedSellerProductId || undefined,
       requiredQty: pr.items[0].requiredQty,
       availableQtyAtHub: pr.items[0].availableQtyAtHub,
       shortageQty: qtyToProcure,
@@ -643,6 +655,32 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   // Save the modified original PR (shifted rankedSellers array)
   await pr.save();
+
+  // Commit stock for the new seller
+  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
+  try {
+    if (selectedSellerProductId) {
+      if (pr.items[0].variantId && Array.isArray(masterProduct?.variants)) {
+        const masterVar = masterProduct.variants.find(v => String(v._id) === String(pr.items[0].variantId) || String(v.id) === String(pr.items[0].variantId));
+        if (masterVar) {
+          const sellerProductFull = await Product.findById(selectedSellerProductId);
+          if (sellerProductFull && Array.isArray(sellerProductFull.variants)) {
+             const masterKey = normalizeVariantMatchKey(masterVar.name);
+             const sellerVar = sellerProductFull.variants.find(v => normalizeVariantMatchKey(v.name) === masterKey);
+             if (sellerVar) {
+               await freezeSellerInventory(selectedSellerProductId, sellerVar._id, qtyToProcure);
+             } else {
+               await freezeSellerInventory(selectedSellerProductId, null, qtyToProcure);
+             }
+          }
+        }
+      } else {
+        await freezeSellerInventory(selectedSellerProductId, null, qtyToProcure);
+      }
+    }
+  } catch (err) {
+    console.warn(`[fallbackPurchaseRequest] Failed to commit stock for next seller:`, err.message);
+  }
 
   return newPr;
 };

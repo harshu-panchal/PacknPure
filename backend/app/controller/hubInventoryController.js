@@ -73,6 +73,7 @@ export const getHubInventory = async (req, res) => {
         sellerId: product?.sellerId?._id || product?.sellerId || null,
         sellerName: product?.sellerId?.shopName || product?.sellerId?.name || "N/A",
         hubStockQuantity: availableQty,
+        reservedQty: Number(row.reservedQty || 0),
         minimumStockAlert: reorderLevel,
         lastPurchaseCost: Number(row.lastPurchaseCost || 0),
         avgPurchaseCost: Number(row.avgPurchaseCost || 0),

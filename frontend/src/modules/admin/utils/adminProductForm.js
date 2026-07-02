@@ -84,22 +84,30 @@ export function catalogStockFromItem(item, activeTab = 'master') {
 
 /** Hub (H) and seller (S) stock for admin product list. */
 export function hubAndSellerStockFromItem(item, activeTab = 'master') {
-  if (!item) return { hub: 0, seller: 0, catalog: 0 };
+  if (!item) return { hub: 0, hubReserved: 0, seller: 0, sellerCommitted: 0, catalog: 0 };
+  
   const hub = Number(item.availableQtyHub ?? 0) || 0;
+  const hubReserved = Number(item.reservedQtyHub ?? item.reservedQty ?? 0) || 0;
   const isMaster = activeTab === 'master' || item.ownerType === 'admin';
 
   if (isMaster) {
     return {
       hub,
+      hubReserved,
       seller: Number(item.availableQtySeller ?? 0) || 0,
+      sellerCommitted: Number(item.committedQtySeller ?? 0) || 0,
       catalog: hub,
     };
   }
 
   const sellerQty = primaryStockFromItem(item, 'seller');
+  const sellerCommitted = Number(item.committedStock ?? item.committedQtySeller ?? 0) || 0;
+  
   return {
     hub,
+    hubReserved,
     seller: sellerQty,
+    sellerCommitted,
     catalog: sellerQty,
   };
 }

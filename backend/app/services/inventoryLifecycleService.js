@@ -22,7 +22,7 @@ export const freezeHubInventory = async (productId, variantId, quantity, session
   
   const updated = await HubInventory.findOneAndUpdate(
     { _id: hubInventory._id, reservedQty: hubInventory.reservedQty }, // Optimistic concurrency
-    { $inc: { reservedQty: quantity } },
+    { $inc: { reservedQty: quantity, availableQty: -quantity } },
     { new: true, session }
   );
 
@@ -52,7 +52,7 @@ export const freezeHubInventory = async (productId, variantId, quantity, session
 export const releaseHubReservation = async (productId, variantId, quantity, session = null) => {
   const updated = await HubInventory.findOneAndUpdate(
     { productId, hubId: "MAIN_HUB" },
-    { $inc: { reservedQty: -quantity } },
+    { $inc: { reservedQty: -quantity, availableQty: quantity } },
     { new: true, session }
   );
 
@@ -80,8 +80,9 @@ export const releaseHubReservation = async (productId, variantId, quantity, sess
 };
 
 export const freezeSellerInventory = async (productId, variantId, quantity, session = null) => {
-  const updateQuery = { $inc: { committedStock: quantity } };
+  const updateQuery = { $inc: { stock: -quantity, committedStock: quantity } };
   if (variantId) {
+    updateQuery.$inc["variants.$[elem].stock"] = -quantity;
     updateQuery.$inc["variants.$[elem].committedStock"] = quantity;
     return await Product.findOneAndUpdate(
       { _id: productId },
@@ -98,8 +99,9 @@ export const freezeSellerInventory = async (productId, variantId, quantity, sess
 };
 
 export const releaseSellerReservation = async (productId, variantId, quantity, session = null) => {
-  const updateQuery = { $inc: { committedStock: -quantity } };
+  const updateQuery = { $inc: { stock: quantity, committedStock: -quantity } };
   if (variantId) {
+    updateQuery.$inc["variants.$[elem].stock"] = quantity;
     updateQuery.$inc["variants.$[elem].committedStock"] = -quantity;
     return await Product.findOneAndUpdate(
       { _id: productId },
@@ -116,12 +118,11 @@ export const releaseSellerReservation = async (productId, variantId, quantity, s
 };
 
 export const deductSellerInventoryAfterPickup = async (productId, variantId, quantity, session = null) => {
-  // Reduces BOTH stock and committedStock (since it was previously committed)
+  // Reduces ONLY committedStock (since stock was previously deducted at reservation)
   const updateQuery = { 
-    $inc: { stock: -quantity, committedStock: -quantity } 
+    $inc: { committedStock: -quantity } 
   };
   if (variantId) {
-    updateQuery.$inc["variants.$[elem].stock"] = -quantity;
     updateQuery.$inc["variants.$[elem].committedStock"] = -quantity;
     return await Product.findOneAndUpdate(
       { _id: productId },
@@ -138,10 +139,10 @@ export const deductSellerInventoryAfterPickup = async (productId, variantId, qua
 };
 
 export const completeHubDelivery = async (productId, quantity, session = null) => {
-  // Deduct both available and reserved because it was reserved on order creation
+  // Deduct ONLY reserved because available was already deducted on order creation
   return await HubInventory.findOneAndUpdate(
     { productId, hubId: "MAIN_HUB" },
-    { $inc: { availableQty: -quantity, reservedQty: -quantity } },
+    { $inc: { reservedQty: -quantity } },
     { new: true, session }
   );
 };

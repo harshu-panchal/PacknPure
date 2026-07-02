@@ -1216,45 +1216,66 @@ const ProductManagement = () => {
                                         )}
                                     </td>
 
-                                    {/* Stock — H = hub warehouse, S = seller supply */}
+                                    {/* Stock — HA = Hub Available, HR = Hub Reserved, SA = Seller Available, SC = Seller Committed */}
                                     <td className="px-6 py-4 text-center">
                                         {(() => {
-                                            const { hub, seller } = hubAndSellerStockFromItem(p, activeTab);
+                                            const { hub, hubReserved, seller, sellerCommitted } = hubAndSellerStockFromItem(p, activeTab);
                                             return (
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <span
-                                                        className="inline-flex items-center gap-1 text-sm font-black px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 min-w-[52px] justify-center"
-                                                        title={
-                                                            activeTab === 'master'
-                                                                ? 'Hub warehouse stock'
-                                                                : 'Hub stock (from linked master, if any)'
-                                                        }
-                                                    >
-                                                        <span className="text-[10px] font-bold text-sky-600">H</span>
-                                                        {hub}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        disabled={activeTab !== 'master' || seller <= 0}
-                                                        onClick={() => {
-                                                            if (activeTab === 'master' && (p.sellerSupplyBreakdown?.length || seller > 0)) {
-                                                                openSellerSupplyModal(p);
+                                                <div className="flex flex-col items-center justify-center gap-1.5">
+                                                    {/* Hub Stock Badges */}
+                                                    <div className="flex items-center gap-1">
+                                                        <span
+                                                            className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 min-w-[56px] justify-center"
+                                                            title={
+                                                                activeTab === 'master'
+                                                                    ? 'Hub Available'
+                                                                    : 'Hub Available (from linked master)'
                                                             }
-                                                        }}
-                                                        className={cn(
-                                                            "inline-flex items-center gap-1 text-sm font-black px-2.5 py-1 rounded-lg bg-violet-50 text-violet-800 border border-violet-200 min-w-[52px] justify-center",
-                                                            activeTab === 'master' && seller > 0 && "hover:bg-violet-100 cursor-pointer",
-                                                            (activeTab !== 'master' || seller <= 0) && "cursor-default",
-                                                        )}
-                                                        title={
-                                                            activeTab === 'master'
-                                                                ? 'Total seller supply — click to see per-supplier breakdown'
-                                                                : 'This seller listing stock'
-                                                        }
-                                                    >
-                                                        <span className="text-[10px] font-bold text-violet-600">S</span>
-                                                        {seller}
-                                                    </button>
+                                                        >
+                                                            <span className="text-[10px] font-bold text-sky-600">HA</span>
+                                                            {hub}
+                                                        </span>
+                                                        <span
+                                                            className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 min-w-[56px] justify-center"
+                                                            title="Hub Reserved"
+                                                        >
+                                                            <span className="text-[10px] font-bold text-rose-600">HR</span>
+                                                            {hubReserved}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Seller Stock Badges */}
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            disabled={activeTab !== 'master' || (seller <= 0 && sellerCommitted <= 0)}
+                                                            onClick={() => {
+                                                                if (activeTab === 'master' && (p.sellerSupplyBreakdown?.length || seller > 0 || sellerCommitted > 0)) {
+                                                                    openSellerSupplyModal(p);
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded border min-w-[56px] justify-center",
+                                                                "bg-violet-50 text-violet-800 border-violet-200",
+                                                                activeTab === 'master' && (seller > 0 || sellerCommitted > 0) ? "hover:bg-violet-100 cursor-pointer" : "cursor-default opacity-80"
+                                                            )}
+                                                            title="Seller Available"
+                                                        >
+                                                            <span className="text-[10px] font-bold text-violet-600">SA</span>
+                                                            {seller}
+                                                        </button>
+                                                        <span
+                                                            className={cn(
+                                                                "inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded border min-w-[56px] justify-center",
+                                                                "bg-amber-50 text-amber-800 border-amber-200",
+                                                                sellerCommitted <= 0 && "opacity-80"
+                                                            )}
+                                                            title="Seller Committed"
+                                                        >
+                                                            <span className="text-[10px] font-bold text-amber-600">SC</span>
+                                                            {sellerCommitted}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             );
                                         })()}
@@ -2408,8 +2429,15 @@ const ProductManagement = () => {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Master product</p>
                         <p className="text-sm font-black text-slate-900">{viewingSellerSupply?.name}</p>
                         <p className="text-[10px] text-slate-500 mt-1">
-                            Hub (H): {hubAndSellerStockFromItem(viewingSellerSupply, 'master').hub} ·
-                            Total seller supply (S): {hubAndSellerStockFromItem(viewingSellerSupply, 'master').seller}
+                            {(() => {
+                                const { hub, hubReserved, seller, sellerCommitted } = hubAndSellerStockFromItem(viewingSellerSupply, 'master');
+                                return (
+                                    <>
+                                        Hub Available (HA): {hub} · Hub Reserved (HR): {hubReserved} · 
+                                        Seller Available (SA): {seller} · Seller Committed (SC): {sellerCommitted}
+                                    </>
+                                );
+                            })()}
                         </p>
                     </div>
 

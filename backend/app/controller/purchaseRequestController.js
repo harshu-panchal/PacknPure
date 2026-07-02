@@ -745,9 +745,14 @@ export const createManualPurchaseRequest = async (req, res) => {
       items: [
         {
           productId: product._id,
+          variantId: targetVariant ? targetVariant._id : undefined,
+          selectedSellerProductId: product._id,
           requiredQty: qty,
           availableQtyAtHub: 0,
           shortageQty: qty,
+          requestedQty: qty,
+          remainingQty: qty,
+          committedQty: 0,
           vendorUnitCost: unitCost,
           vendorQuotedPrice: unitCost,
           pricingStrategy: "manual_admin_request",
@@ -761,6 +766,13 @@ export const createManualPurchaseRequest = async (req, res) => {
       status: "created",
       notes: mergedNotes,
     });
+
+    try {
+      const { freezeSellerInventory } = await import("../services/inventoryLifecycleService.js");
+      await freezeSellerInventory(product._id, targetVariant ? targetVariant._id : null, qty);
+    } catch (err) {
+      console.warn("[createManualPurchaseRequest] Failed to update seller committedStock:", err.message);
+    }
 
     const hydrated = await PurchaseRequest.findById(doc._id)
       .populate("vendorId", "shopName name")
@@ -1078,8 +1090,12 @@ export const verifyInward = async (req, res) => {
           });
 
           if (hubRow) {
-            // Do NOT add to availableQty or reservedQty (stays allocated to customer order)
-            
+            // Allocate to reservedQty if it's for a customer order, otherwise to availableQty
+            if (pr.orderId) {
+              hubRow.reservedQty = (Number(hubRow.reservedQty) || 0) + acceptedQty;
+            } else {
+              hubRow.availableQty = (Number(hubRow.availableQty) || 0) + acceptedQty;
+            }
             // Re-sync price with Master Catalog just in case
             const masterProduct = await Product.findById(productId);
             if (masterProduct) {

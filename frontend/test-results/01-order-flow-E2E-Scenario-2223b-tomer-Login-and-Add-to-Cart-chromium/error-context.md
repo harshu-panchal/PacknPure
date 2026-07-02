@@ -1,0 +1,815 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: 01-order-flow.spec.js >> E2E Scenarios: Inventory Flow >> Scenario 2: Customer Login and Add to Cart
+- Location: tests\e2e\01-order-flow.spec.js:19:3
+
+# Error details
+
+```
+Test timeout of 30000ms exceeded.
+```
+
+```
+Error: locator.click: Test timeout of 30000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: /login|sign/i }).first()
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "pack n pure" [ref=e8] [cursor=pointer]:
+            - /url: /
+            - img "pack n pure" [ref=e9]
+          - button "Indore" [ref=e10]:
+            - generic [ref=e11]:
+              - img [ref=e12]
+              - generic [ref=e15]: Indore
+              - img [ref=e16]
+        - navigation "Main" [ref=e18]:
+          - link "Home" [ref=e19] [cursor=pointer]:
+            - /url: /
+          - link "Shop" [ref=e20] [cursor=pointer]:
+            - /url: /categories
+          - link "Offers" [ref=e21] [cursor=pointer]:
+            - /url: /offers
+          - link "About" [ref=e22] [cursor=pointer]:
+            - /url: /about
+          - link "Support" [ref=e23] [cursor=pointer]:
+            - /url: /support
+        - generic [ref=e24]:
+          - button "Search groceries, dairy, snacks…" [ref=e25]:
+            - img [ref=e26]
+            - generic [ref=e29]: Search groceries, dairy, snacks…
+          - button "Voice search" [ref=e30]:
+            - img [ref=e31]
+        - generic [ref=e34]:
+          - button "Wishlist" [ref=e35]:
+            - img [ref=e36]
+          - button "Cart" [ref=e38]:
+            - img [ref=e39]
+          - button "Guest" [ref=e43]:
+            - img [ref=e44]
+            - generic [ref=e47]: Guest
+    - main [ref=e48]:
+      - generic [ref=e49]:
+        - generic [ref=e52]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - img "this is testing benner or the project"
+            - generic:
+              - generic:
+                - heading "this is testing benner or the project" [level=1]
+                - paragraph: new tesing benner created by abhishek .
+                - button "Explore Now" [ref=e56]
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - img "this is for tesing"
+            - generic:
+              - generic:
+                - heading "this is for tesing" [level=1]
+                - paragraph: this is for testing
+                - button "Explore Now" [ref=e60]
+          - generic [ref=e61]:
+            - button "Go to slide 1" [ref=e62]
+            - button "Go to slide 2" [ref=e63]
+        - generic [ref=e65]:
+          - heading "Shop by category" [level=2] [ref=e66]
+          - generic [ref=e67]:
+            - button "Fruits & Vegetables Fruits & Vegetables" [ref=e68]:
+              - img "Fruits & Vegetables" [ref=e70]
+              - generic [ref=e71]: Fruits & Vegetables
+            - button "Dairy Dairy" [ref=e72]:
+              - img "Dairy" [ref=e74]
+              - generic [ref=e75]: Dairy
+            - button "Flours Flours" [ref=e76]:
+              - img "Flours" [ref=e78]
+              - generic [ref=e79]: Flours
+            - button "Pulses Pulses" [ref=e80]:
+              - img "Pulses" [ref=e82]
+              - generic [ref=e83]: Pulses
+            - button "Dry Fruits & Nuts Dry Fruits & Nuts" [ref=e84]:
+              - img "Dry Fruits & Nuts" [ref=e86]
+              - generic [ref=e87]: Dry Fruits & Nuts
+            - button "Your Menu Add-ons Your Menu Add-ons" [ref=e88]:
+              - img "Your Menu Add-ons" [ref=e90]
+              - generic [ref=e91]: Your Menu Add-ons
+            - button "Masala, Salt & Sugar Masala, Salt & Sugar" [ref=e92]:
+              - img "Masala, Salt & Sugar" [ref=e94]
+              - generic [ref=e95]: Masala, Salt & Sugar
+            - button "Chicken & Eggs Chicken & Eggs" [ref=e96]:
+              - img "Chicken & Eggs" [ref=e98]
+              - generic [ref=e99]: Chicken & Eggs
+            - button "Sauces & Seasoning Sauces & Seasoning" [ref=e100]:
+              - img "Sauces & Seasoning" [ref=e102]
+              - generic [ref=e103]: Sauces & Seasoning
+            - button "Canned & Imported Items Canned & Imported Items" [ref=e104]:
+              - img "Canned & Imported Items" [ref=e106]
+              - generic [ref=e107]: Canned & Imported Items
+            - button "Packaging Material Packaging Material" [ref=e108]:
+              - img "Packaging Material" [ref=e110]
+              - generic [ref=e111]: Packaging Material
+            - button "Custom Packaging Custom Packaging" [ref=e112]:
+              - img "Custom Packaging" [ref=e114]
+              - generic [ref=e115]: Custom Packaging
+            - button "Edible Oils Edible Oils" [ref=e116]:
+              - img "Edible Oils" [ref=e118]
+              - generic [ref=e119]: Edible Oils
+            - button "Frozen & Instant Food Frozen & Instant Food" [ref=e120]:
+              - img "Frozen & Instant Food" [ref=e122]
+              - generic [ref=e123]: Frozen & Instant Food
+            - button "Bakery & Chocolates Bakery & Chocolates" [ref=e124]:
+              - img "Bakery & Chocolates" [ref=e126]
+              - generic [ref=e127]: Bakery & Chocolates
+            - button "Beverages & Mixers Beverages & Mixers" [ref=e128]:
+              - img "Beverages & Mixers" [ref=e130]
+              - generic [ref=e131]: Beverages & Mixers
+            - button "Cleaning & Consumables Cleaning & Consumables" [ref=e132]:
+              - img "Cleaning & Consumables" [ref=e134]
+              - generic [ref=e135]: Cleaning & Consumables
+            - button "Rice & Rice Products Rice & Rice Products" [ref=e136]:
+              - img "Rice & Rice Products" [ref=e138]
+              - generic [ref=e139]: Rice & Rice Products
+            - button "Mutton, Duck & Lamb Mutton, Duck & Lamb" [ref=e140]:
+              - img "Mutton, Duck & Lamb" [ref=e142]
+              - generic [ref=e143]: Mutton, Duck & Lamb
+            - button "Fish, Prawns & Seafood Fish, Prawns & Seafood" [ref=e144]:
+              - img "Fish, Prawns & Seafood" [ref=e146]
+              - generic [ref=e147]: Fish, Prawns & Seafood
+            - button "Kitchenware Kitchenware" [ref=e148]:
+              - img "Kitchenware" [ref=e150]
+              - generic [ref=e151]: Kitchenware
+        - generic [ref=e156]:
+          - generic [ref=e158]:
+            - img "testing the banner for projecte and you want this product" [ref=e159]
+            - generic [ref=e160]:
+              - heading "testing the banner for projecte and you want this product" [level=2] [ref=e161]
+              - paragraph [ref=e162]: this banner was tested by me
+              - button "Explore Now" [ref=e163]
+          - generic [ref=e165]:
+            - img "this img for testing" [ref=e166]
+            - generic [ref=e167]:
+              - heading "this img for testing" [level=2] [ref=e168]
+              - paragraph [ref=e169]: testing the banner
+              - button "Explore Now" [ref=e170]
+          - generic [ref=e172]:
+            - img "testing the banner for projecte and you want this product" [ref=e173]
+            - generic [ref=e174]:
+              - heading "testing the banner for projecte and you want this product" [level=2] [ref=e175]
+              - paragraph [ref=e176]: this banner was tested by me
+              - button "Explore Now" [ref=e177]
+        - button "Limited time this is for test only offer explore know" [ref=e179]:
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - img [ref=e182]
+              - text: Limited time
+            - heading "this is for test only" [level=3] [ref=e185]
+            - paragraph [ref=e186]: offer
+            - generic [ref=e187]:
+              - text: explore know
+              - img [ref=e188]
+        - generic [ref=e192]:
+          - generic [ref=e193]:
+            - heading "Popular picks" [level=2] [ref=e194]
+            - button "See all" [ref=e195]
+          - generic [ref=e196]:
+            - generic [ref=e197] [cursor=pointer]:
+              - generic [ref=e198]:
+                - generic [ref=e199]: 7% OFF
+                - button [ref=e200]:
+                  - img [ref=e202]
+                - img "Tata Salt Iodized" [ref=e205]
+              - generic [ref=e206]:
+                - generic [ref=e207]:
+                  - generic [ref=e208]: Tata
+                  - generic [ref=e209]: GST Inclusive
+                - heading "Tata Salt Iodized" [level=4] [ref=e210]
+                - paragraph [ref=e211]: Salt · Masala, Salt & Sugar
+                - paragraph [ref=e212]: 2 options · ₹26 – ₹118 · Kilograms
+                - generic [ref=e213]:
+                  - generic [ref=e214]:
+                    - generic [ref=e215]: ₹26 – ₹118
+                    - generic [ref=e216]: ₹28
+                  - button "ADD 2 options" [ref=e218]:
+                    - generic [ref=e219]:
+                      - generic [ref=e220]: ADD
+                      - generic [ref=e221]: 2 options
+            - generic [ref=e222] [cursor=pointer]:
+              - generic [ref=e223]:
+                - generic [ref=e224]: 5% OFF
+                - button [ref=e225]:
+                  - img [ref=e227]
+                - img "Haldiram Bhujia Sev" [ref=e230]
+              - generic [ref=e231]:
+                - generic [ref=e232]:
+                  - generic [ref=e233]: Haldiram
+                  - generic [ref=e234]: GST Inclusive
+                - heading "Haldiram Bhujia Sev" [level=4] [ref=e235]
+                - paragraph [ref=e236]: Appetizers & Starters · Your Menu Add-ons
+                - paragraph [ref=e237]: 2 options · ₹52 – ₹229 · Pack
+                - generic [ref=e238]:
+                  - generic [ref=e239]:
+                    - generic [ref=e240]: ₹52 – ₹229
+                    - generic [ref=e241]: ₹55
+                  - button "ADD 2 options" [ref=e243]:
+                    - generic [ref=e244]:
+                      - generic [ref=e245]: ADD
+                      - generic [ref=e246]: 2 options
+            - generic [ref=e247] [cursor=pointer]:
+              - generic [ref=e248]:
+                - generic [ref=e249]: 5% OFF
+                - button [ref=e250]:
+                  - img [ref=e252]
+                - img "EcoPack Clamshell Container 750ml" [ref=e255]
+              - generic [ref=e256]:
+                - generic [ref=e257]:
+                  - generic [ref=e258]: EcoPack
+                  - generic [ref=e259]: GST Inclusive
+                - heading "EcoPack Clamshell Container 750ml" [level=4] [ref=e260]
+                - paragraph [ref=e261]: Clamshell & Hinged Boxes · Packaging Material
+                - paragraph [ref=e262]: 2 options · ₹399 – ₹1499 · Box
+                - generic [ref=e263]:
+                  - generic [ref=e264]:
+                    - generic [ref=e265]: ₹399 – ₹1,499
+                    - generic [ref=e266]: ₹420
+                  - button "ADD 2 options" [ref=e268]:
+                    - generic [ref=e269]:
+                      - generic [ref=e270]: ADD
+                      - generic [ref=e271]: 2 options
+            - generic [ref=e272] [cursor=pointer]:
+              - generic [ref=e273]:
+                - generic [ref=e274]: 6% OFF
+                - button [ref=e275]:
+                  - img [ref=e277]
+                - img "Prestige Non-Stick Tawa 28cm" [ref=e280]
+              - generic [ref=e281]:
+                - generic [ref=e282]:
+                  - generic [ref=e283]: Prestige
+                  - generic [ref=e284]: GST Inclusive
+                - heading "Prestige Non-Stick Tawa 28cm" [level=4] [ref=e285]
+                - paragraph [ref=e286]: Kadai & Tawa · Kitchenware
+                - paragraph [ref=e287]: 28 cm · Pieces
+                - generic [ref=e288]:
+                  - generic [ref=e289]:
+                    - generic [ref=e290]: ₹849
+                    - generic [ref=e291]: ₹899
+                  - button "ADD" [ref=e293]
+            - generic [ref=e294] [cursor=pointer]:
+              - generic [ref=e295]:
+                - generic [ref=e296]: 6% OFF
+                - button [ref=e297]:
+                  - img [ref=e299]
+                - img "Surf Excel Matic Top Load" [ref=e302]
+              - generic [ref=e303]:
+                - generic [ref=e304]:
+                  - generic [ref=e305]: Surf Excel
+                  - generic [ref=e306]: GST Inclusive
+                - heading "Surf Excel Matic Top Load" [level=4] [ref=e307]
+                - paragraph [ref=e308]: Laundry Detergent · Cleaning & Consumables
+                - paragraph [ref=e309]: 2 options · ₹269 – ₹949 · Kilograms
+                - generic [ref=e310]:
+                  - generic [ref=e311]:
+                    - generic [ref=e312]: ₹269 – ₹949
+                    - generic [ref=e313]: ₹285
+                  - button "ADD 2 options" [ref=e315]:
+                    - generic [ref=e316]:
+                      - generic [ref=e317]: ADD
+                      - generic [ref=e318]: 2 options
+            - generic [ref=e319] [cursor=pointer]:
+              - generic [ref=e320]:
+                - generic [ref=e321]: 6% OFF
+                - button [ref=e322]:
+                  - img [ref=e324]
+                - img "Harpic Power Plus Toilet Cleaner" [ref=e327]
+              - generic [ref=e328]:
+                - generic [ref=e329]:
+                  - generic [ref=e330]: Harpic
+                  - generic [ref=e331]: GST Inclusive
+                - heading "Harpic Power Plus Toilet Cleaner" [level=4] [ref=e332]
+                - paragraph [ref=e333]: Toilet Cleaners · Cleaning & Consumables
+                - paragraph [ref=e334]: 2 options · ₹89 – ₹165 · Milliliters
+                - generic [ref=e335]:
+                  - generic [ref=e336]:
+                    - generic [ref=e337]: ₹89 – ₹165
+                    - generic [ref=e338]: ₹95
+                  - button "ADD 2 options" [ref=e340]:
+                    - generic [ref=e341]:
+                      - generic [ref=e342]: ADD
+                      - generic [ref=e343]: 2 options
+            - generic [ref=e344] [cursor=pointer]:
+              - generic [ref=e345]:
+                - generic [ref=e346]: 4% OFF
+                - button [ref=e347]:
+                  - img [ref=e349]
+                - img "Goat Mutton Curry Cut" [ref=e352]
+              - generic [ref=e353]:
+                - generic [ref=e354]:
+                  - generic [ref=e355]: Licious
+                  - generic [ref=e356]: GST Inclusive
+                - heading "Goat Mutton Curry Cut" [level=4] [ref=e357]
+                - paragraph [ref=e358]: Mutton Curry Cut · Mutton, Duck & Lamb
+                - paragraph [ref=e359]: 2 options · ₹369 – ₹719 · Kilograms
+                - generic [ref=e360]:
+                  - generic [ref=e361]:
+                    - generic [ref=e362]: ₹369 – ₹719
+                    - generic [ref=e363]: ₹385
+                  - button "ADD 2 options" [ref=e365]:
+                    - generic [ref=e366]:
+                      - generic [ref=e367]: ADD
+                      - generic [ref=e368]: 2 options
+            - generic [ref=e369] [cursor=pointer]:
+              - generic [ref=e370]:
+                - generic [ref=e371]: 5% OFF
+                - button [ref=e372]:
+                  - img [ref=e374]
+                - img "Medium Prawns Cleaned" [ref=e377]
+              - generic [ref=e378]:
+                - generic [ref=e379]:
+                  - generic [ref=e380]: Sea Fresh
+                  - generic [ref=e381]: GST Inclusive
+                - heading "Medium Prawns Cleaned" [level=4] [ref=e382]
+                - paragraph [ref=e383]: Prawns & Shrimps · Fish, Prawns & Seafood
+                - paragraph [ref=e384]: 2 options · ₹305 – ₹589 · Kilograms
+                - generic [ref=e385]:
+                  - generic [ref=e386]:
+                    - generic [ref=e387]: ₹305 – ₹589
+                    - generic [ref=e388]: ₹320
+                  - button "ADD 2 options" [ref=e390]:
+                    - generic [ref=e391]:
+                      - generic [ref=e392]: ADD
+                      - generic [ref=e393]: 2 options
+            - generic [ref=e394] [cursor=pointer]:
+              - generic [ref=e395]:
+                - generic [ref=e396]: 5% OFF
+                - button [ref=e397]:
+                  - img [ref=e399]
+                - img "Heinz Tomato Ketchup" [ref=e402]
+              - generic [ref=e403]:
+                - generic [ref=e404]:
+                  - generic [ref=e405]: Heinz
+                  - generic [ref=e406]: GST Inclusive
+                - heading "Heinz Tomato Ketchup" [level=4] [ref=e407]
+                - paragraph [ref=e408]: Tomato Ketchup · Sauces & Seasoning
+                - paragraph [ref=e409]: 2 options · ₹119 – ₹219 · Pack
+                - generic [ref=e410]:
+                  - generic [ref=e411]:
+                    - generic [ref=e412]: ₹119 – ₹219
+                    - generic [ref=e413]: ₹125
+                  - button "ADD 2 options" [ref=e415]:
+                    - generic [ref=e416]:
+                      - generic [ref=e417]: ADD
+                      - generic [ref=e418]: 2 options
+            - generic [ref=e419] [cursor=pointer]:
+              - generic [ref=e420]:
+                - button [ref=e421]:
+                  - img [ref=e423]
+                - img "Maggi 2-Minute Masala Noodles" [ref=e426]
+              - generic [ref=e427]:
+                - generic [ref=e428]:
+                  - generic [ref=e429]: Maggi
+                  - generic [ref=e430]: GST Inclusive
+                - heading "Maggi 2-Minute Masala Noodles" [level=4] [ref=e431]
+                - paragraph [ref=e432]: Instant Noodles · Frozen & Instant Food
+                - paragraph [ref=e433]: 2 options · ₹14 – ₹148 · Pack
+                - generic [ref=e434]:
+                  - generic [ref=e436]: ₹14 – ₹148
+                  - button "ADD 2 options" [ref=e438]:
+                    - generic [ref=e439]:
+                      - generic [ref=e440]: ADD
+                      - generic [ref=e441]: 2 options
+            - generic [ref=e442] [cursor=pointer]:
+              - generic [ref=e443]:
+                - generic [ref=e444]: 6% OFF
+                - button [ref=e445]:
+                  - img [ref=e447]
+                - img "McCain Green Peas Frozen" [ref=e450]
+              - generic [ref=e451]:
+                - generic [ref=e452]:
+                  - generic [ref=e453]: McCain
+                  - generic [ref=e454]: GST Inclusive
+                - heading "McCain Green Peas Frozen" [level=4] [ref=e455]
+                - paragraph [ref=e456]: Frozen Vegetables · Frozen & Instant Food
+                - paragraph [ref=e457]: 2 options · ₹89 – ₹499 · Pack
+                - generic [ref=e458]:
+                  - generic [ref=e459]:
+                    - generic [ref=e460]: ₹89 – ₹499
+                    - generic [ref=e461]: ₹95
+                  - button "ADD 2 options" [ref=e463]:
+                    - generic [ref=e464]:
+                      - generic [ref=e465]: ADD
+                      - generic [ref=e466]: 2 options
+            - generic [ref=e467] [cursor=pointer]:
+              - generic [ref=e468]:
+                - generic [ref=e469]: 6% OFF
+                - button [ref=e470]:
+                  - img [ref=e472]
+                - img "Happilo Premium Almonds" [ref=e475]
+              - generic [ref=e476]:
+                - generic [ref=e477]:
+                  - generic [ref=e478]: Happilo
+                  - generic [ref=e479]: GST Inclusive
+                - heading "Happilo Premium Almonds" [level=4] [ref=e480]
+                - paragraph [ref=e481]: Almonds · Dry Fruits & Nuts
+                - paragraph [ref=e482]: 2 options · ₹269 – ₹1049 · Pack
+                - generic [ref=e483]:
+                  - generic [ref=e484]:
+                    - generic [ref=e485]: ₹269 – ₹1,049
+                    - generic [ref=e486]: ₹285
+                  - button "ADD 2 options" [ref=e488]:
+                    - generic [ref=e489]:
+                      - generic [ref=e490]: ADD
+                      - generic [ref=e491]: 2 options
+            - generic [ref=e492] [cursor=pointer]:
+              - generic [ref=e493]:
+                - generic [ref=e494]: 4% OFF
+                - button [ref=e495]:
+                  - img [ref=e497]
+                - img "Aashirvaad Select Sharbati Atta" [ref=e500]
+              - generic [ref=e501]:
+                - generic [ref=e502]:
+                  - generic [ref=e503]: Aashirvaad
+                  - generic [ref=e504]: GST Inclusive
+                - heading "Aashirvaad Select Sharbati Atta" [level=4] [ref=e505]
+                - paragraph [ref=e506]: Whole Wheat Atta · Flours
+                - paragraph [ref=e507]: 2 options · ₹275 – ₹519 · Kilograms
+                - generic [ref=e508]:
+                  - generic [ref=e509]:
+                    - generic [ref=e510]: ₹275 – ₹519
+                    - generic [ref=e511]: ₹285
+                  - button "ADD 2 options" [ref=e513]:
+                    - generic [ref=e514]:
+                      - generic [ref=e515]: ADD
+                      - generic [ref=e516]: 2 options
+            - generic [ref=e517] [cursor=pointer]:
+              - generic [ref=e518]:
+                - generic [ref=e519]: 5% OFF
+                - button [ref=e520]:
+                  - img [ref=e522]
+                - img "Amul Processed Cheese Slices" [ref=e525]
+              - generic [ref=e526]:
+                - generic [ref=e527]:
+                  - generic [ref=e528]: Amul
+                  - generic [ref=e529]: GST Inclusive
+                - heading "Amul Processed Cheese Slices" [level=4] [ref=e530]
+                - paragraph [ref=e531]: Cheese · Dairy
+                - paragraph [ref=e532]: 2 options · ₹119 – ₹439 · Pack
+                - generic [ref=e533]:
+                  - generic [ref=e534]:
+                    - generic [ref=e535]: ₹119 – ₹439
+                    - generic [ref=e536]: ₹125
+                  - button "ADD 2 options" [ref=e538]:
+                    - generic [ref=e539]:
+                      - generic [ref=e540]: ADD
+                      - generic [ref=e541]: 2 options
+            - generic [ref=e542] [cursor=pointer]:
+              - generic [ref=e543]:
+                - generic [ref=e544]: 4% OFF
+                - button [ref=e545]:
+                  - img [ref=e547]
+                - img "Britannia Good Day Cashew Cookies" [ref=e550]
+              - generic [ref=e551]:
+                - generic [ref=e552]:
+                  - generic [ref=e553]: Britannia
+                  - generic [ref=e554]: GST Inclusive
+                - heading "Britannia Good Day Cashew Cookies" [level=4] [ref=e555]
+                - paragraph [ref=e556]: Cookies & Biscuits · Bakery & Chocolates
+                - paragraph [ref=e557]: 2 options · ₹24 – ₹265 · Pack
+                - generic [ref=e558]:
+                  - generic [ref=e559]:
+                    - generic [ref=e560]: ₹24 – ₹265
+                    - generic [ref=e561]: ₹25
+                  - button "ADD 2 options" [ref=e563]:
+                    - generic [ref=e564]:
+                      - generic [ref=e565]: ADD
+                      - generic [ref=e566]: 2 options
+            - generic [ref=e567] [cursor=pointer]:
+              - generic [ref=e568]:
+                - generic [ref=e569]: 10% OFF
+                - button [ref=e570]:
+                  - img [ref=e572]
+                - img "Bisleri Packaged Water" [ref=e575]
+              - generic [ref=e576]:
+                - generic [ref=e577]:
+                  - generic [ref=e578]: Bisleri
+                  - generic [ref=e579]: GST Inclusive
+                - heading "Bisleri Packaged Water" [level=4] [ref=e580]
+                - paragraph [ref=e581]: Water & Soda · Beverages & Mixers
+                - paragraph [ref=e582]: 2 options · ₹18 – ₹70 · Pack
+                - generic [ref=e583]:
+                  - generic [ref=e584]:
+                    - generic [ref=e585]: ₹18 – ₹70
+                    - generic [ref=e586]: ₹20
+                  - button "ADD 2 options" [ref=e588]:
+                    - generic [ref=e589]:
+                      - generic [ref=e590]: ADD
+                      - generic [ref=e591]: 2 options
+            - generic [ref=e592] [cursor=pointer]:
+              - generic [ref=e593]:
+                - generic [ref=e594]: 6% OFF
+                - button [ref=e595]:
+                  - img [ref=e597]
+                - img "Real Fruit Power Orange Juice" [ref=e600]
+              - generic [ref=e601]:
+                - generic [ref=e602]:
+                  - generic [ref=e603]: Real
+                  - generic [ref=e604]: GST Inclusive
+                - heading "Real Fruit Power Orange Juice" [level=4] [ref=e605]
+                - paragraph [ref=e606]: Fruit Juices · Beverages & Mixers
+                - paragraph [ref=e607]: 2 options · ₹108 – ₹199 · Liters
+                - generic [ref=e608]:
+                  - generic [ref=e609]:
+                    - generic [ref=e610]: ₹108 – ₹199
+                    - generic [ref=e611]: ₹115
+                  - button "ADD 2 options" [ref=e613]:
+                    - generic [ref=e614]:
+                      - generic [ref=e615]: ADD
+                      - generic [ref=e616]: 2 options
+            - generic [ref=e617] [cursor=pointer]:
+              - generic [ref=e618]:
+                - generic [ref=e619]: 5% OFF
+                - button [ref=e620]:
+                  - img [ref=e622]
+                - img "Coca-Cola Original" [ref=e625]
+              - generic [ref=e626]:
+                - generic [ref=e627]:
+                  - generic [ref=e628]: Coca-Cola
+                  - generic [ref=e629]: GST Inclusive
+                - heading "Coca-Cola Original" [level=4] [ref=e630]
+                - paragraph [ref=e631]: Soft Drinks · Beverages & Mixers
+                - paragraph [ref=e632]: 2 options · ₹40 – ₹89 · Pack
+                - generic [ref=e633]:
+                  - generic [ref=e634]:
+                    - generic [ref=e635]: ₹40 – ₹89
+                    - generic [ref=e636]: ₹42
+                  - button "ADD 2 options" [ref=e638]:
+                    - generic [ref=e639]:
+                      - generic [ref=e640]: ADD
+                      - generic [ref=e641]: 2 options
+            - generic [ref=e642] [cursor=pointer]:
+              - generic [ref=e643]:
+                - generic [ref=e644]: 4% OFF
+                - button [ref=e645]:
+                  - img [ref=e647]
+                - img "Farm Fresh Brown Eggs" [ref=e650]
+              - generic [ref=e651]:
+                - generic [ref=e652]:
+                  - generic [ref=e653]: Happy Hens
+                  - generic [ref=e654]: GST Inclusive
+                - heading "Farm Fresh Brown Eggs" [level=4] [ref=e655]
+                - paragraph [ref=e656]: Farm Eggs · Chicken & Eggs
+                - paragraph [ref=e657]: 2 options · ₹52 – ₹245 · Pieces
+                - generic [ref=e658]:
+                  - generic [ref=e659]:
+                    - generic [ref=e660]: ₹52 – ₹245
+                    - generic [ref=e661]: ₹54
+                  - button "ADD 2 options" [ref=e663]:
+                    - generic [ref=e664]:
+                      - generic [ref=e665]: ADD
+                      - generic [ref=e666]: 2 options
+            - generic [ref=e667] [cursor=pointer]:
+              - generic [ref=e668]:
+                - generic [ref=e669]: 5% OFF
+                - button [ref=e670]:
+                  - img [ref=e672]
+                - img "Fresh Chicken Breast Boneless" [ref=e675]
+              - generic [ref=e676]:
+                - generic [ref=e677]:
+                  - generic [ref=e678]: Licious
+                  - generic [ref=e679]: GST Inclusive
+                - heading "Fresh Chicken Breast Boneless" [level=4] [ref=e680]
+                - paragraph [ref=e681]: Chicken Breast & Boneless · Chicken & Eggs
+                - paragraph [ref=e682]: 2 options · ₹185 – ₹359 · Kilograms
+                - generic [ref=e683]:
+                  - generic [ref=e684]:
+                    - generic [ref=e685]: ₹185 – ₹359
+                    - generic [ref=e686]: ₹195
+                  - button "ADD 2 options" [ref=e688]:
+                    - generic [ref=e689]:
+                      - generic [ref=e690]: ADD
+                      - generic [ref=e691]: 2 options
+        - generic [ref=e692]:
+          - generic [ref=e694]:
+            - generic [ref=e695]:
+              - generic [ref=e696]: About pack n pure
+              - heading "Hyperlocal groceries, hub-powered delivery" [level=2] [ref=e697]
+              - paragraph [ref=e698]: pack n pure is built for quick commerce with a real supply chain behind it — local hubs hold inventory, orders route to the best nearby fulfillment point, and trusted vendors step in when stock needs a top-up. You get Blinkit-style speed with Hyperpure-style reliability for daily essentials.
+              - generic [ref=e699]:
+                - button "Start shopping" [ref=e700]:
+                  - text: Start shopping
+                  - img [ref=e701]
+                - button "Change delivery area" [ref=e703]:
+                  - img [ref=e704]
+                  - text: Change delivery area
+            - generic [ref=e707]:
+              - img [ref=e709]
+              - heading "Built for your neighbourhood" [level=3] [ref=e713]
+              - paragraph [ref=e714]: Every order connects to real hub inventory and delivery partners in your zone — not a generic marketplace listing from thousands of kilometres away.
+              - list [ref=e715]:
+                - listitem [ref=e716]: Hub-based stock & routing
+                - listitem [ref=e718]: Vendor procurement when needed
+                - listitem [ref=e720]: Track orders end-to-end
+              - link "Read more about us →" [ref=e722] [cursor=pointer]:
+                - /url: /about
+          - generic [ref=e724]:
+            - generic [ref=e725]:
+              - heading "How it works" [level=2] [ref=e726]
+              - paragraph [ref=e727]: From tap to doorstep — designed around local hubs, vendors, and delivery partners.
+            - generic [ref=e728]:
+              - generic [ref=e729]:
+                - generic [ref=e730]: "1"
+                - img [ref=e731]
+                - heading "Set your location" [level=3] [ref=e734]
+                - paragraph [ref=e735]: We match you to the nearest hub and delivery zone for accurate stock and ETA.
+              - generic [ref=e736]:
+                - generic [ref=e737]: "2"
+                - img [ref=e738]
+                - heading "Browse & order" [level=3] [ref=e742]
+                - paragraph [ref=e743]: Shop daily essentials from our catalog — priced for your area, fulfilled locally.
+              - generic [ref=e744]:
+                - generic [ref=e745]: "3"
+                - img [ref=e746]
+                - heading "Hub fulfillment" [level=3] [ref=e749]
+                - paragraph [ref=e750]: Orders route to your local hub. If stock runs short, trusted vendors replenish supply.
+              - generic [ref=e751]:
+                - generic [ref=e752]: "4"
+                - img [ref=e753]
+                - heading "Packed & delivered" [level=3] [ref=e758]
+                - paragraph [ref=e759]: Fresh items are picked, packed at the hub, and delivered to your door fast.
+          - generic [ref=e760]:
+            - generic [ref=e761]:
+              - heading "Why shop with us" [level=2] [ref=e762]
+              - paragraph [ref=e763]: The best fit for a hub-first grocery platform — speed, freshness, and local trust.
+            - generic [ref=e764]:
+              - generic [ref=e765]:
+                - img [ref=e767]
+                - heading "Fresh & quality-checked" [level=3] [ref=e770]
+                - paragraph [ref=e771]: Hub-stored inventory with careful picking — so what arrives matches what you ordered.
+              - generic [ref=e772]:
+                - img [ref=e774]
+                - heading "Hyperlocal speed" [level=3] [ref=e777]
+                - paragraph [ref=e778]: Dark-store style fulfillment near you, not shipped from far away warehouses.
+              - generic [ref=e779]:
+                - img [ref=e781]
+                - heading "Trusted supply chain" [level=3] [ref=e784]
+                - paragraph [ref=e785]: Local vendors and hub partners power procurement when you need items most.
+        - generic [ref=e787]:
+          - generic [ref=e788]:
+            - generic [ref=e789]:
+              - heading "Select delivery location" [level=2] [ref=e790]
+              - button [ref=e791]:
+                - img [ref=e792]
+            - generic [ref=e795]:
+              - img [ref=e797]
+              - textbox "Search for area, street name.." [ref=e800]
+            - paragraph [ref=e801]: Type at least 4 characters
+          - generic [ref=e802]:
+            - button "Use your current location Please select your location" [ref=e803]:
+              - img [ref=e805]
+              - generic [ref=e808]:
+                - heading "Use your current location" [level=3] [ref=e809]
+                - paragraph [ref=e810]: Please select your location
+              - img [ref=e811]
+            - button "Add new address" [ref=e813]:
+              - img [ref=e815]
+              - heading "Add new address" [level=3] [ref=e817]
+              - img [ref=e818]
+            - heading "Your saved addresses" [level=4] [ref=e821]
+    - contentinfo [ref=e823]:
+      - img [ref=e825]
+      - generic [ref=e827]:
+        - generic [ref=e828]:
+          - generic [ref=e829]:
+            - img "pack n pure Logo" [ref=e831]
+            - paragraph [ref=e832]: Your daily dose of fresh, organic, and healthy products delivered straight to your door. Freshness guaranteed.
+            - generic [ref=e833]:
+              - paragraph [ref=e834]: Get the app
+              - generic [ref=e835]:
+                - generic "Get it on Google Play" [ref=e836]:
+                  - img [ref=e837]:
+                    - generic [ref=e843]: GET IT ON
+                    - generic [ref=e844]: Google Play
+                - generic "Download on the App Store" [ref=e845]:
+                  - img [ref=e846]:
+                    - generic [ref=e849]: Download on the
+                    - generic [ref=e850]: App Store
+          - generic [ref=e851]:
+            - heading "Quick Links" [level=3] [ref=e852]: Quick Links
+            - list [ref=e854]:
+              - listitem [ref=e855]:
+                - link "Home" [ref=e856] [cursor=pointer]:
+                  - /url: /
+                  - text: Home
+              - listitem [ref=e857]:
+                - link "About Us" [ref=e858] [cursor=pointer]:
+                  - /url: /about
+                  - text: About Us
+              - listitem [ref=e859]:
+                - link "Shop" [ref=e860] [cursor=pointer]:
+                  - /url: /categories
+                  - text: Shop
+              - listitem [ref=e861]:
+                - link "Blogs" [ref=e862] [cursor=pointer]:
+                  - /url: /blogs
+                  - text: Blogs
+              - listitem [ref=e863]:
+                - link "Contact" [ref=e864] [cursor=pointer]:
+                  - /url: /support
+                  - text: Contact
+          - generic [ref=e865]:
+            - heading "Categories" [level=3] [ref=e866]: Categories
+            - list [ref=e868]:
+              - listitem [ref=e869]:
+                - link "Fruits & Vegetables" [ref=e870] [cursor=pointer]:
+                  - /url: /category/fruits-vegetables
+                  - text: Fruits & Vegetables
+              - listitem [ref=e871]:
+                - link "Dairy Products" [ref=e872] [cursor=pointer]:
+                  - /url: /category/dairy-products
+                  - text: Dairy Products
+              - listitem [ref=e873]:
+                - link "Meat & Fish" [ref=e874] [cursor=pointer]:
+                  - /url: /category/meat-fish
+                  - text: Meat & Fish
+              - listitem [ref=e875]:
+                - link "Bakery & Snacks" [ref=e876] [cursor=pointer]:
+                  - /url: /category/bakery-snacks
+                  - text: Bakery & Snacks
+              - listitem [ref=e877]:
+                - link "Beverages" [ref=e878] [cursor=pointer]:
+                  - /url: /category/beverages
+                  - text: Beverages
+          - generic [ref=e879]:
+            - heading "Contact Us" [level=3] [ref=e880]: Contact Us
+            - list [ref=e882]:
+              - listitem [ref=e883]:
+                - img [ref=e885]
+                - generic [ref=e888]: Jalgaon
+              - listitem [ref=e889]:
+                - img [ref=e891]
+                - generic [ref=e893]: "9595429710"
+              - listitem [ref=e894]:
+                - img [ref=e896]
+                - generic [ref=e899]: support@packandpure.com
+        - generic [ref=e900]:
+          - paragraph [ref=e901]: © 2026 pack n pure. All rights reserved.
+          - generic [ref=e902]:
+            - link "Privacy Policy" [ref=e903] [cursor=pointer]:
+              - /url: /privacy
+            - link "Terms of Service" [ref=e904] [cursor=pointer]:
+              - /url: /terms
+  - region "Notifications alt+T"
+```
+
+# Test source
+
+```ts
+  1  | import { expect } from '@playwright/test';
+  2  | 
+  3  | export async function loginAsAdmin(page) {
+  4  |   await page.goto('/admin');
+  5  |   await page.getByPlaceholder(/email/i).fill('Grhapoch@gmail.com');
+  6  |   await page.getByPlaceholder(/pin/i).fill('grhapoch123');
+  7  |   await page.getByRole('button', { name: /enter terminal/i }).click();
+  8  |   await expect(page.getByText(/dashboard/i).first()).toBeVisible({ timeout: 15000 });
+  9  | }
+  10 | 
+  11 | export async function loginAsSeller(page) {
+  12 |   await page.goto('/seller');
+  13 |   // Wait, I need to know seller credentials. The seed script creates seller:
+  14 |   // phone: "9876543210", password: "password123"
+  15 |   await page.getByPlaceholder(/phone|email/i).fill('9876543210');
+  16 |   await page.getByPlaceholder(/password/i).fill('password123');
+  17 |   await page.getByRole('button', { name: /login|sign in/i }).click();
+  18 |   await expect(page.getByText(/dashboard/i).first()).toBeVisible({ timeout: 15000 });
+  19 | }
+  20 | 
+  21 | export async function loginAsCustomer(page) {
+  22 |   await page.goto('/');
+> 23 |   await page.getByRole('button', { name: /login|sign/i }).first().click();
+     |                                                                   ^ Error: locator.click: Test timeout of 30000ms exceeded.
+  24 |   
+  25 |   // Fill phone number
+  26 |   await page.getByPlaceholder(/phone/i).fill('9999999999');
+  27 |   await page.getByRole('button', { name: /get otp/i }).click();
+  28 |   
+  29 |   // Fill OTP
+  30 |   await page.getByPlaceholder(/otp/i).first().fill('110211'); // Mock OTP
+  31 |   await page.getByRole('button', { name: /verify/i }).click();
+  32 |   
+  33 |   // Wait for profile or home indication
+  34 |   await expect(page.locator('text=Profile').first()).toBeVisible({ timeout: 15000 });
+  35 | }
+  36 | 
+```

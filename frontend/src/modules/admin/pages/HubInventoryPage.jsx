@@ -344,10 +344,12 @@ const HubInventoryPage = () => {
   const stats = useMemo(() => {
     const lowStock = rows.filter((item) => statusText(item.status) === "Low Stock").length;
     const totalStock = rows.reduce((sum, item) => sum + Number(item.hubStockQuantity || 0), 0);
+    const totalReservedStock = rows.reduce((sum, item) => sum + Number(item.reservedQty || 0), 0);
     return [
       { label: "Total SKUs", value: String(rows.length) },
       { label: "Low Stock Alerts", value: String(lowStock) },
       { label: "Total Units", value: String(totalStock) },
+      { label: "Reserved Units", value: String(totalReservedStock) },
       {
         label: "Health Score",
         value: rows.length ? `${Math.round(((rows.length - lowStock) / rows.length) * 100)}%` : "0%",
@@ -393,6 +395,7 @@ const HubInventoryPage = () => {
           { key: "category", label: "Category" },
           { key: "sellerName", label: "Supplier" },
           { key: "hubStockQuantity", label: "Hub Stock Quantity" },
+          { key: "reservedQty", label: "Reserved Qty" },
           { key: "sellPrice", label: "Selling Price (₹)" },
           { key: "minimumStockAlert", label: "Minimum Stock Alert" },
           { key: "status", label: "Status" },
