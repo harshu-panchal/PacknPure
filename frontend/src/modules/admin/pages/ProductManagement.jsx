@@ -565,7 +565,7 @@ const ProductManagement = () => {
                     (suggestedSale || '');
                 const mrp = masterMatch?.price ?? sale ?? suggestedSale ?? '';
                 const purchase =
-                    masterMatch?.purchasePrice ?? variantSupply ?? rootSupply ?? '';
+                    variantSupply ?? masterMatch?.purchasePrice ?? rootSupply ?? '';
 
                 const gstEnabled = Boolean(
                     masterMatch?.gstEnabled ?? v?.gstEnabled,
