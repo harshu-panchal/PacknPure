@@ -1708,6 +1708,9 @@ export const deleteProduct = async (req, res) => {
       return handleResponse(res, 404, "Product not found or unauthorized");
     }
 
+    // Cascade delete related HubInventory records to prevent "Unknown Product" orphans
+    await HubInventory.deleteMany({ productId: id });
+
     return handleResponse(res, 200, "Product deleted successfully");
   } catch (error) {
     return handleResponse(res, 500, error.message);

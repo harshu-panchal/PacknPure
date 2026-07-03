@@ -5,6 +5,7 @@ import {
   upsertHubInventory,
   adjustHubInventoryStock,
   updateHubInventoryReorderLevel,
+  deleteHubInventory,
 } from "../controller/hubInventoryController.js";
 
 const router = express.Router();
@@ -22,6 +23,12 @@ router.put(
   verifyToken,
   allowRoles("admin"),
   updateHubInventoryReorderLevel,
+);
+router.delete(
+  "/:id",
+  verifyToken,
+  allowRoles("admin"),
+  deleteHubInventory,
 );
 
 export default router;

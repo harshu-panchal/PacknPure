@@ -304,6 +304,17 @@ const HubInventoryPage = () => {
     }
   };
 
+  const handleRemoveHubInventory = async (row) => {
+    if (!window.confirm(`Are you sure you want to remove ${row.productNameText || 'this product'} from Hub Inventory?`)) return;
+    try {
+      await adminApi.deleteHubInventory(row._id);
+      toast.success("Item removed from Hub Inventory");
+      await fetchInventory();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to remove item");
+    }
+  };
+
   const tableRows = useMemo(
     () =>
       rows.map((item) => ({
@@ -403,7 +414,7 @@ const HubInventoryPage = () => {
         rows={tableRows}
         statusColumn="status"
         renderActions={(row) => (
-          <>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => openStockModal(row)}
@@ -422,7 +433,13 @@ const HubInventoryPage = () => {
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800">
               Update Min
             </button>
-          </>
+            <button
+              type="button"
+              onClick={() => handleRemoveHubInventory(row)}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+              Remove
+            </button>
+          </div>
         )}
       />
 

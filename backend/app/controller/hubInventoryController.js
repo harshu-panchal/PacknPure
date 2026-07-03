@@ -402,3 +402,18 @@ export const updateHubInventoryReorderLevel = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+export const deleteHubInventory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deletedRow = await HubInventory.findByIdAndDelete(id);
+    if (!deletedRow) {
+      return handleResponse(res, 404, "Hub inventory row not found");
+    }
+
+    return handleResponse(res, 200, "Hub inventory item removed successfully");
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};

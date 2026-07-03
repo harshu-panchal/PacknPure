@@ -68,6 +68,7 @@ export const adminApi = {
         axiosInstance.post(`/admin/hub-inventory/${id}/adjust-stock`, payload),
     updateHubInventoryReorderLevel: (id, reorderLevel) =>
         axiosInstance.put(`/admin/hub-inventory/${id}/reorder-level`, { reorderLevel }),
+    deleteHubInventory: (id) => axiosInstance.delete(`/admin/hub-inventory/${id}`),
     getPurchaseRequests: (params) => axiosInstance.get('/admin/purchase-requests', { params }),
     getPurchaseRequestById: (id) => axiosInstance.get(`/admin/purchase-requests/${id}`),
     getPurchaseRequestProductContext: (productId, variantId) =>
