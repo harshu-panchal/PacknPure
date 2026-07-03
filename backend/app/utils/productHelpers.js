@@ -312,7 +312,7 @@ export function validateSellerSupplyPricingAgainstMaster(sellerData, masterProdu
           const mv = masterVariants.find((m) => normalizeVariantMatchKey(m.name) === svKey);
           if (mv) {
               const customerPrice = Number(mv.salePrice || mv.price || 0);
-              if (finalSupply > customerPrice) {
+              if (customerPrice > 0 && finalSupply > customerPrice) {
                   return { ok: false, message: `Supply price for "${sv.name}" (₹${finalSupply.toFixed(2)} incl. GST) cannot exceed the Hub's selling price (₹${customerPrice}).` };
               }
           }
@@ -323,7 +323,7 @@ export function validateSellerSupplyPricingAgainstMaster(sellerData, masterProdu
           const finalSupply = sellerData.finalSupplyPrice || (supplyPrice + (supplyPrice * ((sellerData.gstEnabled ? (Number(sellerData.gstRate) || 0) : 0) / 100)));
           const firstAdmin = firstVariantPricing(masterProduct);
           const customerPrice = Number(firstAdmin.salePrice || firstAdmin.price || 0);
-          if (finalSupply > customerPrice) {
+          if (customerPrice > 0 && finalSupply > customerPrice) {
               return { ok: false, message: `Supply price (₹${finalSupply.toFixed(2)} incl. GST) cannot exceed the Hub's selling price (₹${customerPrice}).` };
           }
       }

@@ -523,7 +523,7 @@ export const getProducts = async (req, res) => {
     }
 
     const masterIds = products.map(p => p.masterProductId).filter(Boolean);
-    const masterProducts = masterIds.length > 0 ? await Product.find({ _id: { $in: masterIds } }).select('price salePrice').lean() : [];
+    const masterProducts = masterIds.length > 0 ? await Product.find({ _id: { $in: masterIds } }).select('price salePrice variants gstEnabled gstRate').lean() : [];
 
     const adminMasterIdsForBreakdown = products
       .filter((p) => p.ownerType === "admin")
@@ -630,6 +630,8 @@ export const getProducts = async (req, res) => {
             );
            if (mv) {
                row.masterSalePrice = mv.salePrice || mv.price;
+               row.masterGstEnabled = mv.gstEnabled || masterProduct.gstEnabled;
+               row.masterGstRate = mv.gstRate || masterProduct.gstRate || 0;
            }
         }
           const vName = normalizeVariantMatchKey(row.name);
@@ -648,6 +650,8 @@ export const getProducts = async (req, res) => {
         price: customerPrice || p.price,
         salePrice: customerPrice || p.salePrice,
         masterSalePrice: customerPrice,
+        masterGstEnabled: masterProduct ? masterProduct.gstEnabled : false,
+        masterGstRate: masterProduct ? (masterProduct.gstRate || 0) : 0,
         supplyPrice,
         purchasePrice: supplyPrice,
         availableQtyHub: hubQtyForSeller,
@@ -1125,90 +1129,10 @@ export const updateProduct = async (req, res) => {
     }
 
     if (role === "admin" && product.ownerType === "seller") {
-      let parsedVars = [];
-      if (typeof productData.variants === "string") {
-        try {
-          parsedVars = JSON.parse(productData.variants);
-        } catch (e) {}
-      } else if (Array.isArray(productData.variants)) {
-        parsedVars = productData.variants;
-      }
-
-      const sellPrice = Number(productData.customerPrice || productData.price || productData.salePrice);
-      if (product.masterProductId) {
-        const masterUpdate = {};
-        if (sellPrice > 0) {
-          masterUpdate.price = sellPrice;
-          masterUpdate.salePrice = sellPrice;
-        }
-        if (parsedVars && parsedVars.length > 0) {
-          masterUpdate.variants = normalizeVariants(parsedVars, {
-            defaultUnit: product.unit,
-            basePrice: sellPrice,
-            baseSalePrice: sellPrice,
-          });
-        }
-        if (Object.keys(masterUpdate).length > 0) {
-          await Product.findByIdAndUpdate(product.masterProductId, { $set: masterUpdate });
-          if (sellPrice > 0) {
-            await mongoose.model("HubInventory").updateMany({ productId: product.masterProductId }, { $set: { sellPrice: sellPrice } });
-          }
-        }
-      } else if (sellPrice > 0) {
-        let existingMaster = await findMasterByNameAndVariants({
-          name: product.name,
-          variants: parsedVars.length > 0 ? parsedVars : product.variants,
-          unit: product.unit,
-          categoryId: product.categoryId,
-          subcategoryId: product.subcategoryId,
-        });
-
-        if (!existingMaster) {
-          const masterSlug = await ensureUniqueSlug(`${product.name}-master`);
-
-          const sourceVariants =
-            parsedVars.length > 0 ? parsedVars : product.variants || [];
-          const normalizedMasterVariants = normalizeVariants(sourceVariants, {
-            defaultUnit: product.unit,
-            basePrice: sellPrice,
-            baseSalePrice: sellPrice,
-          });
-
-          const newMasterData = {
-            name: product.name,
-            slug: masterSlug,
-            description: product.description,
-            price: sellPrice,
-            salePrice: sellPrice,
-            purchasePrice: product.finalSupplyPrice || product.purchasePrice || 0,
-            stock: totalVariantStock(normalizedMasterVariants) || Number(product.stock) || 0,
-            unit: normalizeUnit(product.unit),
-            categoryId: product.categoryId,
-            subcategoryId: product.subcategoryId,
-            brand: product.brand,
-            weight: product.weight,
-            tags: product.tags,
-            status: "active",
-            ownerType: "admin",
-            mainImage: product.mainImage,
-            galleryImages: product.galleryImages,
-            variants: normalizedMasterVariants,
-          };
-          calculateGstCostings(newMasterData, "admin");
-          existingMaster = new Product(newMasterData);
-          await existingMaster.save();
-        } else {
-          await Product.findByIdAndUpdate(existingMaster._id, {
-            $set: { price: sellPrice, salePrice: sellPrice },
-          });
-        }
-
-        productData.masterProductId = existingMaster._id;
-      }
-
+      // Do not sync seller updates back to the master product.
+      // The master product should remain completely independent of individual seller updates.
       delete productData.price;
       delete productData.salePrice;
-      delete productData.purchasePrice;
       delete productData.customerPrice;
       delete productData.sellerId;
     } else if (role !== "admin") {

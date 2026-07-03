@@ -158,6 +158,7 @@ export function isSubcategoryId(categories, id) {
 export function validateAdminProductForm(formData) {
   const missing = [];
   const variants = Array.isArray(formData.variants) ? formData.variants : [];
+  const isSellerProduct = formData.ownerType === 'seller';
 
   if (!String(formData.name || '').trim()) missing.push('Product title');
 
@@ -170,8 +171,13 @@ export function validateAdminProductForm(formData) {
     variants.forEach((v, i) => {
       const label = variants.length > 1 ? `Variant ${i + 1}` : 'Variant';
       if (!String(v.name || '').trim()) missing.push(`${label} name`);
-      const sale = Number(v.salePrice ?? v.price);
-      if (!Number.isFinite(sale) || sale <= 0) missing.push(`${label} sell price`);
+      
+      // Only require sale price for admin/master products
+      if (!isSellerProduct) {
+        const sale = Number(v.salePrice ?? v.price);
+        if (!Number.isFinite(sale) || sale <= 0) missing.push(`${label} sell price`);
+      }
+      
       const stock = Number(v.stock);
       if (!Number.isFinite(stock) || stock < 0) missing.push(`${label} stock`);
     });
@@ -342,10 +348,80 @@ export function adminHubProfitList(item) {
         gstRate: Number(item?.gstRate) || 0,
       },
     ];
-  }
+}
   return variants.map((v, i) => ({
     name: String(v?.name || '').trim() || `Variant ${i + 1}`,
     ...variantHubProfitRow(v, item),
+  }));
+}
+
+/**
+ * Profit margin for Seller listings, taking into account Seller's vendor cost, Seller's GST, and Master Catalog's GST.
+ */
+export function variantSellerProfitRow(variant, itemFallback = null) {
+  // Selling price comes from the master product (injected by backend as masterSalePrice)
+  const sell = Number(variant?.masterSalePrice ?? itemFallback?.masterSalePrice) || 0;
+  
+  // 1. Seller's Vendor Cost
+  const vendorCost = Number(variant?.purchasePrice ?? itemFallback?.purchasePrice);
+  const sellerGstEnabled = Boolean(variant?.gstEnabled ?? itemFallback?.gstEnabled);
+  const sellerGstRate = Number(variant?.gstRate ?? itemFallback?.gstRate) || 0;
+  
+  const hasVendorCost = Number.isFinite(vendorCost) && vendorCost > 0;
+  
+  // 2. Seller's Final Supply Price
+  const sellerGstAmt = sellerGstEnabled ? Math.round((vendorCost * sellerGstRate) / 100) : 0;
+  const sellerFinalSupplyPrice = vendorCost + sellerGstAmt;
+
+  // 3. Admin Extra GST Amount (calculated on Seller Final Supply Price)
+  const masterGstEnabled = Boolean(variant?.masterGstEnabled ?? itemFallback?.masterGstEnabled);
+  const masterGstRate = Number(variant?.masterGstRate ?? itemFallback?.masterGstRate) || 0;
+  const adminExtraGstAmt = masterGstEnabled ? Math.round((sellerFinalSupplyPrice * masterGstRate) / 100) : 0;
+
+  // 4. Total Cost to Hub
+  const totalCost = sellerFinalSupplyPrice + adminExtraGstAmt;
+
+  if (!sell || !hasVendorCost) {
+    return {
+      sell,
+      cost: hasVendorCost ? totalCost : 0,
+      profit: null,
+      marginPct: null,
+      ready: false,
+    };
+  }
+  
+  const profit = sell - totalCost;
+  // Margin percentage relative to cost (as per existing hub logic)
+  const marginPct = (profit / totalCost) * 100;
+  
+  return { sell, cost: totalCost, profit, marginPct, ready: true };
+}
+
+/** Per-variant profit rows for seller inventory table. */
+export function sellerHubProfitList(item) {
+  const variants = Array.isArray(item?.variants) ? item.variants : [];
+  if (!variants.length) {
+    return [
+      {
+        name: item?.name || 'Default',
+        ...variantSellerProfitRow(
+          {
+            masterSalePrice: item?.masterSalePrice,
+            purchasePrice: item?.purchasePrice,
+            gstEnabled: item?.gstEnabled,
+            gstRate: item?.gstRate,
+            masterGstEnabled: item?.masterGstEnabled,
+            masterGstRate: item?.masterGstRate,
+          },
+          item,
+        ),
+      },
+    ];
+  }
+  return variants.map((v, i) => ({
+    name: String(v?.name || '').trim() || `Variant ${i + 1}`,
+    ...variantSellerProfitRow(v, item),
   }));
 }
 

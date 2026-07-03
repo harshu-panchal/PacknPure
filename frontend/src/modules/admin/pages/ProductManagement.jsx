@@ -52,6 +52,7 @@ import {
     variantPricesList,
     variantPriceRangeLabel,
     adminHubProfitList,
+    sellerHubProfitList,
     variantGstBadgeLabel,
     EMPTY_PRODUCT_FORM,
 } from '../utils/adminProductForm';
@@ -496,6 +497,7 @@ const ProductManagement = () => {
             setFormData({
                 name: item.name || '',
                 description: item.description || '',
+                ownerType: item.ownerType || '',
                 price: item.price ?? '',
                 salePrice: item.salePrice ?? item.price ?? '',
                 purchasePrice: item.purchasePrice || (item.ownerType === 'seller' ? item.salePrice : item.price) || 0,
@@ -557,19 +559,21 @@ const ProductManagement = () => {
                             String(m?.name || '').trim().toLowerCase() ===
                             String(v?.name || '').trim().toLowerCase(),
                     ) || masterRows[idx];
+
+                const sellerGstAmt = v?.gstEnabled ? (variantSupply * (Number(v?.gstRate) || 0)) / 100 : 0;
+                const sellerFinalSupplyCost = Number(v?.finalSupplyPrice) || (variantSupply + sellerGstAmt);
+
                 const suggestedSale =
-                    variantSupply > 0 ? Math.ceil(variantSupply * 1.15) : '';
+                    sellerFinalSupplyCost > 0 ? Math.ceil(sellerFinalSupplyCost * 1.15) : '';
                 const sale =
                     masterMatch?.salePrice ??
                     masterMatch?.price ??
                     (suggestedSale || '');
                 const mrp = masterMatch?.price ?? sale ?? suggestedSale ?? '';
                 const purchase =
-                    variantSupply ?? masterMatch?.purchasePrice ?? rootSupply ?? '';
+                    sellerFinalSupplyCost || masterMatch?.purchasePrice || rootSupply || '';
 
-                const gstEnabled = Boolean(
-                    masterMatch?.gstEnabled ?? v?.gstEnabled,
-                );
+                const gstEnabled = false;
                 const gstRate = Number(masterMatch?.gstRate ?? v?.gstRate) || 0;
 
                 return {
@@ -1210,9 +1214,67 @@ const ProductManagement = () => {
                                                 ))}
                                             </div>
                                         ) : (
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                                                Vendor listing
-                                            </span>
+                                            <div className="flex flex-col items-center gap-1 max-w-[140px] mx-auto">
+                                                {sellerHubProfitList(p).map((row, i) => (
+                                                    <div
+                                                        key={`${p._id}-seller-margin-${i}`}
+                                                        className={cn(
+                                                            'inline-flex flex-col items-center px-2 py-0.5 rounded-lg border w-full',
+                                                            !row.ready
+                                                                ? 'bg-slate-50 border-slate-100'
+                                                                : row.profit > 0
+                                                                    ? 'bg-emerald-50 border-emerald-100'
+                                                                    : row.profit === 0
+                                                                        ? 'bg-slate-50 border-slate-100'
+                                                                        : 'bg-rose-50 border-rose-100',
+                                                        )}
+                                                        title={
+                                                            row.ready
+                                                                ? `Sale ₹${row.sell} − Cost ₹${row.cost}`
+                                                                : 'Price info missing'
+                                                        }
+                                                    >
+                                                        {(p.variants?.length || 0) > 1 && (
+                                                            <span className="text-[8px] font-bold text-slate-400 truncate max-w-full px-1">
+                                                                {row.name}
+                                                            </span>
+                                                        )}
+                                                        {!row.ready ? (
+                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">
+                                                                No Margin
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                <span
+                                                                    className={cn(
+                                                                        'text-[11px] font-black',
+                                                                        row.profit > 0
+                                                                            ? 'text-emerald-600'
+                                                                            : row.profit === 0
+                                                                                ? 'text-slate-500'
+                                                                                : 'text-rose-600',
+                                                                    )}
+                                                                >
+                                                                    ₹{row.profit.toLocaleString('en-IN')}
+                                                                </span>
+                                                                <span
+                                                                    className={cn(
+                                                                        'text-[8px] font-bold',
+                                                                        row.profit > 0
+                                                                            ? 'text-emerald-500'
+                                                                            : row.profit === 0
+                                                                                ? 'text-slate-400'
+                                                                                : 'text-rose-500',
+                                                                    )}
+                                                                >
+                                                                    {row.marginPct.toFixed(0)}%{' '}
+                                                                    {row.profit >= 0 ? 'margin' : 'loss'}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         )}
                                     </td>
 
