@@ -28,6 +28,8 @@ const VariantGstFields = ({
   disabled = false,
   compact = false,
   className,
+  title = "GST on this variant",
+  description,
 }) => {
   const enabled = Boolean(variant.gstEnabled);
   const rate = Number(variant.gstRate) || 0;
@@ -44,10 +46,10 @@ const VariantGstFields = ({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={cn("font-semibold text-slate-800", compact ? "text-xs" : "text-sm")}>
-            GST on this variant
+            {title}
           </p>
           <p className="text-[11px] text-slate-500">
-            {enabled ? "Tax applies to the price above" : "No tax on this variant"}
+            {description !== undefined ? description : (enabled ? "Tax applies to the price above" : "No tax on this variant")}
           </p>
         </div>
         <button

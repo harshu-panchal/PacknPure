@@ -16,7 +16,12 @@ export const calculateGstCostings = (doc, ownerType) => {
       v.gstAmount = vGstAmount;
       if (isSeller) {
         v.finalSupplyPrice = vBaseCost + vGstAmount;
-        v.finalVendorCost = 0;
+        
+        // Admin Extra GST on top of Seller's Final Supply Price
+        const extraGstRate = v.adminExtraGstEnabled ? (Number(v.adminExtraGstRate) || 0) : 0;
+        const extraGstAmount = Number((v.finalSupplyPrice * (extraGstRate / 100)).toFixed(2));
+        
+        v.finalVendorCost = v.finalSupplyPrice + extraGstAmount;
       } else {
         v.finalVendorCost = vBaseCost + vGstAmount;
         v.finalSupplyPrice = 0;
@@ -182,6 +187,11 @@ export function normalizeAdminVariants(variants, opts = {}) {
 
     const variantId = v?._id || v?.id;
     const { gstEnabled, gstRate } = normalizeVariantGstFields(v);
+    
+    // Pass through admin extra GST fields
+    const adminExtraGstEnabled = v?.adminExtraGstEnabled === true || v?.adminExtraGstEnabled === "true";
+    const adminExtraGstRate = adminExtraGstEnabled ? (Number(v?.adminExtraGstRate) || 0) : 0;
+
     const row = {
       name,
       unit: normalizeUnit(v?.unit, defaultUnit),
@@ -191,6 +201,8 @@ export function normalizeAdminVariants(variants, opts = {}) {
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       gstEnabled,
       gstRate,
+      adminExtraGstEnabled,
+      adminExtraGstRate,
     };
     if (variantId && mongoose.Types.ObjectId.isValid(String(variantId))) {
       row._id = variantId;
@@ -213,6 +225,11 @@ export function normalizeSellerVariants(variants, opts = {}) {
     const stock = Number(v?.stock);
     const variantId = v?._id || v?.id;
     const { gstEnabled, gstRate } = normalizeVariantGstFields(v);
+    
+    // Pass through admin extra GST fields
+    const adminExtraGstEnabled = v?.adminExtraGstEnabled === true || v?.adminExtraGstEnabled === "true";
+    const adminExtraGstRate = adminExtraGstEnabled ? (Number(v?.adminExtraGstRate) || 0) : 0;
+
     const row = {
       name,
       unit: normalizeUnit(v?.unit, defaultUnit),
@@ -222,6 +239,8 @@ export function normalizeSellerVariants(variants, opts = {}) {
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       gstEnabled,
       gstRate,
+      adminExtraGstEnabled,
+      adminExtraGstRate,
     };
     if (variantId && mongoose.Types.ObjectId.isValid(String(variantId))) {
       row._id = variantId;
@@ -1115,8 +1134,8 @@ export function buildMasterVariantsForGoLive(sellerProduct, priceInputs = [], de
     );
     const { price, salePrice, purchasePrice } = parseGoLiveVariantRow(row, supply, defaultSell);
     const { gstEnabled, gstRate } = normalizeVariantGstFields({
-      gstEnabled: row.gstEnabled ?? sv.gstEnabled,
-      gstRate: row.gstRate ?? sv.gstRate,
+      gstEnabled: row.gstEnabled ?? sv.adminExtraGstEnabled ?? false,
+      gstRate: row.gstRate ?? sv.adminExtraGstRate ?? 0,
     });
     return {
       name: sv.name,

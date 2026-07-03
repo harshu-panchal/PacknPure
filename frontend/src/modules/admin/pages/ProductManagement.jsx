@@ -53,6 +53,7 @@ import {
     variantPriceRangeLabel,
     adminHubProfitList,
     sellerHubProfitList,
+    variantSellerProfitRow,
     variantGstBadgeLabel,
     EMPTY_PRODUCT_FORM,
 } from '../utils/adminProductForm';
@@ -2216,6 +2217,27 @@ const ProductManagement = () => {
                                                                     </div>
                                                                 </>
                                                             )}
+                                                            {isSellerOwned && (
+                                                                <div className="col-span-3 lg:col-span-2 space-y-1">
+                                                                    <label className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest ml-1">Profit</label>
+                                                                    <div className="w-full px-3 py-2.5 bg-emerald-50 ring-1 ring-emerald-100 rounded-xl text-xs font-black text-emerald-700 flex items-center justify-between">
+                                                                        {(() => {
+                                                                            const profitData = variantSellerProfitRow(variant, editingItem);
+                                                                            if (!profitData.ready) return <span>—</span>;
+                                                                            return (
+                                                                                <>
+                                                                                    <span>₹{profitData.profit.toLocaleString('en-IN')}</span>
+                                                                                    {profitData.cost > 0 && (
+                                                                                        <span className="text-[8px] bg-emerald-200/50 px-1 rounded">
+                                                                                            {profitData.marginPct.toFixed(0)}%
+                                                                                        </span>
+                                                                                    )}
+                                                                                </>
+                                                                            );
+                                                                        })()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                             <div className="col-span-2 lg:col-span-2 space-y-1">
                                                                 <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest ml-1">Stock</label>
                                                                 <input
@@ -2260,18 +2282,43 @@ const ProductManagement = () => {
                                                                     <HiOutlineTrash className="h-4 w-4" />
                                                                 </button>
                                                             </div>
-                                                            <div className="col-span-12">
-                                                                <VariantGstFields
-                                                                    variant={variant}
-                                                                    gstRates={gstRates}
-                                                                    taxablePrice={Number(vendorCostValue) || 0}
-                                                                    compact
-                                                                    onChange={(patch) => {
-                                                                        const newVariants = [...formData.variants];
-                                                                        newVariants[idx] = { ...newVariants[idx], ...patch };
-                                                                        setFormData({ ...formData, variants: newVariants });
-                                                                    }}
-                                                                />
+                                                            <div className="col-span-12 flex flex-col gap-3">
+                                                                {isSellerOwned ? (
+                                                                    <VariantGstFields
+                                                                        variant={{
+                                                                            gstEnabled: variant.adminExtraGstEnabled,
+                                                                            gstRate: variant.adminExtraGstRate
+                                                                        }}
+                                                                        gstRates={gstRates}
+                                                                        taxablePrice={Number(vendorCostValue) || 0}
+                                                                        compact
+                                                                        title="Admin Extra GST (Hub Tax)"
+                                                                        description="Optional extra tax applied by Hub on top of Seller's Final Supply Price"
+                                                                        onChange={(patch) => {
+                                                                            const mappedPatch = {};
+                                                                            if ('gstEnabled' in patch) mappedPatch.adminExtraGstEnabled = patch.gstEnabled;
+                                                                            if ('gstRate' in patch) mappedPatch.adminExtraGstRate = patch.gstRate;
+                                                                            
+                                                                            const newVariants = [...formData.variants];
+                                                                            newVariants[idx] = { ...newVariants[idx], ...mappedPatch };
+                                                                            setFormData({ ...formData, variants: newVariants });
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <VariantGstFields
+                                                                        variant={variant}
+                                                                        gstRates={gstRates}
+                                                                        taxablePrice={Number(vendorCostValue) || 0}
+                                                                        compact
+                                                                        title="Hub GST"
+                                                                        description="Tax applied by Hub on this master product"
+                                                                        onChange={(patch) => {
+                                                                            const newVariants = [...formData.variants];
+                                                                            newVariants[idx] = { ...newVariants[idx], ...patch };
+                                                                            setFormData({ ...formData, variants: newVariants });
+                                                                        }}
+                                                                    />
+                                                                )}
                                                             </div>
                                                         </div>
                                                         );

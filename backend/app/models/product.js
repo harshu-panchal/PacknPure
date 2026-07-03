@@ -60,6 +60,15 @@ const variantSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    adminExtraGstEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    adminExtraGstRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     finalVendorCost: {
       type: Number,
       default: 0,

@@ -129,6 +129,9 @@ export function variantsForEditForm(item, activeTab = 'master') {
         purchasePrice: Number(v.purchasePrice ?? item.purchasePrice) || 0,
         gstEnabled: Boolean(v.gstEnabled),
         gstRate: Number(v.gstRate) || 0,
+        adminExtraGstEnabled: Boolean(v.adminExtraGstEnabled),
+        adminExtraGstRate: Number(v.adminExtraGstRate) || 0,
+        finalSupplyPrice: Number(v.finalSupplyPrice) || 0,
       }))
       : [
         {
@@ -141,6 +144,9 @@ export function variantsForEditForm(item, activeTab = 'master') {
           stock: 0,
           gstEnabled: Boolean(item.gstRate > 0),
           gstRate: Number(item.gstRate) || 0,
+          adminExtraGstEnabled: Boolean(item.adminExtraGstEnabled),
+          adminExtraGstRate: Number(item.adminExtraGstRate) || 0,
+          finalSupplyPrice: Number(item.finalSupplyPrice) || 0,
         },
       ];
 
@@ -245,6 +251,8 @@ export function buildAdminProductFormData(formData, { editingItem, activeTab }) 
       stock: Number(v.stock) || 0,
       gstEnabled: Boolean(v.gstEnabled),
       gstRate: v.gstEnabled ? Math.max(0, Number(v.gstRate) || 0) : 0,
+      adminExtraGstEnabled: Boolean(v.adminExtraGstEnabled),
+      adminExtraGstRate: v.adminExtraGstEnabled ? Math.max(0, Number(v.adminExtraGstRate) || 0) : 0,
     };
     const variantId = v._id || v.id;
     if (variantId && String(variantId).length === 24) {
@@ -374,9 +382,9 @@ export function variantSellerProfitRow(variant, itemFallback = null) {
   const sellerFinalSupplyPrice = vendorCost + sellerGstAmt;
 
   // 3. Admin Extra GST Amount (calculated on Seller Final Supply Price)
-  const masterGstEnabled = Boolean(variant?.masterGstEnabled ?? itemFallback?.masterGstEnabled);
-  const masterGstRate = Number(variant?.masterGstRate ?? itemFallback?.masterGstRate) || 0;
-  const adminExtraGstAmt = masterGstEnabled ? Math.round((sellerFinalSupplyPrice * masterGstRate) / 100) : 0;
+  const adminExtraGstEnabled = Boolean(variant?.adminExtraGstEnabled ?? itemFallback?.adminExtraGstEnabled);
+  const adminExtraGstRate = Number(variant?.adminExtraGstRate ?? itemFallback?.adminExtraGstRate) || 0;
+  const adminExtraGstAmt = adminExtraGstEnabled ? Math.round((sellerFinalSupplyPrice * adminExtraGstRate) / 100) : 0;
 
   // 4. Total Cost to Hub
   const totalCost = sellerFinalSupplyPrice + adminExtraGstAmt;
@@ -411,8 +419,8 @@ export function sellerHubProfitList(item) {
             purchasePrice: item?.purchasePrice,
             gstEnabled: item?.gstEnabled,
             gstRate: item?.gstRate,
-            masterGstEnabled: item?.masterGstEnabled,
-            masterGstRate: item?.masterGstRate,
+            adminExtraGstEnabled: item?.adminExtraGstEnabled,
+            adminExtraGstRate: item?.adminExtraGstRate,
           },
           item,
         ),

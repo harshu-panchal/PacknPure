@@ -980,7 +980,6 @@ const ProductManagement = () => {
                                 gstRates={gstRates}
                                 taxablePrice={Number(variant.supplyPrice ?? variant.price) || 0}
                                 compact
-                                disabled={isCatalogLocked}
                                 onChange={(patch) => {
                                   const next = [...formData.variants];
                                   next[idx] = { ...next[idx], ...patch };
