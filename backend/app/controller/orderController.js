@@ -347,9 +347,19 @@ export const placeOrder = async (req, res) => {
 
     // Reserve whatever hub stock is currently available (full or partial).
     const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId);
-    const finalPlan = reserveResult.ok
-      ? hubPlan
-      : await planHubFulfillment(orderItems, hubPlan.hubId);
+
+    // If reservation fails (race condition or stock truly exhausted between plan and reserve),
+    // abort the order immediately. Do NOT silently re-plan — that bypasses stock enforcement.
+    if (!reserveResult.ok) {
+      await Order.deleteOne({ _id: newOrder._id });
+      return handleResponse(
+        res,
+        400,
+        "Stock unavailable: inventory was updated by another request. Please refresh and try again.",
+      );
+    }
+
+    const finalPlan = hubPlan;
 
     let purchaseRequests = [];
     try {

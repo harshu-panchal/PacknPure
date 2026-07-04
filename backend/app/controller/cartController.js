@@ -107,11 +107,55 @@ export const addToCart = async (req, res) => {
 
     const normProductId = String(productId);
     const normVariantId = actualVariantId;
-    const itemIndex = cart.items.findIndex((item) => {
+
+    // First pass: find exact match (same productId AND same variantId)
+    let itemIndex = cart.items.findIndex((item) => {
       const sameProduct = String(item.productId) === normProductId;
       const itemVar = item.variantId ? String(item.variantId) : "";
       return sameProduct && itemVar === normVariantId;
     });
+
+    // Second pass: if no exact match found, check if any item for this product
+    // has a null/empty variantId — this happens when a guest cart item was saved
+    // without variantId and the resolved default variant matches. Merge instead of duplicate.
+    if (itemIndex === -1) {
+      const nullVarIndex = cart.items.findIndex((item) => {
+        const sameProduct = String(item.productId) === normProductId;
+        const itemVar = item.variantId ? String(item.variantId) : "";
+        return sameProduct && itemVar === "";
+      });
+      if (nullVarIndex > -1) {
+        // Upgrade the null-variantId row to have the proper variantId and merge
+        cart.items[nullVarIndex].variantId = actualVariantId;
+        itemIndex = nullVarIndex;
+      }
+    }
+
+    // Third pass: de-duplicate — if multiple rows exist for same product+variant, merge them
+    const duplicateIndexes = [];
+    cart.items.forEach((item, i) => {
+      if (i === itemIndex) return;
+      const sameProduct = String(item.productId) === normProductId;
+      const itemVar = item.variantId ? String(item.variantId) : "";
+      if (sameProduct && (itemVar === normVariantId || itemVar === "")) {
+        duplicateIndexes.push(i);
+      }
+    });
+    if (duplicateIndexes.length > 0) {
+      // Merge all duplicate quantities into the primary item (if found), then remove duplicates
+      const extraQty = duplicateIndexes.reduce((sum, i) => sum + Number(cart.items[i].quantity || 0), 0);
+      if (itemIndex > -1) {
+        cart.items[itemIndex].quantity = Math.max(1, Number(cart.items[itemIndex].quantity || 0) + extraQty);
+      }
+      // Remove duplicates in reverse order to preserve indexes
+      duplicateIndexes.sort((a, b) => b - a).forEach((i) => cart.items.splice(i, 1));
+      // Recalculate itemIndex after splice
+      itemIndex = cart.items.findIndex((item) => {
+        const sameProduct = String(item.productId) === normProductId;
+        const itemVar = item.variantId ? String(item.variantId) : "";
+        return sameProduct && itemVar === normVariantId;
+      });
+    }
 
     if (itemIndex > -1) {
       const nextQty = Math.max(1, Number(cart.items[itemIndex].quantity || 0) + qty);

@@ -618,6 +618,13 @@ export const getProducts = async (req, res) => {
       const hubQtyForSeller = p.masterProductId
         ? hubMap.get(String(p.masterProductId)) ?? 0
         : 0;
+      const hubReservedForSeller = p.masterProductId
+        ? hubReservedMap.get(String(p.masterProductId)) ?? 0
+        : 0;
+      // Sum committedStock across all variants for this seller product
+      const sellerCommittedStock = Array.isArray(p.variants) && p.variants.length > 0
+        ? p.variants.reduce((sum, v) => sum + Math.max(0, Number(v.committedStock) || 0), 0)
+        : Math.max(0, Number(p.committedStock) || 0);
 
       const supplyPrice = resolveSupplyPriceFromInput(p);
 
@@ -655,7 +662,10 @@ export const getProducts = async (req, res) => {
         supplyPrice,
         purchasePrice: supplyPrice,
         availableQtyHub: hubQtyForSeller,
+        reservedQtyHub: hubReservedForSeller,
         availableQtySeller: sellerListingStock,
+        committedQtySeller: sellerCommittedStock,
+        committedStock: sellerCommittedStock,
         stock: sellerListingStock,
         catalogStock: sellerListingStock,
         sellerListingStock,
@@ -1805,6 +1815,8 @@ async function mapSingleProductForCustomerCatalog(productLean) {
     : p.salePrice || p.price;
   const sellerListingStock = catalogStockFromProduct(p);
   let hubQtyForSeller = 0;
+  let reservedQtyHubForSeller = 0;
+  let committedStockForSeller = p.committedStock || 0;
   if (masterId) {
     const hubRow = await HubInventory.findOne({
       hubId: DEFAULT_HUB_ID,

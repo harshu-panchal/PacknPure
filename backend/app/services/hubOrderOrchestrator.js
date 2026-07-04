@@ -134,6 +134,21 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
     const reserveQty = Math.min(availableQty, requiredQty);
     const shortageQty = Math.max(0, requiredQty - reserveQty);
     
+    // Update invMap and variant stock in-memory so the next iteration
+    // for the same product sees the already-allocated qty as consumed.
+    // This prevents the same hub stock from being double-counted.
+    if (reserveQty > 0) {
+      invMap.set(productId, Math.max(0, hubProductQty - reserveQty));
+      if (variantId && baseProduct && Array.isArray(baseProduct.variants)) {
+        const v = baseProduct.variants.find(
+          (v) => String(v._id) === String(variantId) || String(v.id) === String(variantId)
+        );
+        if (v) {
+          v.stock = Math.max(0, (Number(v.stock) || 0) - reserveQty);
+        }
+      }
+    }
+
     allocations.push({ productId, variantId, reserveQty });
     if (shortageQty > 0) {
       shortages.push({

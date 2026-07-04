@@ -1123,7 +1123,30 @@ export const verifyInward = async (req, res) => {
             else hubRow.status = "healthy";
 
             await hubRow.save();
-            console.log(`[Inward] Verified stock for ${productId}: Moved ${acceptedQty} to Available. New total: ${hubRow.availableQty}`);
+            console.log(`[Inward] Verified stock for ${productId}: Moved ${acceptedQty} to ${ pr.orderId ? 'ReservedQty' : 'AvailableQty' }. New total: ${hubRow.availableQty}`);
+
+            // Release Seller Committed Stock (SC) now that goods are physically at the hub.
+            // freezeSellerInventory (called at order time) deducted stock and incremented committedStock.
+            // deductSellerInventoryAfterPickup decrements ONLY committedStock (stock was already deducted).
+            // This must run at QA verification, NOT at pickup, because the pickup OTP flow may not
+            // always be used (direct delivery). We resolve the seller product from the PR line.
+            try {
+              const { deductSellerInventoryAfterPickup } = await import('../services/inventoryLifecycleService.js');
+              const prLine = pr.items?.find((line) => {
+                const lineProductId = String(line.productId?._id || line.productId);
+                // Match on either the resolved master productId or the original seller productId
+                return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
+              });
+              const sellerProductId = prLine?.selectedSellerProductId
+                ? String(prLine.selectedSellerProductId)
+                : String(item.sellerProductId || productId);
+              if (sellerProductId && prLine) {
+                await deductSellerInventoryAfterPickup(sellerProductId, prLine.variantId || null, acceptedQty);
+                console.log(`[Inward] Released SC for seller product ${sellerProductId}: -${acceptedQty} committedStock`);
+              }
+            } catch (scErr) {
+              console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);
+            }
           }
         }
       }
