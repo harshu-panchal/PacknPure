@@ -930,23 +930,30 @@ const CheckoutPage = () => {
                     const lsRaw =
                       typeof window !== "undefined"
                         ? window.localStorage.getItem(
-                          "appzeto_customer_location_v2",
+                          "location_v2",
                         )
                         : null;
                     const parsed = lsRaw ? JSON.parse(lsRaw) : null;
-                    const nameFromCache = parsed?.name || currentLocation?.name;
-                    if (!nameFromCache) {
-                      showToast("No saved current location found yet", "error");
+                    const nameFromCache = parsed?.address || currentLocation?.name;
+                    
+                    if (!nameFromCache || nameFromCache === "Please select your location") {
+                      showToast("Detecting location... please try again in a moment", "error");
                       return;
                     }
+                    
                     setCurrentAddress((prev) => ({
                       ...prev,
                       address: nameFromCache,
                       landmark: "",
                       city:
-                        [parsed?.city, parsed?.state, parsed?.pincode]
+                        [parsed?.city || currentLocation?.city, parsed?.state || currentLocation?.state, parsed?.pincode || currentLocation?.pincode]
                           .filter(Boolean)
                           .join(", ") || prev.city,
+                      location: (parsed?.latitude && parsed?.longitude)
+                        ? { lat: parsed.latitude, lng: parsed.longitude }
+                        : (currentLocation?.latitude && currentLocation?.longitude)
+                          ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+                          : prev.location
                     }));
                     showToast("Using your current saved location", "success");
                   } catch {
