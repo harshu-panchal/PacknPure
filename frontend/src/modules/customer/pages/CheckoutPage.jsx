@@ -52,6 +52,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import emptyBoxAnimation from "../../../assets/lottie/Empty box.json";
+import MapPicker from "@/shared/components/MapPicker";
 
 const CheckoutPage = () => {
   const {
@@ -184,6 +185,9 @@ const CheckoutPage = () => {
     phone: "",
   });
   const [savedRecipient, setSavedRecipient] = useState(null);
+
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
+  const [mapPickerMode, setMapPickerMode] = useState("recipient"); // 'recipient' or 'edit'
 
   const [manualCode, setManualCode] = useState("");
 
@@ -764,41 +768,17 @@ const CheckoutPage = () => {
                             <button
                               type="button"
                               onClick={() => {
-                                if (!navigator.geolocation) {
-                                  showToast("Geolocation not supported", "error");
-                                  return;
-                                }
-                                navigator.geolocation.getCurrentPosition(
-                                  async (position) => {
-                                    try {
-                                      const { latitude, longitude } = position.coords;
-                                      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-                                      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`);
-                                      const data = await res.json();
-                                      if (data.results && data.results.length > 0) {
-                                        const components = data.results[0].address_components || [];
-                                        const getComponent = (types) => components.find((c) => types.every((t) => c.types.includes(t)))?.long_name;
-                                        setRecipientData(prev => ({
-                                          ...prev,
-                                          completeAddress: data.results[0].formatted_address,
-                                          pincode: getComponent(["postal_code"]) || "",
-                                          location: { lat: latitude, lng: longitude }
-                                        }));
-                                        showToast("Location fetched successfully", "success");
-                                      }
-                                    } catch (e) {
-                                      showToast("Failed to fetch address", "error");
-                                    }
-                                  },
-                                  () => showToast("Location permission denied", "error")
-                                );
+                                setMapPickerMode("recipient");
+                                setIsMapPickerOpen(true);
                               }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-600 hover:text-brand-700"
-                              title="Fetch Current Location"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-[#E23744] hover:text-[#c22e3a] transition-colors"
                             >
-                              <MapPin size={18} />
+                              <MapPin size={16} />
+                              <span className="text-xs font-bold">Map</span>
                             </button>
                           </div>
+                          
+                          {/* Fetch location error handling was removed since we use MapPicker now */}
                           <Input
                             placeholder="Find landmark (optional)"
                             value={recipientData.landmark}
@@ -873,6 +853,34 @@ const CheckoutPage = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              <MapPicker
+                isOpen={isMapPickerOpen}
+                onClose={() => setIsMapPickerOpen(false)}
+                onConfirm={(loc) => {
+                  if (mapPickerMode === "recipient") {
+                    setRecipientData(prev => ({
+                      ...prev,
+                      completeAddress: loc.address || prev.completeAddress,
+                    }));
+                  } else {
+                    setEditAddressForm(prev => ({
+                      ...prev,
+                      address: loc.address || prev.address,
+                      location: { lat: loc.lat, lng: loc.lng }
+                    }));
+                  }
+                  setIsMapPickerOpen(false);
+                  showToast("Location updated from map", "success");
+                }}
+                initialAddress={
+                  mapPickerMode === "recipient"
+                    ? recipientData.completeAddress
+                    : editAddressForm.address
+                }
+                title={mapPickerMode === "recipient" ? "Select Delivery Location" : "Edit Delivery Location"}
+                showRadius={false}
+              />
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-900">
                   Delivery address
@@ -1347,41 +1355,13 @@ const CheckoutPage = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!navigator.geolocation) {
-                        showToast("Geolocation not supported", "error");
-                        return;
-                      }
-                      navigator.geolocation.getCurrentPosition(
-                        async (position) => {
-                          try {
-                            const { latitude, longitude } = position.coords;
-                            const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-                            const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`);
-                            const data = await res.json();
-                            if (data.results && data.results.length > 0) {
-                              const components = data.results[0].address_components || [];
-                              const getComponent = (types) => components.find((c) => types.every((t) => c.types.includes(t)))?.long_name;
-                              const city = getComponent(["locality"]) || getComponent(["administrative_area_level_2"]) || "";
-                              const pincode = getComponent(["postal_code"]) || "";
-                              setEditAddressForm(prev => ({
-                                ...prev,
-                                address: data.results[0].formatted_address,
-                                city: `${city} - ${pincode}`,
-                                location: { lat: latitude, lng: longitude }
-                              }));
-                              showToast("Location fetched successfully", "success");
-                            }
-                          } catch (e) {
-                            showToast("Failed to fetch address", "error");
-                          }
-                        },
-                        () => showToast("Location permission denied", "error")
-                      );
+                      setMapPickerMode("edit");
+                      setIsMapPickerOpen(true);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-600 hover:text-brand-700"
-                    title="Fetch Current Location"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-[#E23744] hover:text-[#c22e3a] transition-colors"
                   >
                     <MapPin size={16} />
+                    <span className="text-xs font-bold">Map</span>
                   </button>
                 </div>
               </div>

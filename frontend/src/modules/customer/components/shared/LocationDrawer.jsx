@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "../../context/LocationContext";
 import { loadGoogleMaps } from "../../../../core/services/googleMapsLoader";
 import { useDebouncedValue, DEBOUNCE_MS } from "@shared/hooks/useDebounce";
+import MapPicker from "@/shared/components/MapPicker";
 
 const LocationDrawer = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ const LocationDrawer = ({ isOpen, onClose }) => {
   const [placePredictions, setPlacePredictions] = useState([]);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [placesError, setPlacesError] = useState("");
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
 
   const MIN_QUERY_LENGTH = 4;
   const MAX_SUGGESTIONS = 5;
@@ -438,6 +440,28 @@ const LocationDrawer = ({ isOpen, onClose }) => {
                 <ChevronRight size={20} className="text-slate-300" />
               </button>
 
+              {/* Locate on Map */}
+              <button
+                type="button"
+                onClick={() => setIsMapPickerOpen(true)}
+                className="flex items-center gap-4 bg-white p-4 rounded-2xl hover:bg-slate-50 transition-colors group text-left shadow-sm w-full">
+                <div className="h-10 w-10 flex items-center justify-center text-[#E23744]">
+                  <MapPin
+                    size={24}
+                    className="group-hover:scale-110 transition-transform"
+                  />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-[#1A1A1A] text-[15px]">
+                    Locate on Map
+                  </h3>
+                  <p className="text-[13px] text-slate-500 font-medium">
+                    Manually adjust your location
+                  </p>
+                </div>
+                <ChevronRight size={20} className="text-slate-300" />
+              </button>
+
               {/* Add Address */}
               <button
                 onClick={handleAddAddress}
@@ -514,9 +538,34 @@ const LocationDrawer = ({ isOpen, onClose }) => {
                   ))}
                 </div>
               </div>
-            </div>
-          </motion.div>
+              </div>
+            </motion.div>
           </div>
+
+          <MapPicker
+            isOpen={isMapPickerOpen}
+            onClose={() => setIsMapPickerOpen(false)}
+            onConfirm={(loc) => {
+              updateLocation(
+                {
+                  name: loc.address || "Selected from map",
+                  time: "12-15 mins",
+                  city: currentLocation.city,
+                  state: currentLocation.state,
+                  pincode: currentLocation.pincode,
+                  latitude: loc.lat,
+                  longitude: loc.lng,
+                },
+                { persist: true, updateSavedHome: false },
+              );
+              setIsMapPickerOpen(false);
+              onClose();
+            }}
+            initialAddress={currentLocation.name}
+            initialLocation={{ lat: Number(currentLocation.latitude) || 22.7111, lng: Number(currentLocation.longitude) || 75.9001 }}
+            title="Locate on Map"
+            showRadius={false}
+          />
         </>
       )}
     </AnimatePresence>
