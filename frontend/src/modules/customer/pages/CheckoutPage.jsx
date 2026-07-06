@@ -936,43 +936,27 @@ const CheckoutPage = () => {
               {/* Use current location button */}
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   try {
-                    const lsRaw =
-                      typeof window !== "undefined"
-                        ? window.localStorage.getItem(
-                          "location_v2",
-                        )
-                        : null;
-                    const parsed = lsRaw ? JSON.parse(lsRaw) : null;
-                    const nameFromCache = parsed?.address || currentLocation?.name;
-                    
-                    if (!nameFromCache || nameFromCache === "Please select your location") {
-                      showToast("Detecting location... please try again in a moment", "error");
-                      return;
+                    showToast("Detecting your exact location...", "info");
+                    const loc = await refreshLocation();
+                    if (loc) {
+                      setCurrentAddress((prev) => ({
+                        ...prev,
+                        address: loc.name,
+                        landmark: "",
+                        city: [loc.city, loc.state, loc.pincode].filter(Boolean).join(", "),
+                        location: { lat: loc.latitude, lng: loc.longitude }
+                      }));
+                      setSavedRecipient(null); // Clear recipient to ensure UI shows the GPS location
+                      showToast("Location updated successfully", "success");
                     }
-                    
-                    setCurrentAddress((prev) => ({
-                      ...prev,
-                      address: nameFromCache,
-                      landmark: "",
-                      city:
-                        [parsed?.city || currentLocation?.city, parsed?.state || currentLocation?.state, parsed?.pincode || currentLocation?.pincode]
-                          .filter(Boolean)
-                          .join(", ") || prev.city,
-                      location: (parsed?.latitude && parsed?.longitude)
-                        ? { lat: parsed.latitude, lng: parsed.longitude }
-                        : (currentLocation?.latitude && currentLocation?.longitude)
-                          ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
-                          : prev.location
-                    }));
-                    showToast("Using your current saved location", "success");
-                  } catch {
-                    showToast("Unable to read saved location", "error");
+                  } catch (err) {
+                    showToast(err.message || "Failed to fetch GPS location", "error");
                   }
                 }}
                 className="mt-3 w-full py-2.5 rounded-2xl border border-dashed border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors">
-                Use current location (from last detected)
+                Use current location (from GPS)
               </button>
             </section>
 

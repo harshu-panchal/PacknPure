@@ -1154,8 +1154,27 @@ export const verifyInward = async (req, res) => {
                 ? String(prLine.selectedSellerProductId)
                 : String(item.sellerProductId || productId);
               if (sellerProductId && prLine) {
-                await deductSellerInventoryAfterPickup(sellerProductId, prLine.variantId || null, acceptedQty);
-                console.log(`[Inward] Released SC for seller product ${sellerProductId}: -${acceptedQty} committedStock`);
+                let sellerVariantId = prLine.variantId || null;
+                
+                // Map Master Variant ID to Seller Variant ID using name normalization
+                if (sellerVariantId) {
+                  const ProductModel = (await import("../models/product.js")).default;
+                  const { normalizeVariantMatchKey } = await import("../utils/productHelpers.js");
+                  const masterProduct = await ProductModel.findById(prLine.productId);
+                  const sellerProduct = await ProductModel.findById(sellerProductId);
+                  
+                  if (masterProduct && sellerProduct) {
+                    const masterVar = masterProduct.variants?.find(v => String(v._id) === String(sellerVariantId));
+                    if (masterVar) {
+                      const masterKey = normalizeVariantMatchKey(masterVar.name);
+                      const sellerVar = sellerProduct.variants?.find(v => normalizeVariantMatchKey(v.name) === masterKey);
+                      if (sellerVar) sellerVariantId = sellerVar._id;
+                    }
+                  }
+                }
+
+                await deductSellerInventoryAfterPickup(sellerProductId, sellerVariantId, acceptedQty);
+                console.log(`[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`);
               }
             } catch (scErr) {
               console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);

@@ -82,98 +82,99 @@ export const LocationProvider = ({ children }) => {
   // Resolve location once using browser geolocation + Google Maps Geocoding.
   // Must be called directly from a user gesture (click/tap) for the browser to show the permission prompt.
   const fetchAndCacheLocation = () => {
-    if (
-      typeof window === "undefined" ||
-      !("navigator" in window) ||
-      !navigator.geolocation
-    ) {
-      return;
-    }
+    return new Promise((resolve, reject) => {
+      if (
+        typeof window === "undefined" ||
+        !("navigator" in window) ||
+        !navigator.geolocation
+      ) {
+        reject(new Error("Geolocation not supported by browser"));
+        return;
+      }
 
-    setIsFetchingLocation(true);
-    setLocationError(null);
+      setIsFetchingLocation(true);
+      setLocationError(null);
 
-    // Call getCurrentPosition immediately - must run in same synchronous stack as user click
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
+      // Call getCurrentPosition immediately - must run in same synchronous stack as user click
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude } = position.coords;
 
-          const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-          if (!apiKey) {
-            throw new Error("Google Maps API key is missing");
-          }
+            const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+            if (!apiKey) {
+              throw new Error("Google Maps API key is missing");
+            }
 
-          const params = new URLSearchParams({
-            latlng: `${latitude},${longitude}`,
-            key: apiKey,
-          });
+            const params = new URLSearchParams({
+              latlng: `${latitude},${longitude}`,
+              key: apiKey,
+            });
 
-          const response = await fetch(
-            `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`,
-          );
-
-          if (!response.ok) {
-            throw new Error("Failed to fetch address from Google Maps");
-          }
-
-          const data = await response.json();
-
-          // Handle Google Geocoding API error responses
-          if (data.status === "REQUEST_DENIED") {
-            const msg =
-              data.error_message ||
-              "Geocoding API rejected (check API key restrictions)";
-            throw new Error(msg);
-          }
-          if (data.status === "OVER_QUERY_LIMIT") {
-            throw new Error("Geocoding API quota exceeded");
-          }
-          if (!data.results || data.results.length === 0) {
-            throw new Error(
-              data.error_message || "No address found for current location",
+            const response = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`,
             );
-          }
 
-          const components = data.results[0].address_components || [];
+            if (!response.ok) {
+              throw new Error("Failed to fetch address from Google Maps");
+            }
 
-          const getComponent = (types) =>
-            components.find((c) => types.every((t) => c.types.includes(t)))
-              ?.long_name;
+            const data = await response.json();
 
-          // Build address from components to match: "214, Rajshri Palace Colony, Pipliyahana, Indore, Madhya Pradesh 452018, India"
-          const premise = getComponent(["premise"]);
-          const neighborhood = getComponent(["neighborhood"]);
-          const sublocality = getComponent([
-            "sublocality_level_1",
-            "sublocality",
-          ]);
-          const locality = getComponent(["locality"]);
-          const state = getComponent(["administrative_area_level_1"]);
-          const pincode = getComponent(["postal_code"]);
-          const country = getComponent(["country"]);
+            // Handle Google Geocoding API error responses
+            if (data.status === "REQUEST_DENIED") {
+              const msg =
+                data.error_message ||
+                "Geocoding API rejected (check API key restrictions)";
+              throw new Error(msg);
+            }
+            if (data.status === "OVER_QUERY_LIMIT") {
+              throw new Error("Geocoding API quota exceeded");
+            }
+            if (!data.results || data.results.length === 0) {
+              throw new Error(
+                data.error_message || "No address found for current location",
+              );
+            }
 
-          const displayParts = [];
-          if (premise) displayParts.push(premise);
-          if (neighborhood) displayParts.push(neighborhood);
-          if (sublocality && sublocality !== neighborhood)
-            displayParts.push(sublocality);
-          if (locality) displayParts.push(locality);
+            const components = data.results[0].address_components || [];
 
-          let statePincode = "";
-          if (state) statePincode += state;
-          if (pincode) statePincode += (statePincode ? " " : "") + pincode;
-          if (statePincode) displayParts.push(statePincode);
+            const getComponent = (types) =>
+              components.find((c) => types.every((t) => c.types.includes(t)))
+                ?.long_name;
 
-          if (country) displayParts.push(country);
+            // Build address from components to match: "214, Rajshri Palace Colony, Pipliyahana, Indore, Madhya Pradesh 452018, India"
+            const premise = getComponent(["premise"]);
+            const neighborhood = getComponent(["neighborhood"]);
+            const sublocality = getComponent([
+              "sublocality_level_1",
+              "sublocality",
+            ]);
+            const locality = getComponent(["locality"]);
+            const state = getComponent(["administrative_area_level_1"]);
+            const pincode = getComponent(["postal_code"]);
+            const country = getComponent(["country"]);
 
-          const friendlyName =
-            displayParts.join(", ") ||
-            data.results[0]?.formatted_address ||
-            `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+            const displayParts = [];
+            if (premise) displayParts.push(premise);
+            if (neighborhood) displayParts.push(neighborhood);
+            if (sublocality && sublocality !== neighborhood)
+              displayParts.push(sublocality);
+            if (locality) displayParts.push(locality);
 
-          updateLocation(
-            {
+            let statePincode = "";
+            if (state) statePincode += state;
+            if (pincode) statePincode += (statePincode ? " " : "") + pincode;
+            if (statePincode) displayParts.push(statePincode);
+
+            if (country) displayParts.push(country);
+
+            const friendlyName =
+              displayParts.join(", ") ||
+              data.results[0]?.formatted_address ||
+              `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+
+            const locObj = {
               name: friendlyName,
               time: "12-15 mins",
               city: locality || "Indore",
@@ -181,28 +182,30 @@ export const LocationProvider = ({ children }) => {
               pincode: pincode || "452018",
               latitude: latitude,
               longitude: longitude,
-            },
-            { persist: true, updateSavedHome: false },
-          );
-          return true;
-        } catch (err) {
-          setLocationError(err.message || "Unable to fetch address");
-          return false;
-        } finally {
+            };
+
+            updateLocation(locObj, { persist: true, updateSavedHome: false });
+            setIsFetchingLocation(false);
+            resolve(locObj);
+          } catch (err) {
+            setLocationError(err.message || "Unable to fetch address");
+            setIsFetchingLocation(false);
+            reject(err);
+          }
+        },
+        (error) => {
+          const errObj = new Error(error.message || "Location permission denied");
+          setLocationError(errObj.message);
           setIsFetchingLocation(false);
-        }
-      },
-      (error) => {
-        setLocationError(error.message || "Location permission denied");
-        setIsFetchingLocation(false);
-        return false;
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000,
-      },
-    );
+          reject(errObj);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        },
+      );
+    });
   };
 
   const refreshAddresses = useCallback(async () => {
