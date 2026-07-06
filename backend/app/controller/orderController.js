@@ -1192,6 +1192,22 @@ export const updateOrderStatus = async (req, res) => {
     // Handle Cancellation (Stock Reversal & Transaction Update)
     if (status === "cancelled" && oldStatus !== "cancelled") {
       await compensateOrderCancellation(order, canonicalOrderId);
+      
+      if (order.workflowVersion >= 2) {
+        order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
+        if (isAdmin) {
+          order.cancelledBy = "admin";
+          order.cancelReason = "Cancelled manually by Admin via Dashboard";
+        }
+        
+        const { retractDeliveryBroadcastForOrder, emitOrderStatusUpdate } = await import("../services/orderSocketEmitter.js");
+        
+        // If it was actively searching for a rider, pull it from their screens
+        await retractDeliveryBroadcastForOrder(canonicalOrderId);
+        
+        // Push real-time update to customer
+        emitOrderStatusUpdate(canonicalOrderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, order.customer);
+      }
     }
 
     // Handle Confirmation/Delivery (Settle Transaction for Demo)

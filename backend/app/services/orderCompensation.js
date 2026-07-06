@@ -19,14 +19,16 @@ export async function compensateOrderCancellation(order, orderIdString) {
         await handleCustomerCancellation(item.product, item.variantId, qtyToRelease, "before_pickup_seller");
       }
 
-      await StockHistory.create({
-        product: item.product,
-        seller: order.seller,
-        type: "Correction",
-        quantity: qtyToRelease,
-        note: `Order #${orderIdString} Cancelled (Reversed Qty)`,
-        order: order._id,
-      });
+      if (order.seller) {
+        await StockHistory.create({
+          product: item.product,
+          seller: order.seller,
+          type: "Correction",
+          quantity: qtyToRelease,
+          note: `Order #${orderIdString} Cancelled (Reversed Qty)`,
+          order: order._id,
+        });
+      }
     }
   }
 
