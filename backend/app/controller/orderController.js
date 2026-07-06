@@ -373,33 +373,9 @@ export const placeOrder = async (req, res) => {
     } catch (procurementErr) {
       // Roll back any hub reservations and abort the order when procurement is impossible.
       if (reserveResult.ok && Array.isArray(reserveResult.reservedRows)) {
+        const { releaseHubReservation } = await import("../services/inventoryLifecycleService.js");
         for (const applied of reserveResult.reservedRows) {
-          // Best-effort rollback; do not throw if rollback fails.
-          // eslint-disable-next-line no-await-in-loop
-          await HubInventory.findOneAndUpdate(
-            { hubId: hubPlan.hubId, productId: applied.productId },
-            { $inc: { availableQty: applied.reserveQty, reservedQty: -applied.reserveQty } },
-          );
-          // eslint-disable-next-line no-await-in-loop
-          if (applied.variantId) {
-            try {
-              const res = await Product.updateOne(
-                { _id: applied.productId },
-                {
-                  $inc: {
-                    stock: applied.reserveQty,
-                    "variants.$[elem].stock": applied.reserveQty
-                  }
-                },
-                { arrayFilters: [{ "elem._id": new mongoose.Types.ObjectId(applied.variantId) }] }
-              );
-              if (res.modifiedCount === 0) throw new Error("UpdateOne modified 0 documents");
-            } catch (e) {
-              await Product.findByIdAndUpdate(applied.productId, { $inc: { stock: applied.reserveQty } });
-            }
-          } else {
-            await Product.findByIdAndUpdate(applied.productId, { $inc: { stock: applied.reserveQty } });
-          }
+          await releaseHubReservation(applied.productId, applied.variantId, applied.reserveQty);
         }
       }
 

@@ -459,12 +459,11 @@ export function totalVariantCommitted(variants) {
 export function effectiveProductStock(product) {
   if (Array.isArray(product?.variants) && product.variants.length > 0) {
     const variantStockSum = totalVariantStock(product.variants);
-    const variantCommittedSum = totalVariantCommitted(product.variants);
     if (variantStockSum > 0) {
-      return Math.max(0, variantStockSum - variantCommittedSum);
+      return Math.max(0, variantStockSum);
     }
   }
-  return Math.max(0, (Number(product?.stock) || 0) - (Number(product?.committedStock) || 0));
+  return Math.max(0, Number(product?.stock) || 0);
 }
 
 /** Calculate customer cart cap: hub variant stock + gross seller stock (matches admin/seller UIs). */
@@ -479,17 +478,17 @@ export async function calculateTotalAvailableStock(masterProduct, variantId = nu
   let masterVar = null;
   const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
   const hubRow = await HubInventory.findOne({ hubId, productId: masterProduct._id }).lean();
-  const hubTotalQty = hubRow ? Math.max(0, Number(hubRow.availableQty || 0) - Number(hubRow.reservedQty || 0)) : 0;
+  const hubTotalQty = hubRow ? Math.max(0, Number(hubRow.availableQty || 0)) : 0;
 
   if (variantId && Array.isArray(masterProduct.variants)) {
      masterVar = masterProduct.variants.find(v => String(v._id) === String(variantId) || String(v.id) === String(variantId));
-     hubAvailableQty = Math.min(hubTotalQty, Math.max(0, (Number(masterVar?.stock) || 0) - (Number(masterVar?.committedStock) || 0)));
+     hubAvailableQty = Math.min(hubTotalQty, Math.max(0, Number(masterVar?.stock) || 0));
   } else {
-     const maxVarStock = Array.isArray(masterProduct.variants) ? masterProduct.variants.reduce((acc, v) => acc + Math.max(0, (Number(v.stock) || 0) - (Number(v.committedStock) || 0)), 0) : 0;
+     const maxVarStock = Array.isArray(masterProduct.variants) ? masterProduct.variants.reduce((acc, v) => acc + Math.max(0, Number(v.stock) || 0), 0) : 0;
      hubAvailableQty = Math.min(hubTotalQty, maxVarStock);
   }
 
-  // 2. Sum(SellerAvailableQty) (stock - committedStock)
+  // 2. Sum(SellerAvailableQty) (stock)
   let sumSellerQty = 0;
   if (masterProduct.ownerType === "admin") {
     try {
@@ -508,17 +507,17 @@ export async function calculateTotalAvailableStock(masterProduct, variantId = nu
                 )
               : null;
             if (sVar) {
-               sumSellerQty += Math.max(0, (Number(sVar.stock) || 0) - (Number(sVar.committedStock) || 0));
+               sumSellerQty += Math.max(0, Number(sVar.stock) || 0);
             } else if (!Array.isArray(sDoc.variants) || sDoc.variants.length === 0) {
                if (Array.isArray(masterProduct.variants) && masterProduct.variants.length === 1) {
                  // Seller has no variants but master exactly 1, assume seller's root stock applies
-                 sumSellerQty += Math.max(0, (Number(sDoc.stock) || 0) - (Number(sDoc.committedStock) || 0));
+                 sumSellerQty += Math.max(0, Number(sDoc.stock) || 0);
                }
             }
          } else {
             const vSum = Array.isArray(sDoc.variants)
               ? sDoc.variants.reduce(
-                  (acc, v) => acc + Math.max(0, (Number(v.stock) || 0) - (Number(v.committedStock) || 0)),
+                  (acc, v) => acc + Math.max(0, Number(v.stock) || 0),
                   0,
                 )
               : 0;
@@ -586,7 +585,7 @@ export function enrichSellerProductRow(product) {
     stock: catalogStock,
     committedStock,
     catalogStock,
-    availableQtySeller: catalogStock,
+    availableQtySeller: Math.max(0, catalogStock - committedStock),
     pricingMode: PRICING_MODE_SUPPLY,
     supplyPrice,
     price: supplyPrice,

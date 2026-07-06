@@ -1090,7 +1090,6 @@ export const verifyInward = async (req, res) => {
           });
 
           if (hubRow) {
-            // Allocate to reservedQty if it's for a customer order, otherwise to availableQty
             if (pr.orderId) {
               hubRow.reservedQty = (Number(hubRow.reservedQty) || 0) + acceptedQty;
             } else {
@@ -1124,6 +1123,20 @@ export const verifyInward = async (req, res) => {
 
             await hubRow.save();
             console.log(`[Inward] Verified stock for ${productId}: Moved ${acceptedQty} to ${ pr.orderId ? 'ReservedQty' : 'AvailableQty' }. New total: ${hubRow.availableQty}`);
+
+            // Call Centralized Sync Service
+            if (!pr.orderId && acceptedQty > 0) {
+              try {
+                const { syncProductStock } = await import('../services/inventorySyncService.js');
+                const prLine = pr.items?.find((line) => {
+                  const lineProductId = String(line.productId?._id || line.productId);
+                  return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
+                });
+                await syncProductStock(productId, prLine?.variantId || null, acceptedQty);
+              } catch (err) {
+                console.error("[verifyInward] Failed to sync product stock:", err);
+              }
+            }
 
             // Release Seller Committed Stock (SC) now that goods are physically at the hub.
             // freezeSellerInventory (called at order time) deducted stock and incremented committedStock.

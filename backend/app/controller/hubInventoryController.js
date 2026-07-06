@@ -140,6 +140,7 @@ export const upsertHubInventory = async (req, res) => {
     const finalHubId = String(hubId || DEFAULT_HUB_ID);
     const catalogProduct = await Product.findById(resolvedMasterProductId);
 
+    let resolvedVariantId = null;
     if (isStockAdd && catalogProduct && variantStockRequiresSelection(catalogProduct)) {
       const idx = resolveVariantIndex(catalogProduct, { variantId, variantIndex, variantName });
       if (idx === -2) {
@@ -158,22 +159,7 @@ export const upsertHubInventory = async (req, res) => {
           variants: listVariantsForStockPicker(catalogProduct),
         });
       }
-
-      const current = Math.max(0, Number(catalogProduct.variants[idx]?.stock) || 0);
-      const updatedVariants = setVariantStockAtIndex(
-        catalogProduct.variants,
-        idx,
-        current + qty,
-      );
-      const catalogStock = totalVariantStock(updatedVariants);
-      catalogProduct.variants = updatedVariants;
-      catalogProduct.stock = catalogStock;
-      catalogProduct.markModified("variants");
-      await catalogProduct.save();
-    } else if (isStockAdd && catalogProduct && !variantStockRequiresSelection(catalogProduct)) {
-      const nextStock = Math.max(0, Number(catalogProduct.stock) || 0) + qty;
-      catalogProduct.stock = nextStock;
-      await catalogProduct.save();
+      resolvedVariantId = catalogProduct.variants[idx]?._id || null;
     }
 
     let row = await HubInventory.findOne({ hubId: finalHubId, productId: resolvedMasterProductId });
@@ -186,12 +172,7 @@ export const upsertHubInventory = async (req, res) => {
             ? product.salePrice
             : product?.price || 0,
       );
-      const initialHubQty =
-        catalogProduct && variantStockRequiresSelection(catalogProduct)
-          ? totalVariantStock(catalogProduct.variants)
-          : catalogProduct
-            ? Math.max(0, Number(catalogProduct.stock) || 0)
-            : qty;
+      const initialHubQty = Math.max(0, Number(catalogProduct?.stock || 0)) + qty;
 
       row = new HubInventory({
         hubId: finalHubId,
@@ -209,12 +190,7 @@ export const upsertHubInventory = async (req, res) => {
         priceUpdatedAt: new Date(),
       });
     } else {
-      if (isStockAdd && catalogProduct) {
-        row.availableQty =
-          variantStockRequiresSelection(catalogProduct)
-            ? totalVariantStock(catalogProduct.variants)
-            : Math.max(0, Number(catalogProduct.stock) || 0);
-      } else if (isStockAdd) {
+      if (isStockAdd) {
         row.availableQty = Math.max(0, Number(row.availableQty || 0) + qty);
       }
       if (minimumStockAlert !== undefined) {
@@ -250,21 +226,20 @@ export const upsertHubInventory = async (req, res) => {
     row.status = normalizeStatus(Number(row.availableQty || 0), Number(row.reorderLevel || 0));
     await row.save();
 
-    // Catalog Sync (master catalog pricing)
-    await Product.findByIdAndUpdate(resolvedMasterProductId, {
-      $set: {
-        salePrice: Number(row.sellPrice || 0),
-        purchasePrice: Number(row.avgPurchaseCost || row.lastPurchaseCost || 0),
-      },
-    }).catch((err) => console.warn("Catalog sync failed:", err.message));
+    // Call Centralized Sync Service
+    if (isStockAdd) {
+      const { syncProductStock } = await import('../services/inventorySyncService.js');
+      await syncProductStock(resolvedMasterProductId, resolvedVariantId, qty);
+    }
+
+    // REMOVED pricing overwrite to protect Admin catalog pricing per rules
+
+    // Fetch the updated product to return in the payload
+    const updatedProduct = await Product.findById(resolvedMasterProductId);
 
     const responsePayload = {
       ...row.toObject(),
-      catalogStock: catalogProduct
-        ? variantStockRequiresSelection(catalogProduct)
-          ? totalVariantStock(catalogProduct.variants)
-          : Number(catalogProduct.stock) || 0
-        : Number(row.availableQty) || 0,
+      catalogStock: updatedProduct ? updatedProduct.stock : 0,
       variants: catalogProduct ? listVariantsForStockPicker(catalogProduct) : [],
     };
 
@@ -319,42 +294,27 @@ export const adjustHubInventoryStock = async (req, res) => {
         });
       }
 
-      const current = Math.max(0, Number(product.variants[idx]?.stock) || 0);
-      const nextVariantStock = Math.max(0, current + numericDelta);
-      const updatedVariants = setVariantStockAtIndex(product.variants, idx, nextVariantStock);
-      const catalogStock = totalVariantStock(updatedVariants);
-
-      product.variants = updatedVariants;
-      product.stock = catalogStock;
-      product.markModified("variants");
-      applyAdminPricingFromStockPayload(
-        product,
-        { price, salePrice, purchasePrice, mrp },
-        idx,
-      );
-      await product.save();
-
-      const hubSell = effectiveSellingPrice(product);
-      if (hubSell > 0) {
-        row.sellPrice = toMoney(hubSell);
-        row.priceUpdatedAt = new Date();
-      }
-      row.availableQty = catalogStock;
-      row.status = normalizeStatus(catalogStock, Number(row.reorderLevel || 0));
+      const resolvedVariantId = product.variants[idx]?._id || null;
+      
+      const nextHubQty = Math.max(0, Number(row.availableQty || 0) + numericDelta);
+      row.availableQty = nextHubQty;
+      row.status = normalizeStatus(nextHubQty, Number(row.reorderLevel || 0));
       await row.save();
 
+      const { syncProductStock } = await import('../services/inventorySyncService.js');
+      await syncProductStock(product._id, resolvedVariantId, numericDelta);
+
+      const updatedProduct = await Product.findById(product._id);
       return handleResponse(res, 200, "Variant hub stock updated", {
         ...row.toObject(),
-        catalogStock,
+        catalogStock: updatedProduct ? updatedProduct.stock : 0,
         variant: {
-          variantId: updatedVariants[idx]?._id
-            ? String(updatedVariants[idx]._id)
-            : null,
+          variantId: resolvedVariantId,
           index: idx,
-          name: updatedVariants[idx]?.name,
-          stock: nextVariantStock,
+          name: updatedProduct.variants[idx]?.name,
+          stock: updatedProduct.variants[idx]?.stock,
         },
-        variants: listVariantsForStockPicker(product),
+        variants: listVariantsForStockPicker(updatedProduct),
       });
     }
 
@@ -363,20 +323,13 @@ export const adjustHubInventoryStock = async (req, res) => {
     row.status = normalizeStatus(nextHubQty, Number(row.reorderLevel || 0));
     await row.save();
 
-    applyAdminPricingFromStockPayload(product, { price, salePrice, purchasePrice, mrp });
-    product.stock = nextHubQty;
-    await product.save();
+    const { syncProductStock } = await import('../services/inventorySyncService.js');
+    await syncProductStock(product._id, null, numericDelta);
 
-    const hubSell = effectiveSellingPrice(product);
-    if (hubSell > 0) {
-      row.sellPrice = toMoney(hubSell);
-      row.priceUpdatedAt = new Date();
-      await row.save();
-    }
-
+    const updatedProduct = await Product.findById(product._id);
     return handleResponse(res, 200, "Hub stock updated", {
       ...row.toObject(),
-      catalogStock: nextHubQty,
+      catalogStock: updatedProduct ? updatedProduct.stock : nextHubQty,
       variants: [],
     });
   } catch (error) {

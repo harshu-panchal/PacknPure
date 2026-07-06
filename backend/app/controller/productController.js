@@ -433,26 +433,15 @@ export const getProducts = async (req, res) => {
                     if: { $and: [{ $isArray: "$variants" }, { $gt: [{ $size: "$variants" }, 0] }] },
                     then: {
                       $max: [0, {
-                        $subtract: [
-                          {
-                            $reduce: {
-                              input: "$variants",
-                              initialValue: 0,
-                              in: { $add: ["$$value", { $ifNull: ["$$this.stock", 0] }] }
-                            }
-                          },
-                          {
-                            $reduce: {
-                              input: "$variants",
-                              initialValue: 0,
-                              in: { $add: ["$$value", { $ifNull: ["$$this.committedStock", 0] }] }
-                            }
-                          }
-                        ]
+                        $reduce: {
+                          input: "$variants",
+                          initialValue: 0,
+                          in: { $add: ["$$value", { $ifNull: ["$$this.stock", 0] }] }
+                        }
                       }]
                     },
                     else: { 
-                      $max: [0, { $subtract: [{ $ifNull: ["$stock", 0] }, { $ifNull: ["$committedStock", 0] }] }] 
+                      $max: [0, { $ifNull: ["$stock", 0] }] 
                     }
                   }
                 }
@@ -503,7 +492,7 @@ export const getProducts = async (req, res) => {
                 variantName: { $toLower: { $trim: { input: "$variants.name" } } }
               },
               variantSellerStock: {
-                $sum: { $max: [0, { $subtract: [{ $ifNull: ["$variants.stock", 0] }, { $ifNull: ["$variants.committedStock", 0] }] }] }
+                $sum: { $max: [0, { $ifNull: ["$variants.stock", 0] }] }
               }
             }
           }
@@ -684,11 +673,27 @@ export const getProducts = async (req, res) => {
     delete statsQuery.stock;
     if (query.ownerType) statsQuery.ownerType = query.ownerType;
 
-    const [total, activeCount, lowStockCount, outOfStockCount] = await Promise.all([
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    if (isAdminCatalogRequest) {
+      const matchProducts = await Product.find(statsQuery).select('_id').lean();
+      const pIds = matchProducts.map((p) => p._id);
+      const HubInventory = (await import("../models/hubInventory.js")).default;
+      [lowStockCount, outOfStockCount] = await Promise.all([
+        HubInventory.countDocuments({ productId: { $in: pIds }, status: 'low_stock' }),
+        HubInventory.countDocuments({ productId: { $in: pIds }, status: 'out_of_stock' }),
+      ]);
+    } else {
+      [lowStockCount, outOfStockCount] = await Promise.all([
+        Product.countDocuments({ ...statsQuery, stock: { $gt: 0, $lte: 10 } }),
+        Product.countDocuments({ ...statsQuery, stock: { $lte: 0 } }),
+      ]);
+    }
+
+    const [total, activeCount] = await Promise.all([
       Product.countDocuments(statsQuery),
       Product.countDocuments({ ...statsQuery, status: 'active' }),
-      Product.countDocuments({ ...statsQuery, stock: { $gt: 0, $lte: 10 } }),
-      Product.countDocuments({ ...statsQuery, stock: 0 }),
     ]);
 
     const items = isAdminCatalogRequest
@@ -1698,7 +1703,7 @@ async function mapSingleProductForCustomerCatalog(productLean) {
                 acc +
                 Math.max(
                   0,
-                  (Number(v.stock) || 0) - (Number(v.committedStock) || 0),
+                  Number(v.stock) || 0,
                 ),
               0,
             )
@@ -1706,7 +1711,7 @@ async function mapSingleProductForCustomerCatalog(productLean) {
         const rootGross = Math.max(0, Number(sDoc.stock) || 0);
         const rootAvailable = Math.max(
           0,
-          rootGross - (Number(sDoc.committedStock) || 0),
+          rootGross,
         );
         const docGross = variantGrossSum > 0 ? variantGrossSum : rootGross;
         const docAvailable =
@@ -1720,7 +1725,7 @@ async function mapSingleProductForCustomerCatalog(productLean) {
             const gross = Math.max(0, Number(v.stock) || 0);
             const available = Math.max(
               0,
-              gross - (Number(v.committedStock) || 0),
+              gross,
             );
             variantSellerGrossMap.set(
               vName,
@@ -1737,7 +1742,7 @@ async function mapSingleProductForCustomerCatalog(productLean) {
           const gross = Math.max(0, Number(sDoc.stock) || 0);
           const available = Math.max(
             0,
-            gross - (Number(sDoc.committedStock) || 0),
+            gross,
           );
           variantSellerGrossMap.set(
             vName,

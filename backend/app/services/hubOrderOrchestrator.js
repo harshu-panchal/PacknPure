@@ -82,7 +82,7 @@ export function sellerAvailableForMasterVariant(sellerProduct, masterVariantId, 
     if (sellerVar) {
       return Math.max(
         0,
-        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
+        Number(sellerVar.stock) || 0,
       );
     }
   }
@@ -120,6 +120,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
     const baseProduct = productMap.get(productId) || null;
     
     const hubProductQty = Math.max(0, Number(invMap.get(productId) || 0));
+    
     let variantMaxQty = hubProductQty;
     if (variantId && baseProduct && Array.isArray(baseProduct.variants)) {
       const v = baseProduct.variants.find(
@@ -134,7 +135,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
     const reserveQty = Math.min(availableQty, requiredQty);
     const shortageQty = Math.max(0, requiredQty - reserveQty);
     
-    // Update invMap and variant stock in-memory so the next iteration
+    // Update invMap in-memory so the next iteration
     // for the same product sees the already-allocated qty as consumed.
     // This prevents the same hub stock from being double-counted.
     if (reserveQty > 0) {

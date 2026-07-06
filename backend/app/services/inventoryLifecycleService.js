@@ -1,6 +1,5 @@
 import HubInventory from "../models/hubInventory.js";
-import Product from "../models/product.js";
-import Order from "../models/order.js";
+import { syncProductStock } from "./inventorySyncService.js";
 
 /**
  * Single Inventory Architecture
@@ -10,7 +9,7 @@ import Order from "../models/order.js";
  * 1. Hub stock is physically deducted ONLY after successful delivery.
  * 2. Seller physical stock is deducted ONLY after successful pickup.
  * 3. Procurement goods received at hub DO NOT increase Hub available stock.
- * 4. Product.stock and Variant.stock remain mirrored fields.
+ * 4. Product.stock and Variant.stock remain mirrored fields managed by inventorySyncService.
  */
 
 export const freezeHubInventory = async (productId, variantId, quantity, session = null) => {
@@ -29,19 +28,7 @@ export const freezeHubInventory = async (productId, variantId, quantity, session
   if (updated) {
     try {
       // Mirror to Product.stock for backward compatibility
-      if (variantId) {
-        await Product.updateOne(
-          { _id: productId },
-          { $inc: { stock: -quantity, "variants.$[elem].stock": -quantity } },
-          { arrayFilters: [{ "elem._id": variantId }], session }
-        );
-      } else {
-        await Product.updateOne(
-          { _id: productId },
-          { $inc: { stock: -quantity } },
-          { session }
-        );
-      }
+      await syncProductStock(productId, variantId, -quantity, false, session);
     } catch (e) {
       console.warn("[InventoryLifecycle] Product stock mirroring failed:", e.message);
     }
@@ -59,19 +46,7 @@ export const releaseHubReservation = async (productId, variantId, quantity, sess
   if (updated) {
     try {
       // Mirror to Product.stock for backward compatibility
-      if (variantId) {
-        await Product.updateOne(
-          { _id: productId },
-          { $inc: { stock: quantity, "variants.$[elem].stock": quantity } },
-          { arrayFilters: [{ "elem._id": variantId }], session }
-        );
-      } else {
-        await Product.updateOne(
-          { _id: productId },
-          { $inc: { stock: quantity } },
-          { session }
-        );
-      }
+      await syncProductStock(productId, variantId, quantity, false, session);
     } catch (e) {
       console.warn("[InventoryLifecycle] Product stock mirroring failed:", e.message);
     }
@@ -80,62 +55,24 @@ export const releaseHubReservation = async (productId, variantId, quantity, sess
 };
 
 export const freezeSellerInventory = async (productId, variantId, quantity, session = null) => {
-  const updateQuery = { $inc: { stock: -quantity, committedStock: quantity } };
-  if (variantId) {
-    updateQuery.$inc["variants.$[elem].stock"] = -quantity;
-    updateQuery.$inc["variants.$[elem].committedStock"] = quantity;
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { arrayFilters: [{ "elem._id": variantId }], new: true, session }
-    );
-  } else {
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { new: true, session }
-    );
-  }
+  // Seller inventory is directly managed on the Product doc via syncProductStock
+  // For freezing, we decrease stock and increase committedStock
+  await syncProductStock(productId, variantId, -quantity, false, session);
+  await syncProductStock(productId, variantId, quantity, true, session);
+  return true;
 };
 
 export const releaseSellerReservation = async (productId, variantId, quantity, session = null) => {
-  const updateQuery = { $inc: { stock: quantity, committedStock: -quantity } };
-  if (variantId) {
-    updateQuery.$inc["variants.$[elem].stock"] = quantity;
-    updateQuery.$inc["variants.$[elem].committedStock"] = -quantity;
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { arrayFilters: [{ "elem._id": variantId }], new: true, session }
-    );
-  } else {
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { new: true, session }
-    );
-  }
+  // Reverse of freeze
+  await syncProductStock(productId, variantId, quantity, false, session);
+  await syncProductStock(productId, variantId, -quantity, true, session);
+  return true;
 };
 
 export const deductSellerInventoryAfterPickup = async (productId, variantId, quantity, session = null) => {
   // Reduces ONLY committedStock (since stock was previously deducted at reservation)
-  const updateQuery = { 
-    $inc: { committedStock: -quantity } 
-  };
-  if (variantId) {
-    updateQuery.$inc["variants.$[elem].committedStock"] = -quantity;
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { arrayFilters: [{ "elem._id": variantId }], new: true, session }
-    );
-  } else {
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { new: true, session }
-    );
-  }
+  await syncProductStock(productId, variantId, -quantity, true, session);
+  return true;
 };
 
 export const completeHubDelivery = async (productId, quantity, session = null) => {
@@ -148,41 +85,37 @@ export const completeHubDelivery = async (productId, quantity, session = null) =
 };
 
 export const restoreHubInventory = async (productId, quantity, session = null) => {
-  return await HubInventory.findOneAndUpdate(
+  const updated = await HubInventory.findOneAndUpdate(
     { productId, hubId: "MAIN_HUB" },
     { $inc: { availableQty: quantity } },
     { new: true, upsert: true, session }
   );
+  if (updated) {
+    try {
+      // Restore does not know variantId here, assume product level sync or handled upstream if variantId known
+      // Note: If variantId is known, caller should use manual syncProductStock, 
+      // but for generic restoreHubInventory we only have productId
+      await syncProductStock(productId, null, quantity, false, session);
+    } catch (e) {
+      console.warn("[InventoryLifecycle] Product stock mirroring failed:", e.message);
+    }
+  }
+  return updated;
 };
 
 export const restoreSellerInventory = async (productId, variantId, quantity, session = null) => {
-  const updateQuery = { $inc: { stock: quantity } };
-  if (variantId) {
-    updateQuery.$inc["variants.$[elem].stock"] = quantity;
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { arrayFilters: [{ "elem._id": variantId }], new: true, session }
-    );
-  } else {
-    return await Product.findOneAndUpdate(
-      { _id: productId },
-      updateQuery,
-      { new: true, session }
-    );
-  }
+  await syncProductStock(productId, variantId, quantity, false, session);
+  return true;
 };
 
 export const handleCustomerCancellation = async (productId, variantId, quantity, flowType, session = null) => {
   if (flowType === "before_pickup_hub") {
-    await releaseHubReservation(productId, quantity, session);
+    await releaseHubReservation(productId, variantId, quantity, session);
   } else if (flowType === "before_pickup_seller") {
     await releaseSellerReservation(productId, variantId, quantity, session);
   } else if (flowType === "after_pickup") {
     // Goods already reached Hub/picked up, increase Hub Available and release reservation
     await restoreHubInventory(productId, quantity, session);
-    // It depends on whether this is a hub reservation that we are also cancelling or what
-    // This helper simplifies things but controllers might need granular calls instead.
   }
 };
 
