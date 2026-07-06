@@ -103,7 +103,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
   ]);
 
   const invMap = new Map(
-    inventoryRows.map((row) => [String(row.productId), Math.max(0, Number(row.availableQty || 0) - Number(row.reservedQty || 0))]),
+    inventoryRows.map((row) => [String(row.productId), Math.max(0, Number(row.availableQty || 0))]),
   );
   const sellerMap = new Map(
     products.map((p) => [String(p._id), p?.sellerId ? String(p.sellerId) : null]),

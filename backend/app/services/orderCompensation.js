@@ -40,7 +40,7 @@ export async function compensateOrderCancellation(order, orderIdString) {
       
       const pendingPRs = await PurchaseRequest.find({
         orderId: order._id,
-        status: { $nin: ["verified", "closed", "cancelled"] }
+        status: { $nin: ["verified", "closed", "cancelled", "seller_rejected", "procurement_failed"] }
       });
       
       for (const pr of pendingPRs) {

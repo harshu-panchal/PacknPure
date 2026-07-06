@@ -13,9 +13,9 @@ import { syncProductStock } from "./inventorySyncService.js";
  */
 
 export const freezeHubInventory = async (productId, variantId, quantity, session = null) => {
-  // Find and update only if availableQty - reservedQty >= quantity
+  // Find and update only if availableQty >= quantity (availableQty is already the free physical stock)
   const hubInventory = await HubInventory.findOne({ productId, hubId: "MAIN_HUB" }).session(session);
-  if (!hubInventory || (hubInventory.availableQty - hubInventory.reservedQty) < quantity) {
+  if (!hubInventory || hubInventory.availableQty < quantity) {
     return null; // Reservation failed due to insufficient stock
   }
   
