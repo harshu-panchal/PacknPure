@@ -326,13 +326,12 @@ export const createAutoPurchaseRequests = async ({
     let remainingShortage = shortageQty;
     
     for (const vendor of scored) {
-      if (remainingShortage <= 0) break;
       const vendorStock = sellerAvailableForMasterVariant(
         vendor,
         variantId,
         baseProduct,
       );
-      const allocateQty = Math.min(vendorStock, remainingShortage);
+      const allocateQty = remainingShortage > 0 ? Math.min(vendorStock, remainingShortage) : 0;
       
       allocations.push({
         vendorId: vendor.sellerIdStr,
@@ -426,6 +425,7 @@ export const createAutoPurchaseRequests = async ({
         for (let i = 0; i < selections.length; i++) {
           const choice = selections[i];
           const allocated = settings?.enableMultiSellerAllocation ? choice.allocatedQty : remainingToAssign;
+          if (allocated <= 0 && settings?.enableMultiSellerAllocation) continue;
           remainingToAssign -= allocated;
           const fallbacks = selections.slice(i + 1).map(s => s.vendorId);
           

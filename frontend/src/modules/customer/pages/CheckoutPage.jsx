@@ -110,6 +110,7 @@ const CheckoutPage = () => {
 
   const fetchDeliveryFee = async (location) => {
     if (!location?.lat || !location?.lng) return;
+    if (!isAuthenticated) return;
     setIsCalculatingFee(true);
     try {
       const { data } = await customerApi.getDeliveryFee(location.lat, location.lng);
@@ -386,6 +387,7 @@ const CheckoutPage = () => {
 
       // If a manual coupon is applied, just re-validate it
       if (selectedCoupon && selectedCoupon.promotionType !== 'automatic') {
+        if (!selectedCoupon.code) return;
         try {
           const res = await customerApi.validatePromotion({
             code: selectedCoupon.code,
@@ -413,6 +415,7 @@ const CheckoutPage = () => {
         let bestPromo = null;
         let maxDiscount = -1;
         for (const promo of autoPromos) {
+          if (!promo.code) continue;
           try {
             const validationRes = await customerApi.validatePromotion({
               code: promo.code,

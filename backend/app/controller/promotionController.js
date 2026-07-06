@@ -293,13 +293,13 @@ export const validatePromotion = async (req, res) => {
 
         const promo = await Promotion.findOne({ code: code.toUpperCase() });
         if (!promo) {
-            return handleResponse(res, 404, "Invalid promotion code");
+            return res.status(200).json({ success: false, message: "Invalid promotion code" });
         }
 
         const result = await validatePromoRules(promo, { cartTotal, items, customerId });
         
         if (!result.valid) {
-            return handleResponse(res, 400, result.reason);
+            return res.status(200).json({ success: false, message: result.reason });
         }
 
         return handleResponse(res, 200, "Promotion applied", {
