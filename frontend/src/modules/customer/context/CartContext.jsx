@@ -143,6 +143,7 @@ export const CartProvider = ({ children }) => {
     try {
       const localCart = loadCartFromStorage();
       if (localCart && localCart.length > 0) {
+        localStorage.removeItem("cart"); // Removed early to prevent concurrent double-sync
         for (const item of localCart) {
           try {
             await customerApi.addToCart({
@@ -154,7 +155,6 @@ export const CartProvider = ({ children }) => {
             console.error("Failed to sync local cart item", err);
           }
         }
-        localStorage.removeItem("cart");
       }
     } catch (err) {
       console.error("Failed to sync local cart to backend", err);
