@@ -344,7 +344,11 @@ const LiveTrackingMap = memo(({
   }
 
   return (
-    <div className="relative w-full h-[350px] bg-[#E5E3DF] overflow-hidden rounded-b-[2rem] shadow-md border-b border-gray-200">
+    <div
+      className="relative w-full h-[350px] bg-[#E5E3DF] overflow-hidden rounded-b-[2rem] shadow-md border-b border-gray-200"
+      data-lenis-prevent
+      data-lenis-prevent-touch="true"
+    >
       {/* Google Map */}
       <GoogleMap
         mapContainerStyle={containerStyle}

@@ -25,6 +25,9 @@ const DraggableBottomSheet = ({
       onDragEnd={onDragEnd}
       animate={{ height: `${sheetHeight}vh` }}
       transition={{ type: "spring", damping: 30, stiffness: 300 }}
+      // Prevent Lenis from intercepting touch-drag gestures on this component
+      data-lenis-prevent
+      data-lenis-prevent-touch="true"
     >
       {/* Drag Handle */}
       <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
@@ -32,7 +35,11 @@ const DraggableBottomSheet = ({
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-32">
+      <div
+        className="flex-1 overflow-y-auto px-4 pb-32"
+        data-lenis-prevent
+        data-lenis-prevent-touch="true"
+      >
         {children}
       </div>
     </motion.div>
@@ -40,3 +47,4 @@ const DraggableBottomSheet = ({
 };
 
 export default DraggableBottomSheet;
+

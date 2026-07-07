@@ -396,7 +396,11 @@ const MapPicker = ({
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-xl border border-gray-200 shadow-inner">
+        <div
+          className="relative overflow-hidden rounded-xl border border-gray-200 shadow-inner"
+          data-lenis-prevent
+          data-lenis-prevent-touch="true"
+        >
           {!isLoaded ? (
             <div className="flex h-[400px] items-center justify-center bg-gray-50">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />

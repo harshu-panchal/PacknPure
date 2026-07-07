@@ -429,7 +429,11 @@ const DeliveryTrackingMapComponent = ({
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-slate-100">
+    <div
+      className="relative w-full h-full overflow-hidden bg-slate-100"
+      data-lenis-prevent
+      data-lenis-prevent-touch="true"
+    >
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={mapCenter}

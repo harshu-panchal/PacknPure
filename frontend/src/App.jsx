@@ -4,7 +4,7 @@ import { SettingsProvider } from './core/context/SettingsContext';
 import { ToastProvider } from './shared/components/ui/Toast';
 import Loader from './shared/components/ui/Loader';
 import ErrorBoundary from './shared/components/ErrorBoundary';
-import LenisScroll from './shared/components/LenisScroll';
+import LenisProvider from './shared/components/LenisProvider';
 
 function App() {
   return (
@@ -12,8 +12,9 @@ function App() {
       <SettingsProvider>
         <ToastProvider>
           <Suspense fallback={<Loader fullScreen />}>
-            <LenisScroll />
-            <AppRouter />
+            <LenisProvider>
+              <AppRouter />
+            </LenisProvider>
           </Suspense>
         </ToastProvider>
       </SettingsProvider>
