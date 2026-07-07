@@ -1174,11 +1174,9 @@ export function applyGoLivePricingToMaster(
        const objKey = normalizeVariantMatchKey(obj.name);
        const sellerVar =
          sellerRows.find((s) => normalizeVariantMatchKey(s?.name) === objKey) || sellerRows[i];
-      const supply = sellerVar
-        ? resolveSupplyPriceFromVariantRow(sellerVar, resolveSupplyPriceFromInput(sellerProduct))
-        : Number(obj.purchasePrice) || 0;
       const fallbackSell = defaultSell || Number(obj.salePrice ?? obj.price) || 0;
-      const { price, salePrice, purchasePrice } = parseGoLiveVariantRow(row, supply, fallbackSell);
+      const existingPurchasePrice = Number(obj.purchasePrice) || 0;
+      const { price, salePrice, purchasePrice } = parseGoLiveVariantRow(row, existingPurchasePrice, fallbackSell);
       const { gstEnabled, gstRate } = normalizeVariantGstFields({
         gstEnabled: row.gstEnabled ?? sellerVar?.gstEnabled ?? obj.gstEnabled,
         gstRate: row.gstRate ?? sellerVar?.gstRate ?? obj.gstRate,
@@ -1188,7 +1186,7 @@ export function applyGoLivePricingToMaster(
         price: price > 0 ? price : Math.max(Number(obj.price) || 0, fallbackSell),
         salePrice: salePrice > 0 ? salePrice : fallbackSell,
         purchasePrice:
-          purchasePrice > 0 ? purchasePrice : supply || Number(obj.purchasePrice) || 0,
+          purchasePrice > 0 ? purchasePrice : existingPurchasePrice,
         stock: Math.max(0, Number(obj.stock) || 0),
         gstEnabled,
         gstRate,
@@ -1198,8 +1196,8 @@ export function applyGoLivePricingToMaster(
     update.stock = totalVariantStock(update.variants);
   } else {
     const row = priceInputs[0] || {};
-    const supply = sellerProduct ? resolveSupplyPriceFromInput(sellerProduct) : 0;
-    const parsed = parseGoLiveVariantRow(row, supply, defaultSell);
+    const existingPurchasePrice = Number(master.purchasePrice) || 0;
+    const parsed = parseGoLiveVariantRow(row, existingPurchasePrice, defaultSell);
     if (parsed.salePrice > 0) {
       update.price = parsed.price;
       update.salePrice = parsed.salePrice;
@@ -1207,7 +1205,7 @@ export function applyGoLivePricingToMaster(
     } else if (defaultSell > 0) {
       update.price = defaultSell;
       update.salePrice = defaultSell;
-      update.purchasePrice = supply || Number(master.purchasePrice) || 0;
+      update.purchasePrice = existingPurchasePrice;
     }
   }
   return update;

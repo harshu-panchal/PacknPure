@@ -76,7 +76,7 @@ export async function generateDeliveryOtp(orderId, deliveryLocation) {
 
     // Generate secure 4-digit OTP using crypto.randomInt
     const otp = String(crypto.randomInt(0, 10000)).padStart(4, '0');
-    console.log("Generated OTP:", otp);
+
 
     // Hash the OTP for storage
     const codeHash = OrderOtp.hashCode(otp);
