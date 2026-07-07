@@ -868,7 +868,11 @@ const ProductDetailSheet = () => {
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
+                  <div
+                    className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6"
+                    data-lenis-prevent
+                    data-lenis-prevent-touch="true"
+                  >
                     {variantSection}
                     {aboutSection}
                   </div>
@@ -934,7 +938,11 @@ const ProductDetailSheet = () => {
                 </div>
               </div>
 
-              <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4">
+              <div
+                className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4"
+                data-lenis-prevent
+                data-lenis-prevent-touch="true"
+              >
                 <div className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50">
                   <ProductImageGallery
                     images={images}
