@@ -572,7 +572,7 @@ const ProductManagement = () => {
                     (suggestedSale || '');
                 const mrp = masterMatch?.price ?? sale ?? suggestedSale ?? '';
                 const purchase =
-                    sellerFinalSupplyCost || masterMatch?.purchasePrice || rootSupply || '';
+                    masterMatch?.purchasePrice || sellerFinalSupplyCost || rootSupply || '';
 
                 const gstEnabled = false;
                 const gstRate = Number(masterMatch?.gstRate ?? v?.gstRate) || 0;
