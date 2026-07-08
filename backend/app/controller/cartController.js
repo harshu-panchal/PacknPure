@@ -73,6 +73,7 @@ export const addToCart = async (req, res) => {
   try {
     const customerId = req.user.id;
     const { productId, quantity = 1, variantId = null } = req.body;
+    console.log("[addToCart] received payload:", { customerId, productId, quantity, variantId });
     const qty = Math.max(1, Number(quantity) || 1);
 
     const product = await Product.findById(productId)
