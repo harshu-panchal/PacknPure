@@ -424,8 +424,9 @@ export const createAutoPurchaseRequests = async ({
         let remainingToAssign = item.shortageQty;
         for (let i = 0; i < selections.length; i++) {
           const choice = selections[i];
-          const allocated = settings?.enableMultiSellerAllocation ? choice.allocatedQty : remainingToAssign;
-          if (allocated <= 0 && settings?.enableMultiSellerAllocation) continue;
+          const allocated = choice.allocatedQty;
+          if (allocated <= 0) continue;
+          
           remainingToAssign -= allocated;
           const fallbacks = selections.slice(i + 1).map(s => s.vendorId);
           
@@ -451,10 +452,9 @@ export const createAutoPurchaseRequests = async ({
             marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
             rankedSellers: fallbacks,
           });
-          if (!settings?.enableMultiSellerAllocation) break;
         }
         
-        if (remainingToAssign > 0 && settings?.enableMultiSellerAllocation) {
+        if (remainingToAssign > 0) {
           const fallbackCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
           const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
           const baseGstAmount = Number((fallbackCost * (baseRate / 100)).toFixed(2));
@@ -533,13 +533,15 @@ export const createAutoPurchaseRequests = async ({
   if (!docs.length) return [];
   const insertedDocs = await PurchaseRequest.insertMany(docs);
 
-  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
+  const { freezeSellerInventory, releaseSellerReservation } = await import("./inventoryLifecycleService.js");
   // Immediately reserve seller quantity by creating a commitment
-  for (const item of enrichedShortages) {
-    if (!item.vendorId || !item.selectedSellerProductId) continue;
-    try {
+  const frozenItems = [];
+  try {
+    for (const item of enrichedShortages) {
+      if (!item.vendorId || !item.selectedSellerProductId) continue;
+      
+      let targetVariantId = null;
       if (item.variantId) {
-        // Need to find the seller variant by matching name with master variant
         const masterProduct = item.baseProduct;
         const masterVar = Array.isArray(masterProduct?.variants) ? masterProduct.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId)) : null;
         if (masterVar) {
@@ -549,19 +551,27 @@ export const createAutoPurchaseRequests = async ({
             const sellerVar = sellerProduct.variants.find(
               (v) => normalizeVariantMatchKey(v.name) === masterKey,
             );
-            if (sellerVar) {
-              await freezeSellerInventory(item.selectedSellerProductId, sellerVar._id, item.shortageQty);
-            } else {
-              await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
-            }
+            if (sellerVar) targetVariantId = sellerVar._id;
           }
         }
-      } else {
-        await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
       }
-    } catch (err) {
-      console.warn("[createAutoPurchaseRequests] Failed to update seller committedStock:", err.message);
+      
+      await freezeSellerInventory(item.selectedSellerProductId, targetVariantId, item.shortageQty);
+      frozenItems.push({ productId: item.selectedSellerProductId, variantId: targetVariantId, qty: item.shortageQty });
     }
+  } catch (err) {
+    console.warn("[createAutoPurchaseRequests] Failed to freeze inventory, rolling back PRs:", err.message);
+    // Rollback exactly what was frozen
+    for (const frozen of frozenItems) {
+      try {
+        await releaseSellerReservation(frozen.productId, frozen.variantId, frozen.qty);
+      } catch (releaseErr) {
+        console.error("[createAutoPurchaseRequests] Rollback failure:", releaseErr.message);
+      }
+    }
+    // Delete the orphaned PRs
+    await PurchaseRequest.deleteMany({ _id: { $in: insertedDocs.map(d => d._id) } });
+    throw err; // Let orderController abort the order
   }
 
   return insertedDocs;
