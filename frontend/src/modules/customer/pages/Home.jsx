@@ -14,6 +14,7 @@ import HomePlatformSections from '../components/home/HomePlatformSections';
 import LocationDrawer from '../components/shared/LocationDrawer';
 import { HOME_SECTION } from '../components/home/homeLayout';
 import SectionRenderer from '../components/experience/SectionRenderer';
+import HomeSkeleton from '../components/home/HomeSkeleton';
 
 /**
  * Customer landing (/) — mobile-first Blinkit-style home; desktop adds full-width
@@ -83,21 +84,20 @@ const Home = () => {
 
 
 
-            <Hero banners={heroSlides} />
-
             {error && (
                 <p className={`${HOME_SECTION} mt-2 text-center text-sm font-medium text-brand-700`}>
                     {error}
                 </p>
             )}
 
-            {isCatalogLoading ? (
-                <div className={`${HOME_SECTION} py-8 text-center text-sm font-medium text-slate-400`}>
-                    Loading categories…
-                </div>
+            {(isCatalogLoading || isCommerceLoading) ? (
+                <HomeSkeleton />
             ) : (
                 <>
+                    <Hero banners={heroSlides} />
+                    
                     <HomeCategorySections sections={categorySections} />
+                    
                     {experienceSections?.length > 0 && (
                         <div className="mt-8 mb-6">
                             <SectionRenderer
@@ -108,17 +108,11 @@ const Home = () => {
                             />
                         </div>
                     )}
+
+                    <HomePromoBelowCategories promo={promoBelowCategories} />
+
+                    <HomeFeaturedSection products={products} />
                 </>
-            )}
-
-            <HomePromoBelowCategories promo={promoBelowCategories} />
-
-            {isCommerceLoading ? (
-                <div className={`${HOME_SECTION} py-12 text-center text-sm font-medium text-slate-400`}>
-                    Loading products…
-                </div>
-            ) : (
-                <HomeFeaturedSection products={products} />
             )}
 
             <HomePlatformSections onLocationClick={openLocation} />
