@@ -715,7 +715,20 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
  * Release committed stock for a Purchase Request (called on rejection, expiry, or cancellation)
  */
 export const releasePurchaseRequestCommitments = async (pr) => {
-  if (!pr || !pr.items) return;
+  if (!pr || !pr.items || !pr._id) return;
+  const PurchaseRequest = (await import("../models/purchaseRequest.js")).default;
+  
+  // Idempotency Lock: Prevent double-releasing stock if multiple concurrent processes try to release this PR
+  const lock = await PurchaseRequest.findOneAndUpdate(
+    { _id: pr._id, commitmentsReleased: { $ne: true } },
+    { commitmentsReleased: true },
+    { new: true }
+  );
+  if (!lock) {
+    console.log(`[Idempotency] PR ${pr._id} commitments already released. Skipping.`);
+    return;
+  }
+
   const Product = (await import("../models/product.js")).default;
   const { releaseSellerReservation } = await import("./inventoryLifecycleService.js");
   for (const item of pr.items) {

@@ -150,6 +150,10 @@ const purchaseRequestSchema = new mongoose.Schema(
       default: "created",
       index: true,
     },
+    commitmentsReleased: {
+      type: Boolean,
+      default: false,
+    },
     vendorResponse: {
       status: {
         type: String,
