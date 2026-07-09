@@ -19,7 +19,7 @@ export function getOrderSocket(getToken) {
     return null;
   }
 
-  if (!socket || !socket.connected) {
+  if (!socket) {
     console.log('[orderSocket] Creating new Socket.IO connection to:', socketBaseUrl());
     socket = io(socketBaseUrl(), {
       auth: { token },
@@ -28,8 +28,8 @@ export function getOrderSocket(getToken) {
       reconnectionDelay: 1000,
     });
 
-    socket.on('connect', () => {
-      console.log('[orderSocket] Socket connected, ID:', socket.id);
+    socket.on('connect', function () {
+      console.log('[orderSocket] Socket connected, ID:', this.id);
     });
 
     socket.on('disconnect', (reason) => {
@@ -39,8 +39,6 @@ export function getOrderSocket(getToken) {
     socket.on('connect_error', (error) => {
       console.error('[orderSocket] Socket connection error:', error);
     });
-  } else {
-    console.log('[orderSocket] Reusing existing socket connection, ID:', socket.id);
   }
 
   return socket;
