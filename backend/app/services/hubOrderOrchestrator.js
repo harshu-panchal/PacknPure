@@ -208,7 +208,7 @@ export const createAutoPurchaseRequests = async ({
   const settings = await Setting.findOne().lean();
   const sellerResponseTimeout = settings?.sellerResponseTimeout || 15;
   const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
-  const effectiveCatalogPrice = (sellerProduct, masterVariantId = null, baseProduct = null) => {
+  const calculateCanonicalProcurementCost = (sellerProduct, masterVariantId = null, baseProduct = null) => {
     let sellerVar = null;
     if (masterVariantId && Array.isArray(baseProduct?.variants)) {
       const masterVar = baseProduct.variants.find(
@@ -222,31 +222,57 @@ export const createAutoPurchaseRequests = async ({
       }
     }
     
+    let unitCost = 0;
+    let gstEnabled = false;
+    let gstRate = 0;
+
     // Priority 1: Use matched variant price
     if (sellerVar) {
-      const vCost = Number(sellerVar.purchasePrice || 0);
-      if (vCost > 0) return vCost;
-      const vSale = Number(sellerVar.salePrice || 0);
-      const vMrp = Number(sellerVar.price || 0);
-      return vSale > 0 && vSale < vMrp ? vSale : vMrp;
+      unitCost = Number(sellerVar.purchasePrice || 0);
+      if (unitCost <= 0) {
+        const vSale = Number(sellerVar.salePrice || 0);
+        const vMrp = Number(sellerVar.price || 0);
+        unitCost = vSale > 0 && vSale < vMrp ? vSale : vMrp;
+      }
+      gstEnabled = Boolean(sellerVar.gstEnabled);
+      gstRate = Number(sellerVar.gstRate || 0);
     }
-
     // Priority 2: If no variant match, use first variant if exists
-    if (sellerProduct?.variants?.length > 0) {
+    else if (sellerProduct?.variants?.length > 0) {
       const v = sellerProduct.variants[0];
-      const vCost = Number(v.purchasePrice || 0);
-      if (vCost > 0) return vCost;
-      const vSale = Number(v.salePrice || 0);
-      const vMrp = Number(v.price || 0);
-      return vSale > 0 && vSale < vMrp ? vSale : vMrp;
+      unitCost = Number(v.purchasePrice || 0);
+      if (unitCost <= 0) {
+        const vSale = Number(v.salePrice || 0);
+        const vMrp = Number(v.price || 0);
+        unitCost = vSale > 0 && vSale < vMrp ? vSale : vMrp;
+      }
+      gstEnabled = Boolean(v.gstEnabled);
+      gstRate = Number(v.gstRate || 0);
+    }
+    // Priority 3: Root price
+    else {
+      unitCost = Number(sellerProduct?.purchasePrice || 0);
+      if (unitCost <= 0) {
+        const sale = Number(sellerProduct?.salePrice || 0);
+        const base = Number(sellerProduct?.price || 0);
+        unitCost = sale > 0 && sale < base ? sale : base;
+      }
+      gstEnabled = Boolean(sellerProduct?.gstEnabled);
+      gstRate = Number(sellerProduct?.gstRate || 0);
     }
 
-    // Priority 3: Root price
-    const cost = Number(sellerProduct?.purchasePrice || 0);
-    if (cost > 0) return cost;
-    const sale = Number(sellerProduct?.salePrice || 0);
-    const base = Number(sellerProduct?.price || 0);
-    return sale > 0 && sale < base ? sale : base;
+    unitCost = normalizeMoney(unitCost);
+    const rate = gstEnabled ? gstRate : 0;
+    const gstAmount = Number((unitCost * (rate / 100)).toFixed(2));
+    const finalSupplyPrice = Number((unitCost + gstAmount).toFixed(2));
+
+    return {
+      unitCost,
+      gstEnabled,
+      gstRate: rate,
+      gstAmount,
+      finalSupplyPrice
+    };
   };
   const normalizeText = (value) =>
     String(value || "")
@@ -291,7 +317,7 @@ export const createAutoPurchaseRequests = async ({
     if (!inStock.length) return [];
 
     const scored = inStock.map((row) => {
-      const unitCost = normalizeMoney(effectiveCatalogPrice(row, variantId, baseProduct));
+      const costObj = calculateCanonicalProcurementCost(row, variantId, baseProduct);
       const seller = row.sellerId || {};
       
       // Calculate distance to Hub
@@ -306,7 +332,7 @@ export const createAutoPurchaseRequests = async ({
 
       return {
         ...row,
-        unitCost,
+        costObj,
         distance,
         rating,
         createdAt,
@@ -314,9 +340,9 @@ export const createAutoPurchaseRequests = async ({
       };
     });
 
-    // Ranking Logic: Lowest Price -> Nearest Seller -> Highest Rating -> Oldest Seller
+    // Ranking Logic: Lowest Final Price -> Nearest Seller -> Highest Rating -> Oldest Seller
     scored.sort((a, b) => {
-      if (a.unitCost !== b.unitCost) return a.unitCost - b.unitCost;
+      if (a.costObj.finalSupplyPrice !== b.costObj.finalSupplyPrice) return a.costObj.finalSupplyPrice - b.costObj.finalSupplyPrice;
       if (a.distance !== b.distance) return a.distance - b.distance;
       if (a.rating !== b.rating) return b.rating - a.rating; // Descending
       return a.createdAt - b.createdAt; // Ascending
@@ -336,11 +362,11 @@ export const createAutoPurchaseRequests = async ({
       allocations.push({
         vendorId: vendor.sellerIdStr,
         selectedSellerProductId: vendor._id ? String(vendor._id) : null,
-        vendorUnitCost: vendor.unitCost,
-        vendorQuotedPrice: vendor.unitCost,
+        vendorUnitCost: vendor.costObj.unitCost,
+        vendorQuotedPrice: vendor.costObj.unitCost,
         pricingStrategy: "ranked_cheapest_nearest",
-        gstEnabled: Boolean(vendor.gstEnabled),
-        gstRate: Number(vendor.gstRate) || 0,
+        gstEnabled: vendor.costObj.gstEnabled,
+        gstRate: vendor.costObj.gstRate,
         allocatedQty: allocateQty,
       });
       remainingShortage -= allocateQty;
@@ -431,8 +457,8 @@ export const createAutoPurchaseRequests = async ({
           const fallbacks = selections.slice(i + 1).map(s => s.vendorId);
           
           const vendorRate = choice.gstEnabled ? (choice.gstRate || 0) : 0;
-          const vendorGstAmount = Number((choice.vendorUnitCost * (vendorRate / 100)).toFixed(2));
-          const finalSupply = Number((choice.vendorUnitCost + vendorGstAmount).toFixed(2));
+          const vendorGstAmount = choice.gstAmount !== undefined ? choice.gstAmount : Number((choice.vendorUnitCost * (vendorRate / 100)).toFixed(2));
+          const finalSupply = choice.finalSupplyPrice !== undefined ? choice.finalSupplyPrice : Number((choice.vendorUnitCost + vendorGstAmount).toFixed(2));
           const totalProcurement = Number((finalSupply * allocated).toFixed(2));
           
           enrichedShortages.push({

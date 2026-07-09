@@ -324,7 +324,7 @@ const ProcurementRequests = () => {
                           <span>Qty: <span className="text-indigo-600">{item.requiredQty} {item.unit}</span></span>
                           <span>Rate: <span className="text-emerald-600">₹{item.unitCost}</span></span>
                           <span>GST: <span className="text-amber-600">{item.gstRate || 0}% (₹{item.gstAmount || 0})</span></span>
-                          <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-emerald-700">Net Total: ₹{Number((item.unitCost * (item.shortageQty || item.requiredQty)) + (item.gstAmount || 0)).toFixed(2)}</span>
+                          <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-emerald-700">Net Total: ₹{item.totalCost}</span>
                           <span>Shortage: <span className="text-rose-500">{item.shortageQty}</span></span>
                         </div>
                       </div>

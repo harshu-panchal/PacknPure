@@ -6,6 +6,7 @@ export function mapPrItemsDetailed(items = []) {
     const unitCost = Number(row.vendorUnitCost || 0);
     const gstAmount = Number(row.gstAmount || 0);
     const lineSubtotal = toMoney(unitCost * qty);
+    const lineGstTotal = toMoney(gstAmount * qty);
     return {
       productId: row.productId?._id || row.productId || null,
       productName: row.productId?.name || "Product",
@@ -21,7 +22,8 @@ export function mapPrItemsDetailed(items = []) {
       gstAmount,
       quantity: qty,
       lineSubtotal,
-      totalCost: toMoney(lineSubtotal + gstAmount),
+      lineGstTotal,
+      totalCost: toMoney(lineSubtotal + lineGstTotal),
     };
   });
 }
@@ -29,7 +31,7 @@ export function mapPrItemsDetailed(items = []) {
 export function summarizePrPricing(items = []) {
   const mapped = mapPrItemsDetailed(items);
   const subtotal = mapped.reduce((sum, row) => sum + row.lineSubtotal, 0);
-  const gstTotal = mapped.reduce((sum, row) => sum + row.gstAmount, 0);
+  const gstTotal = mapped.reduce((sum, row) => sum + row.lineGstTotal, 0);
   return {
     subtotal: toMoney(subtotal),
     gstTotal: toMoney(gstTotal),
