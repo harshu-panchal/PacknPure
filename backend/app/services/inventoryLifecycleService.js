@@ -1,5 +1,4 @@
 import HubInventory from "../models/hubInventory.js";
-import Product from "../models/product.js";
 import { syncProductStock } from "./inventorySyncService.js";
 
 /**
@@ -56,24 +55,6 @@ export const releaseHubReservation = async (productId, variantId, quantity, sess
 };
 
 export const freezeSellerInventory = async (productId, variantId, quantity, session = null) => {
-  // Check available stock first to prevent negative bounds
-  const product = await Product.findById(productId).select("stock variants").session(session).lean();
-  if (!product) {
-    throw new Error(`Product not found for seller reservation: ${productId}`);
-  }
-
-  let availableStock = 0;
-  if (variantId) {
-    const variant = product.variants?.find((v) => String(v._id) === String(variantId) || String(v.id) === String(variantId));
-    availableStock = Math.max(0, Number(variant?.stock) || 0);
-  } else {
-    availableStock = Math.max(0, Number(product.stock) || 0);
-  }
-
-  if (availableStock < quantity) {
-    throw new Error(`Insufficient stock for seller reservation. Requested: ${quantity}, Available: ${availableStock}`);
-  }
-
   // Seller inventory is directly managed on the Product doc via syncProductStock
   // For freezing, we decrease stock and increase committedStock
   await syncProductStock(productId, variantId, -quantity, false, session);
