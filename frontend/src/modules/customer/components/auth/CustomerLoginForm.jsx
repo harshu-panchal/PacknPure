@@ -221,7 +221,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
                 {step === 'phone' && (
                     <form onSubmit={handleSendOtp} className="space-y-4">
                         <div
-                            className="flex items-center overflow-hidden rounded-xl border border-slate-300 bg-white transition-all focus-within:ring-2"
+                            className="flex w-full items-center overflow-hidden rounded-xl border border-slate-300 bg-white transition-all focus-within:ring-2"
                             style={inputRing}
                         >
                             <span className="shrink-0 border-r border-slate-200 py-4 pl-4 pr-3 text-sm font-bold text-slate-800">
@@ -236,7 +236,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
                                     setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))
                                 }
                                 placeholder="Enter mobile number"
-                                className="flex-1 bg-transparent py-4 pl-3 pr-4 text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                                className="flex-1 w-full min-w-0 bg-transparent py-4 pl-3 pr-4 text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
                                 autoFocus
                             />
                         </div>
