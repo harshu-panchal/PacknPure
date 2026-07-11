@@ -1,4 +1,5 @@
 import axiosInstance from '@core/api/axios';
+import { notificationsApi } from '@core/services/notificationsApi';
 
 export const adminApi = {
     login: (data) => axiosInstance.post('/admin/login', data),
@@ -7,9 +8,15 @@ export const adminApi = {
     signup: (data) => axiosInstance.post('/admin/signup', data),
     
     // Notifications
-    getNotifications: () => axiosInstance.get('/notifications'),
-    markNotificationRead: (id) => axiosInstance.put(`/notifications/${id}/read`),
-    markAllNotificationsRead: () => axiosInstance.put('/notifications/mark-all-read'),
+    getNotifications: notificationsApi.getNotifications,
+    markNotificationRead: notificationsApi.markNotificationRead,
+    markAllNotificationsRead: notificationsApi.markAllNotificationsRead,
+    registerDeviceToken: notificationsApi.registerDeviceToken,
+    removeDeviceToken: notificationsApi.removeDeviceToken,
+    getNotificationPreferences: notificationsApi.getPreferences,
+    updateNotificationPreferences: notificationsApi.updatePreferences,
+    getBroadcastHistory: notificationsApi.getBroadcastHistory,
+    broadcastNotification: notificationsApi.broadcast,
 
     getStats: () => axiosInstance.get('/admin/stats'),
     getUsers: (params) => axiosInstance.get('/admin/users', { params }),

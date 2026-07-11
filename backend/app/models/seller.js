@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  buildDefaultNotificationPreferences,
+  notificationPreferencesSchema,
+  notificationTokenSchema,
+} from "./shared/notificationSchemas.js";
 
 const sellerSchema = new mongoose.Schema(
   {
@@ -64,8 +69,12 @@ const sellerSchema = new mongoose.Schema(
       default: true,
     },
     fcmTokens: {
-      type: [String],
+      type: [notificationTokenSchema],
       default: [],
+    },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: buildDefaultNotificationPreferences,
     },
     location: {
       type: {

@@ -1,14 +1,14 @@
 import React from "react";
 import NotificationCenter from "@core/components/notifications/NotificationCenter";
-import { deliveryApi } from "../services/deliveryApi";
+import { customerApi } from "../services/customerApi";
 
 const Notifications = () => (
   <div className="min-h-screen bg-slate-50 px-4 py-6">
     <div className="mx-auto max-w-6xl">
       <NotificationCenter
-        api={deliveryApi}
-        title="Delivery Notifications"
-        description="Track assignment updates, OTP requests, completion status, and payout alerts."
+        api={customerApi}
+        title="My Notifications"
+        description="Order updates, refunds, OTPs, and account alerts appear here."
         showPreferences
       />
     </div>

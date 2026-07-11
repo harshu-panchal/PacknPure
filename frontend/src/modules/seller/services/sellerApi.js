@@ -1,4 +1,5 @@
 import axiosInstance from '@core/api/axios';
+import { notificationsApi } from '@core/services/notificationsApi';
 
 export const sellerApi = {
     login: (data) => axiosInstance.post('/seller/login', data),
@@ -43,9 +44,15 @@ export const sellerApi = {
     getStockHistory: () => axiosInstance.get('/products/stock-history'),
 
     // Notifications
-    getNotifications: () => axiosInstance.get('/notifications'),
-    markNotificationRead: (id) => axiosInstance.put(`/notifications/${id}/read`),
-    markAllNotificationsRead: () => axiosInstance.put('/notifications/mark-all-read'),
+    getNotifications: notificationsApi.getNotifications,
+    markNotificationRead: notificationsApi.markNotificationRead,
+    markAllNotificationsRead: notificationsApi.markAllNotificationsRead,
+    registerDeviceToken: notificationsApi.registerDeviceToken,
+    removeDeviceToken: notificationsApi.removeDeviceToken,
+    getNotificationPreferences: notificationsApi.getPreferences,
+    updateNotificationPreferences: notificationsApi.updatePreferences,
+    getBroadcastHistory: notificationsApi.getBroadcastHistory,
+    broadcastNotification: notificationsApi.broadcast,
 
     // Money Requests
     requestWithdrawal: (data) => axiosInstance.post('/seller/request-withdrawal', data),

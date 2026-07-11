@@ -10,6 +10,7 @@ import startProcurementMonitorJob from "./app/jobs/procurementMonitorJob.js";
 import cors from "cors"
 import { initSocket, getIO } from "./app/socket/socketManager.js"
 import { registerOrderSocketGetter } from "./app/services/orderSocketEmitter.js"
+import { registerNotificationQueueProcessors } from "./app/queues/notificationQueueProcessors.js";
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
@@ -48,6 +49,7 @@ registerOrderSocketGetter(getIO);
 if (process.env.ENABLE_INLINE_QUEUE_WORKER === "true") {
   import("./app/queues/orderQueueProcessors.js").then((m) => {
     m.registerOrderQueueProcessors();
+    registerNotificationQueueProcessors();
     console.log("[API] Inline Bull queue processors enabled");
   });
 }

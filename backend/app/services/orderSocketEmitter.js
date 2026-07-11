@@ -5,6 +5,7 @@
 import mongoose from "mongoose";
 import Notification from "../models/notification.js";
 import { getDeliveryPartnerIdsWithinSellerRadius } from "./deliveryNearbyService.js";
+import { createNotificationBatch } from "./notificationService.js";
 
 let _getIo = null;
 
@@ -114,7 +115,7 @@ export async function emitDeliveryBroadcastForSeller(sellerId, payload) {
   // Avoid duplicate DB rows when delivery search retries with wider ring
   if (!payload.retryAttempt) {
     try {
-      await Notification.insertMany(
+      await createNotificationBatch(
         ids.map((id) => ({
           recipient: new mongoose.Types.ObjectId(id),
           recipientModel: "Delivery",
@@ -127,7 +128,6 @@ export async function emitDeliveryBroadcastForSeller(sellerId, payload) {
             deliverySearchExpiresAt: payload.deliverySearchExpiresAt || null,
           },
         })),
-        { ordered: false },
       );
     } catch (e) {
       console.warn("[emitDeliveryBroadcastForSeller] notifications", e.message);

@@ -2,6 +2,7 @@ import PurchaseRequest from "../models/purchaseRequest.js";
 import Admin from "../models/admin.js";
 import Notification from "../models/notification.js";
 import { fallbackPurchaseRequest, releasePurchaseRequestCommitments } from "../services/hubOrderOrchestrator.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 
@@ -9,7 +10,7 @@ const notifyAdmins = async (title, message, data = {}) => {
   const admins = await Admin.find({}).select("_id").lean();
   const adminIds = admins.map((a) => a?._id).filter(Boolean);
   if (adminIds.length) {
-    await Notification.insertMany(
+    await createNotificationBatch(
       adminIds.map((adminId) => ({
         recipient: adminId,
         recipientModel: "Admin",
@@ -18,7 +19,6 @@ const notifyAdmins = async (title, message, data = {}) => {
         type: "system",
         data,
       })),
-      { ordered: false },
     );
   }
 };

@@ -1,5 +1,6 @@
 import axiosInstance from "@core/api/axios";
 import { getWithDedupe, invalidateCache } from "@core/api/dedupe";
+import { notificationsApi } from "@core/services/notificationsApi";
 
 export const customerApi = {
   /** Sends OTP; creates account if phone is new */
@@ -118,4 +119,13 @@ export const customerApi = {
   // Product Requests
   createProductRequest: (data) => axiosInstance.post("/product-requests", data),
   getMyProductRequests: () => getWithDedupe("/product-requests/my-requests"),
+
+  // Notifications
+  getNotifications: notificationsApi.getNotifications,
+  markNotificationRead: notificationsApi.markNotificationRead,
+  markAllNotificationsRead: notificationsApi.markAllNotificationsRead,
+  registerDeviceToken: notificationsApi.registerDeviceToken,
+  removeDeviceToken: notificationsApi.removeDeviceToken,
+  getNotificationPreferences: notificationsApi.getPreferences,
+  updateNotificationPreferences: notificationsApi.updatePreferences,
 };

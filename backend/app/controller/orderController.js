@@ -6,7 +6,7 @@ import HubInventory from "../models/hubInventory.js";
 import Transaction from "../models/transaction.js";
 import StockHistory from "../models/stockHistory.js";
 import Notification from "../models/notification.js";
-import { createNotification } from "../services/notificationService.js";
+import { createNotification, createNotificationBatch } from "../services/notificationService.js";
 import Seller from "../models/seller.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import Delivery from "../models/delivery.js";
@@ -486,7 +486,7 @@ export const placeOrder = async (req, res) => {
       const admins = await Admin.find({}).select("_id").lean();
       const adminIds = admins.map((a) => a?._id).filter(Boolean);
       if (adminIds.length) {
-        await Notification.insertMany(
+        await createNotificationBatch(
           adminIds.map((adminId) => ({
             recipient: adminId,
             recipientModel: "Admin",
@@ -502,7 +502,6 @@ export const placeOrder = async (req, res) => {
               autoDispatched: hubMeta.autoDispatched,
             },
           })),
-          { ordered: false },
         );
       }
       emitToAdminOrdersRoom({

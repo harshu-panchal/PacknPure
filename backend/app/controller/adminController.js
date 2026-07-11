@@ -14,6 +14,7 @@ import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
 import Category from "../models/category.js";
 import { MONGO_CATALOG_STOCK_EXPR } from "../utils/productHelpers.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 
 /** Use Cloudinary `avatar` when set; otherwise Dicebear placeholder */
 const customerAvatarProjection = {
@@ -641,14 +642,14 @@ export const settleTransaction = async (req, res) => {
     const { id } = req.params;
     const transaction = await Transaction.findByIdAndUpdate(id, { status: "Settled" }, { new: true }).populate("user", "name");
     if (!transaction) return handleResponse(res, 404, "Transaction not found");
-    await Notification.create({
+    await createNotificationBatch([{
       recipient: transaction.user._id,
       recipientModel: "Delivery",
       title: "Payment Settled",
       message: `Your payment of ₹${transaction.amount} has been settled.`,
       type: "payment",
       data: { transactionId: transaction._id },
-    });
+    }]);
     return handleResponse(res, 200, "Transaction settled successfully", transaction);
   } catch (error) {
     return handleResponse(res, 500, error.message);
@@ -735,7 +736,14 @@ export const settleRiderCash = async (req, res) => {
     const rider = await Delivery.findById(riderId);
     if (!rider) return handleResponse(res, 404, "Rider not found");
     const settlement = await Transaction.create({ user: riderId, userModel: "Delivery", type: "Cash Settlement", amount: -Math.abs(amount), status: "Settled", reference: `CSH-SET-${Date.now()}`, notes: `Method: ${method || "Cash"}` });
-    await Notification.create({ recipient: riderId, recipientModel: "Delivery", title: "Cash Settled", message: `Admin has collected ₹${amount} cash from you. Your balance is updated.`, type: "payment", data: { transactionId: settlement._id } });
+    await createNotificationBatch([{
+      recipient: riderId,
+      recipientModel: "Delivery",
+      title: "Cash Settled",
+      message: `Admin has collected ₹${amount} cash from you. Your balance is updated.`,
+      type: "payment",
+      data: { transactionId: settlement._id },
+    }]);
     return handleResponse(res, 201, "Cash settled successfully", settlement);
   } catch (error) {
     return handleResponse(res, 500, error.message);

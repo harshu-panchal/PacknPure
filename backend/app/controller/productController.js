@@ -4,6 +4,7 @@ import HubInventory from "../models/hubInventory.js";
 import Admin from "../models/admin.js";
 import Notification from "../models/notification.js";
 import Seller from "../models/seller.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 import { handleResponse } from "../utils/helper.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import getPagination from "../utils/pagination.js";
@@ -1041,7 +1042,7 @@ export const createProduct = async (req, res) => {
                 data: { productId: product._id, sellerId: product.sellerId }
             }));
             if (notifications.length > 0) {
-                await Notification.insertMany(notifications);
+                await createNotificationBatch(notifications);
             }
         } catch (notifErr) {
             console.error("Error creating admin notification for new product:", notifErr);

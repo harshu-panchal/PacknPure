@@ -4,6 +4,7 @@ import Notification from "../models/notification.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { processSellerTimeoutJob, processDeliveryTimeoutJob } from "../services/orderWorkflowService.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 
 dotenv.config();
 
@@ -89,14 +90,14 @@ const autoCancelExpiredOrders = async () => {
       }
 
       if (order.seller) {
-        await Notification.create({
+        await createNotificationBatch([{
           recipient: order.seller,
           recipientModel: "Seller",
           title: "Order Timed Out",
           message: `Order #${order.orderId} was cancelled because it wasn't accepted within 60 seconds.`,
           type: "order",
           data: { orderId: order.orderId, mongoOrderId: order._id },
-        });
+        }]);
       }
     }
 

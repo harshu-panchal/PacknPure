@@ -1,4 +1,5 @@
 import { getFirebaseAdminApp, getFirebaseRealtimeDb } from "../config/firebaseAdmin.js";
+import { normalizeNotificationDataForPush } from "./notificationPayloadBuilder.js";
 
 /**
  * RTDB paths — customer reads `deliveryLocations/{orderId}/{deliveryBoyId}`.
@@ -87,6 +88,10 @@ export const getFirebaseMessaging = () => {
 };
 
 export const sendFcmNotification = async (tokens = [], payload = {}) => {
+  return sendFcmMulticast(tokens, payload);
+};
+
+export const sendFcmMulticast = async (tokens = [], payload = {}) => {
   const messaging = getFirebaseMessaging();
   if (!messaging) {
     console.warn("[FCM] Firebase Admin messaging not configured");
@@ -105,7 +110,7 @@ export const sendFcmNotification = async (tokens = [], payload = {}) => {
       title: String(payload.title || payload.notification?.title || "Notification"),
       body: String(payload.body || payload.notification?.body || "You have a new update."),
     },
-    data: payload.data || {},
+    data: normalizeNotificationDataForPush(payload.data || {}),
   };
 
   try {
@@ -116,6 +121,27 @@ export const sendFcmNotification = async (tokens = [], payload = {}) => {
     return response;
   } catch (err) {
     console.error("sendFcmNotification error:", err.message);
+    return null;
+  }
+};
+
+export const sendFcmToToken = async (token, payload = {}) => {
+  const messaging = getFirebaseMessaging();
+  if (!messaging) return null;
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) return null;
+
+  try {
+    return await messaging.send({
+      token: normalizedToken,
+      notification: {
+        title: String(payload.title || payload.notification?.title || "Notification"),
+        body: String(payload.body || payload.notification?.body || "You have a new update."),
+      },
+      data: normalizeNotificationDataForPush(payload.data || {}),
+    });
+  } catch (error) {
+    console.error("sendFcmToToken error:", error.message);
     return null;
   }
 };

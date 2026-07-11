@@ -31,6 +31,7 @@ const Transactions = React.lazy(() => import("../pages/Transactions"));
 const DeliveryTracking = React.lazy(() => import("../pages/DeliveryTracking"));
 const Profile = React.lazy(() => import("../pages/Profile"));
 const Withdrawals = React.lazy(() => import("../pages/Withdrawals"));
+const Notifications = React.lazy(() => import("../pages/Notifications"));
 
 const navItems = [
   { sectionHeader: "Core Management" },
@@ -61,6 +62,11 @@ const navItems = [
     icon: HiOutlineCreditCard,
   },
   {
+    label: "Notifications",
+    path: "/seller/notifications",
+    icon: HiOutlineClipboardDocumentList,
+  },
+  {
     label: "Earnings",
     path: "/seller/earnings",
     icon: HiOutlineCurrencyDollar,
@@ -83,6 +89,7 @@ const SellerRoutes = () => {
         <Route path="/tracking" element={<DeliveryTracking />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/transactions" element={<Transactions />} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/earnings" element={<Earnings />} />
         <Route path="/withdrawals" element={<Withdrawals />} />
         <Route path="/profile" element={<Profile />} />

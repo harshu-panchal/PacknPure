@@ -9,6 +9,11 @@ import React, {
 import { useLocation } from 'react-router-dom';
 import axiosInstance from '@core/api/axios';
 import { getWithDedupe } from '@core/api/dedupe';
+import {
+  clearPushToken,
+  listenForForegroundNotifications,
+  syncPushToken,
+} from '@core/services/pushNotifications';
 
 const AuthContext = createContext(undefined);
 
@@ -67,6 +72,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let cancelled = false;
+    let stopForegroundListener = null;
 
     const fetchProfile = async () => {
       if (!token) {
@@ -92,8 +98,25 @@ export const AuthProvider = ({ children }) => {
     };
 
     fetchProfile();
+
+    if (token) {
+      syncPushToken({ role: currentRole }).catch((error) => {
+        console.warn('[Auth] Push token sync skipped:', error.message);
+      });
+
+      stopForegroundListener = listenForForegroundNotifications({
+        onNavigate: (deepLink) => {
+          if (!deepLink) return;
+          window.location.assign(deepLink);
+        },
+      });
+    }
+
     return () => {
       cancelled = true;
+      if (typeof stopForegroundListener === 'function') {
+        stopForegroundListener();
+      }
     };
   }, [token, currentRole]);
 
@@ -111,6 +134,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
+    const roleToClear = currentRole;
+    void clearPushToken({ role: roleToClear }).catch((error) => {
+      console.warn('[Auth] Push token cleanup skipped:', error.message);
+    });
+
     if (currentRole === 'delivery' && token) {
       try {
         await axiosInstance.post('/delivery/logout');

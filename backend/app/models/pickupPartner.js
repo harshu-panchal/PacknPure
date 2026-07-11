@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  buildDefaultNotificationPreferences,
+  notificationPreferencesSchema,
+  notificationTokenSchema,
+} from "./shared/notificationSchemas.js";
 
 const pickupPartnerSchema = new mongoose.Schema(
   {
@@ -23,8 +28,12 @@ const pickupPartnerSchema = new mongoose.Schema(
       index: true,
     },
     fcmTokens: {
-      type: [String],
+      type: [notificationTokenSchema],
       default: [],
+    },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: buildDefaultNotificationPreferences,
     },
     status: {
       type: String,

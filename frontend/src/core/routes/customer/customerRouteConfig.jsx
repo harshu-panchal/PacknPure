@@ -67,6 +67,14 @@ export const customerRouteChildren = [
         ),
       },
       {
+        path: 'notifications',
+        element: (
+          <ProtectedRoute>
+            <P.NotificationsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'support',
         element: (
           <ProtectedRoute>

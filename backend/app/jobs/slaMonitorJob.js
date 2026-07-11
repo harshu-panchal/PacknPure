@@ -1,6 +1,7 @@
 import Admin from "../models/admin.js";
 import Notification from "../models/notification.js";
 import Order from "../models/order.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
 const SLA_MONITOR_INTERVAL_MS = parseInt(
@@ -34,7 +35,7 @@ const processSlaBreaches = async () => {
     const adminIds = admins.map((a) => a?._id).filter(Boolean);
 
     if (adminIds.length) {
-      await Notification.insertMany(
+      await createNotificationBatch(
         breachedOrders.flatMap((order) =>
           adminIds.map((adminId) => ({
             recipient: adminId,
@@ -51,7 +52,6 @@ const processSlaBreaches = async () => {
             },
           })),
         ),
-        { ordered: false },
       );
     }
 

@@ -16,6 +16,7 @@ export const CustomerPages = {
   AddressesPage: lazy(() => import('@modules/customer/pages/AddressesPage')),
   SettingsPage: lazy(() => import('@modules/customer/pages/SettingsPage')),
   SupportPage: lazy(() => import('@modules/customer/pages/SupportPage')),
+  NotificationsPage: lazy(() => import('@modules/customer/pages/Notifications')),
   ChatPage: lazy(() => import('@modules/customer/pages/ChatPage')),
   TermsPage: lazy(() => import('@modules/customer/pages/TermsPage')),
   PrivacyPage: lazy(() => import('@modules/customer/pages/PrivacyPage')),

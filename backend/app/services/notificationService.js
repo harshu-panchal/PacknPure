@@ -1,54 +1,150 @@
 import Notification from "../models/notification.js";
-import User from "../models/customer.js";
-import Seller from "../models/seller.js";
-import Delivery from "../models/delivery.js";
-import PickupPartner from "../models/pickupPartner.js";
-import { sendFcmNotification } from "./firebaseService.js";
+import NotificationOutbox from "../models/notificationOutbox.js";
+import {
+  buildNotificationPayload,
+} from "./notificationPayloadBuilder.js";
+import {
+  enqueueNotificationJobs,
+} from "../queues/notificationQueues.js";
+import {
+  ensureObjectId,
+  resolveRecipientsFromAudience,
+} from "./notificationHelper.js";
+import {
+  getNotificationCategoryFromType,
+  NOTIFICATION_CHANNELS,
+} from "./notificationTypes.js";
 
-const modelMap = {
-  Customer: User,
-  Seller: Seller,
-  Delivery: Delivery,
-  PickupPartner: PickupPartner,
+const persistNotifications = async (records) => {
+  if (!records.length) return [];
+  return Notification.insertMany(records, { ordered: false });
 };
 
-export const createNotification = async ({
-  recipient,
-  recipientModel,
-  title,
-  message,
-  type = "order",
-  data = {},
-}) => {
-  const note = await Notification.create({
-    recipient,
-    recipientModel,
-    title,
-    message,
-    type,
-    data,
-  });
+const persistOutboxRecords = async (records) => {
+  if (!records.length) return [];
+  return NotificationOutbox.insertMany(records, { ordered: false });
+};
 
-  const Model = modelMap[recipientModel];
-  if (!Model) return note;
-
-  try {
-    const recipientDoc = await Model.findById(recipient)
-      .select("fcmTokens")
-      .lean();
-    if (recipientDoc?.fcmTokens?.length) {
-      await sendFcmNotification(recipientDoc.fcmTokens, {
-        title,
-        body: message,
-        data: {
-          ...data,
-          notificationType: type,
-        },
+export const createNotificationBatch = async (items = [], options = {}) => {
+  const normalizedItems = (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const recipient = ensureObjectId(item?.recipient);
+      if (!recipient || !item?.recipientModel) return null;
+      const payload = buildNotificationPayload({
+        ...options,
+        ...item,
+        recipient,
+        recipientModel: item.recipientModel,
+        type: item.type || options.type,
+        category: item.category || options.category || getNotificationCategoryFromType(item.type || options.type),
+        channel: item.channel || options.channel || NOTIFICATION_CHANNELS.BOTH,
       });
-    }
-  } catch (error) {
-    console.warn("[NotificationService] FCM send failed", error.message);
+      return payload;
+    })
+    .filter(Boolean);
+
+  if (!normalizedItems.length) return [];
+
+  const notifications = await persistNotifications(
+    normalizedItems.map((item) => ({
+      eventId: item.eventId,
+      recipient: item.recipient,
+      recipientModel: item.recipientModel,
+      sender: item.sender || null,
+      senderModel: item.senderModel || null,
+      title: item.title,
+      message: item.message,
+      type: item.type,
+      category: item.category,
+      channel: item.channel,
+      priority: item.priority,
+      deepLink: item.deepLink,
+      imageUrl: item.imageUrl,
+      audience: item.audience,
+      broadcastBatchId: item.broadcastBatchId || "",
+      hash: item.hash,
+      deliveryStatus: item.channel === NOTIFICATION_CHANNELS.IN_APP ? "skipped" : "queued",
+      data: item.data,
+      attemptCount: 0,
+    })),
+  );
+
+  const outboxRecords = normalizedItems.map((item, index) => ({
+    eventId: item.eventId,
+    hash: item.hash,
+    notification: notifications[index]._id,
+    recipient: item.recipient,
+    recipientModel: item.recipientModel,
+    notificationType: item.type,
+    category: item.category,
+    channel: item.channel,
+    priority: item.priority,
+    status: item.channel === NOTIFICATION_CHANNELS.IN_APP ? "skipped" : "queued",
+    attempts: 0,
+    maxAttempts: Number(options.maxAttempts || 5),
+    payload: {
+      notificationId: notifications[index]._id.toString(),
+      recipientId: item.recipient.toString(),
+      recipientModel: item.recipientModel,
+      eventId: item.eventId,
+      hash: item.hash,
+    },
+    lastError: "",
+  }));
+
+  const outboxDocs = await persistOutboxRecords(outboxRecords);
+
+  const jobs = outboxDocs
+    .map((doc, index) => ({ doc, index }))
+    .filter(({ doc }) => doc.status === "queued")
+    .map(({ doc, index }) => ({
+      outboxId: doc._id.toString(),
+      notificationId: notifications[index]?._id?.toString(),
+      recipient: normalizedItems[index].recipient.toString(),
+      recipientModel: normalizedItems[index].recipientModel,
+      eventId: normalizedItems[index].eventId,
+      hash: normalizedItems[index].hash,
+      notificationType: normalizedItems[index].type,
+      category: normalizedItems[index].category,
+      channel: normalizedItems[index].channel,
+      priority: normalizedItems[index].priority,
+      payload: doc.payload,
+    }));
+
+  if (jobs.length) {
+    await enqueueNotificationJobs(jobs);
   }
 
-  return note;
+  return notifications;
+};
+
+export const createNotification = async (input = {}) =>
+  (await createNotificationBatch([input], input))[0] || null;
+
+export const broadcastNotification = async ({
+  targetRole = "all",
+  recipientIds = [],
+  recipientModel = null,
+  includePickupPartner = true,
+  ...notification
+} = {}) => {
+  const recipients = await resolveRecipientsFromAudience({
+    targetRole,
+    recipientIds,
+    recipientModel,
+    includePickupPartner,
+  });
+
+  if (!recipients.length) return [];
+
+  return createNotificationBatch(
+    recipients.map((recipient) => ({
+      ...notification,
+      recipient: recipient.recipient,
+      recipientModel: recipient.recipientModel,
+      category: notification.category || "broadcast",
+      type: notification.type || "system",
+    })),
+    notification,
+  );
 };

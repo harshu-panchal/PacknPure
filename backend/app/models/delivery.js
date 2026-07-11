@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+    buildDefaultNotificationPreferences,
+    notificationPreferencesSchema,
+    notificationTokenSchema,
+} from "./shared/notificationSchemas.js";
 
 const deliverySchema = new mongoose.Schema(
     {
@@ -115,8 +120,12 @@ const deliverySchema = new mongoose.Schema(
             select: false,
         },
         fcmTokens: {
-            type: [String],
+            type: [notificationTokenSchema],
             default: [],
+        },
+        notificationPreferences: {
+            type: notificationPreferencesSchema,
+            default: buildDefaultNotificationPreferences,
         },
         lastLogin: Date,
 

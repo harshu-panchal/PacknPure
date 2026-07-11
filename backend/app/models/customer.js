@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+    buildDefaultNotificationPreferences,
+    notificationPreferencesSchema,
+    notificationTokenSchema,
+} from "./shared/notificationSchemas.js";
 
 const addressSchema = new mongoose.Schema({
     label: {
@@ -103,8 +108,12 @@ const userSchema = new mongoose.Schema(
             default: 0,
         },
         fcmTokens: {
-            type: [String],
+            type: [notificationTokenSchema],
             default: [],
+        },
+        notificationPreferences: {
+            type: notificationPreferencesSchema,
+            default: buildDefaultNotificationPreferences,
         },
         codCancelCount: {
             type: Number,

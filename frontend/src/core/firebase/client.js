@@ -1,7 +1,10 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 
 let firebaseApp = null;
+let firebaseMessaging = null;
+let messagingSupportPromise = null;
 
 export const getFirebaseApp = () => {
   if (firebaseApp) return firebaseApp;
@@ -40,5 +43,24 @@ export const getRealtimeDb = () => {
   const app = getFirebaseApp();
   if (!app) return null;
   return getDatabase(app);
+};
+
+export const isFirebaseMessagingSupported = async () => {
+  if (messagingSupportPromise) return messagingSupportPromise;
+  messagingSupportPromise = isMessagingSupported().catch(() => false);
+  return messagingSupportPromise;
+};
+
+export const getFirebaseMessaging = async () => {
+  if (firebaseMessaging) return firebaseMessaging;
+
+  const supported = await isFirebaseMessagingSupported();
+  if (!supported) return null;
+
+  const app = getFirebaseApp();
+  if (!app) return null;
+
+  firebaseMessaging = getMessaging(app);
+  return firebaseMessaging;
 };
 

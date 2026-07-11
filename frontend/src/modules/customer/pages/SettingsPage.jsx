@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Lock, User, Globe, ChevronRight, ToggleRight, LogOut } from 'lucide-react';
 
 const SettingsPage = () => {
+    const navigate = useNavigate();
     return (
         <div className="min-h-screen bg-slate-50 pb-24 font-sans">
             {/* Header */}
@@ -10,6 +12,14 @@ const SettingsPage = () => {
                 <div className="absolute bottom-0 left-0 w-32 h-32 bg-black/5 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none" />
                 <h1 className="text-3xl font-black text-white tracking-tight relative z-10">Settings</h1>
                 <p className="text-rose-50 text-sm font-medium mt-1 relative z-10">Configure your app preferences</p>
+                <button
+                    type="button"
+                    onClick={() => navigate('/notifications')}
+                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm"
+                >
+                    <Bell size={16} />
+                    Open Notifications
+                </button>
             </div>
 
             <div className="max-w-2xl mx-auto px-4 -mt-10 relative z-20 space-y-6">

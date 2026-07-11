@@ -1,4 +1,5 @@
 import axiosInstance from "@core/api/axios";
+import { notificationsApi } from "@core/services/notificationsApi";
 
 export const deliveryApi = {
   sendLoginOtp: (data) => axiosInstance.post("/delivery/send-login-otp", data),
@@ -46,10 +47,13 @@ export const deliveryApi = {
     axiosInstance.get(
       `/orders/details/${encodeURIComponent(String(orderId))}`,
     ),
-  getNotifications: () => axiosInstance.get("/notifications"),
-  markNotificationRead: (id) => axiosInstance.put(`/notifications/${id}/read`),
-  markAllNotificationsRead: () =>
-    axiosInstance.put("/notifications/mark-all-read"),
+  getNotifications: notificationsApi.getNotifications,
+  markNotificationRead: notificationsApi.markNotificationRead,
+  markAllNotificationsRead: notificationsApi.markAllNotificationsRead,
+  registerDeviceToken: notificationsApi.registerDeviceToken,
+  removeDeviceToken: notificationsApi.removeDeviceToken,
+  getNotificationPreferences: notificationsApi.getPreferences,
+  updateNotificationPreferences: notificationsApi.updatePreferences,
   requestWithdrawal: (data) =>
     axiosInstance.post("/delivery/request-withdrawal", data),
   updateOrderStatus: (orderId, data) =>

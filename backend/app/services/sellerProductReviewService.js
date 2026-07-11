@@ -2,6 +2,7 @@ import Admin from "../models/admin.js";
 import Notification from "../models/notification.js";
 import Product from "../models/product.js";
 import Seller from "../models/seller.js";
+import { createNotificationBatch } from "./notificationService.js";
 import {
   catalogStockFromProduct,
   resolveSupplyPriceFromInput,
@@ -173,7 +174,7 @@ export async function notifyAdminsSellerListingUpdated(product, types, summary) 
     }));
 
     if (notifications.length > 0) {
-      await Notification.insertMany(notifications);
+      await createNotificationBatch(notifications);
     }
   } catch (err) {
     console.warn("[sellerProductReview] notification failed:", err.message);

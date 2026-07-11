@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  buildDefaultNotificationPreferences,
+  notificationPreferencesSchema,
+  notificationTokenSchema,
+} from "./shared/notificationSchemas.js";
 
 const adminSchema = new mongoose.Schema(
   {
@@ -42,6 +47,14 @@ const adminSchema = new mongoose.Schema(
     role: {
       type: String,
       default: "admin",
+    },
+    fcmTokens: {
+      type: [notificationTokenSchema],
+      default: [],
+    },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: buildDefaultNotificationPreferences,
     },
     isVerified: {
       type: Boolean,

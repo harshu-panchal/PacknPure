@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import PageHeader from '@shared/components/ui/PageHeader';
@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useSettings } from '@core/context/SettingsContext';
+import { adminApi } from '../services/adminApi';
 
 const NotificationComposer = () => {
     const { showToast } = useToast();
@@ -33,6 +34,23 @@ const NotificationComposer = () => {
     const [imageUrl, setImageUrl] = useState('');
     const [location, setLocation] = useState('all');
     const [lastOrder, setLastOrder] = useState('any');
+    const [broadcastHistory, setBroadcastHistory] = useState([]);
+    const [isSending, setIsSending] = useState(false);
+
+    useEffect(() => {
+        const loadHistory = async () => {
+            try {
+                const response = await adminApi.getBroadcastHistory({ page: 1, limit: 5 });
+                if (response.data.success) {
+                    setBroadcastHistory(response.data.result.items || []);
+                }
+            } catch (error) {
+                console.warn('Failed to load broadcast history:', error.message);
+            }
+        };
+
+        void loadHistory();
+    }, []);
 
     const segments = [
         { id: 'all', label: 'All Users', count: '12,504', description: 'Universal Reach', icon: HiOutlineUsers, color: 'blue' },
@@ -41,17 +59,43 @@ const NotificationComposer = () => {
         { id: 'new', label: 'Recent Signups', count: '1,420', description: 'Last 7 days', icon: HiOutlineCheckCircle, color: 'emerald' },
     ];
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!title || !message) {
             showToast('Please complete the notification broadcast fields', 'warning');
             return;
         }
-        showToast(`Broadcasting to ${segments.find(s => s.id === selectedSegment)?.count} users...`, 'info');
-        setTimeout(() => {
-            showToast('Campaign launched successfully!', 'success');
-            setTitle('');
-            setMessage('');
-        }, 1500);
+        try {
+            setIsSending(true);
+            const targetRole = selectedSegment === 'all' ? 'all' : 'customer';
+            const response = await adminApi.broadcastNotification({
+                targetRole,
+                title,
+                message,
+                deepLink,
+                imageUrl,
+                category: 'marketing',
+                type: 'marketing',
+                priority: 'high',
+                audience: {
+                    segment: selectedSegment,
+                    location,
+                    lastOrder,
+                },
+            });
+
+            if (response.data.success) {
+                showToast(`Broadcast queued for ${response.data.result.count || 0} recipients`, 'success');
+                setBroadcastHistory((current) => [response.data.result.notifications?.[0], ...current].filter(Boolean));
+                setTitle('');
+                setMessage('');
+                setDeepLink('');
+                setImageUrl('');
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'Broadcast failed', 'error');
+        } finally {
+            setIsSending(false);
+        }
     };
 
     return (
@@ -155,11 +199,11 @@ const NotificationComposer = () => {
                             {/* Send Button */}
                             <button
                                 onClick={handleSend}
-                                disabled={!title || !message}
+                                disabled={!title || !message || isSending}
                                 className="ds-btn ds-btn-lg w-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 <HiOutlineBolt className="ds-icon-md text-amber-400" />
-                                BLAST SIGNAL
+                                {isSending ? 'SENDING...' : 'BLAST SIGNAL'}
                             </button>
                         </div>
                     </Card>
@@ -270,6 +314,31 @@ const NotificationComposer = () => {
                             ))}
                         </div>
                     </div>
+
+                    <Card className="ds-card-standard">
+                        <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+                            <div className="ds-stat-card-icon bg-emerald-50">
+                                <HiOutlineClock className="ds-icon-lg text-emerald-600" />
+                            </div>
+                            <div>
+                                <h3 className="ds-h3">Recent Broadcasts</h3>
+                                <p className="ds-caption text-slate-400">Latest queued notification campaigns</p>
+                            </div>
+                        </div>
+                        <div className="space-y-3 pt-4">
+                            {broadcastHistory.length ? broadcastHistory.map((item) => (
+                                <div key={item?._id || item?.eventId} className="rounded-xl border border-slate-100 p-3 bg-slate-50/60">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="font-bold text-slate-900 truncate">{item?.title || 'Broadcast'}</p>
+                                        <span className="ds-caption text-slate-400">{item?.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}</span>
+                                    </div>
+                                    <p className="ds-caption text-slate-500 mt-1 line-clamp-2">{item?.message}</p>
+                                </div>
+                            )) : (
+                                <p className="ds-caption text-slate-400">No broadcasts sent yet.</p>
+                            )}
+                        </div>
+                    </Card>
                 </div>
             </div>
         </div>

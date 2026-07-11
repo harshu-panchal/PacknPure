@@ -6,6 +6,7 @@ import Admin from "../models/admin.js";
 import Notification from "../models/notification.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
 import { normalizePhone, isValidIndianPhone } from "../utils/phone.js";
+import { createNotificationBatch } from "../services/notificationService.js";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 
@@ -106,7 +107,7 @@ export const signupSeller = async (req, res) => {
                 data: { sellerId: seller._id }
             }));
             if (notifications.length > 0) {
-                await Notification.insertMany(notifications);
+                await createNotificationBatch(notifications);
             }
         } catch (notifErr) {
             console.error("Error creating admin notification for new vendor:", notifErr);
