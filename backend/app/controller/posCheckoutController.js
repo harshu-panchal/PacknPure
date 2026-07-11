@@ -53,7 +53,8 @@ export const processPosCheckout = async (req, res) => {
       pricing, 
       guestCustomer, 
       posDetails,
-      discountDetails
+      discountDetails,
+      fulfillmentDetails
     } = req.body;
 
     const { posTerminalId, posSessionId } = posDetails || {};
@@ -70,6 +71,7 @@ export const processPosCheckout = async (req, res) => {
       invoiceNumber,
       orderSource: "POS",
       guestCustomer,
+      address: fulfillmentDetails?.address || undefined,
       posDetails: {
         posTerminalId,
         posSessionId,
@@ -91,9 +93,9 @@ export const processPosCheckout = async (req, res) => {
         discountDetails,
         total: pricing.total
       },
-      // Status lifecycle bypasses delivery routing
-      status: "delivered", // Resolving to delivered directly for POS walk-in
-      workflowStatus: "DELIVERED",
+      // If Home Delivery, route through standard workflow starting at pending. If Take Away, instantly complete.
+      status: fulfillmentDetails?.type === "HOME_DELIVERY" ? "pending" : "delivered",
+      workflowStatus: fulfillmentDetails?.type === "HOME_DELIVERY" ? "PENDING" : "DELIVERED",
     });
 
     await newOrder.save({ session });
@@ -126,7 +128,7 @@ export const processPosCheckout = async (req, res) => {
       throw new Error("Stock unavailable: inventory was updated by another request. Please try again.");
     }
 
-    // Auto-procure shortages just like online orders
+    // Set procurement flags and trigger backend procurement engine
     if (hubPlan.shortages.length > 0) {
       await createAutoPurchaseRequests({
         order: newOrder,
@@ -140,18 +142,22 @@ export const processPosCheckout = async (req, res) => {
       newOrder.procurementRequired = false;
     }
 
-    // Step through lifecycle rapidly to bypass physical shipping but preserve analytics
-    newOrder.status = "delivered";
-    newOrder.workflowStatus = "DELIVERED";
-    newOrder.acceptedAt = new Date();
-    newOrder.deliveredAt = new Date();
+    // Step through lifecycle rapidly ONLY if it's TAKE_AWAY
+    if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
+      newOrder.status = "delivered";
+      newOrder.workflowStatus = "DELIVERED";
+      newOrder.acceptedAt = new Date();
+      newOrder.deliveredAt = new Date();
+    }
     
     await newOrder.save({ session });
     
-    // Since we are instantly completing a POS order, deduct the reserved stock permanently.
-    const { deductHubInventory } = await import("../services/inventoryLifecycleService.js");
-    for (const alloc of hubPlan.allocations) {
-       await deductHubInventory(alloc.productId, alloc.variantId, alloc.reserveQty, session);
+    // Since we are instantly completing a POS order (Take Away), deduct the reserved stock permanently.
+    if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
+      const { deductHubInventory } = await import("../services/inventoryLifecycleService.js");
+      for (const alloc of hubPlan.allocations) {
+         await deductHubInventory(alloc.productId, alloc.variantId, alloc.reserveQty, session);
+      }
     }
 
     // 5. Log POS Cash Transaction if cash

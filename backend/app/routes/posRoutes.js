@@ -7,6 +7,10 @@ import {
   getCurrentSession,
   addCashMovement,
   voidBill,
+  getPosDashboardStats,
+  searchPosProducts,
+  returnPosOrder,
+  getPosOrders
 } from "../controller/posController.js";
 import { processPosCheckout } from "../controller/posCheckoutController.js";
 import { verifyToken, requireAdmin } from "../middleware/authMiddleware.js";
@@ -25,11 +29,17 @@ router.post("/sessions/open", startSession);
 router.post("/sessions/close", endSession);
 router.get("/sessions/current", getCurrentSession);
 
+// Dashboard & Search
+router.get("/dashboard", getPosDashboardStats);
+router.get("/products/search", searchPosProducts);
+
 // Cash Drawer
 router.post("/cash-drawer", addCashMovement);
 
-// Checkout & Void
+// Checkout & Void & Returns
 router.post("/checkout", processPosCheckout);
 router.post("/void", voidBill);
+router.post("/orders/return", returnPosOrder);
+router.get("/orders", getPosOrders);
 
 export default router;

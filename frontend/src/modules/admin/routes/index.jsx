@@ -105,6 +105,19 @@ const HubSettings = React.lazy(() => import("../pages/HubSettings"));
 const Reports = React.lazy(() => import("../pages/Reports"));
 const ProductRequestsList = React.lazy(() => import("../pages/ProductRequestsList"));
 
+// POS Components
+const PosDashboard = React.lazy(() => import("../pages/pos/PosDashboard"));
+const PosCheckout = React.lazy(() => import("../pages/pos/PosCheckout"));
+const CurrentOrders = React.lazy(() => import("../pages/pos/CurrentOrders"));
+const PosInventory = React.lazy(() => import("../pages/pos/PosInventory"));
+const LowStockAlerts = React.lazy(() => import("../pages/pos/LowStockAlerts"));
+const ProcurementStatus = React.lazy(() => import("../pages/pos/ProcurementStatus"));
+const PosCashDrawer = React.lazy(() => import("../pages/pos/PosCashDrawer"));
+const Returns = React.lazy(() => import("../pages/pos/Returns"));
+const PosReports = React.lazy(() => import("../pages/pos/PosReports"));
+const PosSettings = React.lazy(() => import("../pages/pos/PosSettings"));
+import { PosLayout } from "../components/pos/PosLayout";
+
 const navItems = [
   { sectionHeader: "Core Management" },
   {
@@ -125,6 +138,25 @@ const navItems = [
     path: "/admin/reports",
     icon: Sparkles,
     color: "indigo",
+  },
+
+  { sectionHeader: "Point of Sale" },
+  {
+    label: "POS System",
+    icon: Terminal,
+    color: "cyan",
+    children: [
+      { label: "Dashboard", path: "/admin/pos" },
+      { label: "Quick Order", path: "/admin/pos/checkout" },
+      { label: "Current Orders", path: "/admin/pos/orders" },
+      { label: "Hub Inventory", path: "/admin/pos/inventory" },
+      { label: "Low Stock Alerts", path: "/admin/pos/low-stock" },
+      { label: "Procurement Status", path: "/admin/pos/procurement" },
+      { label: "Cash Drawer", path: "/admin/pos/cash-drawer" },
+      { label: "Returns", path: "/admin/pos/returns" },
+      { label: "Reports", path: "/admin/pos/reports" },
+      { label: "Settings", path: "/admin/pos/settings" },
+    ],
   },
 
   { sectionHeader: "Menu & Categories" },
@@ -318,6 +350,20 @@ const AdminRoutes = () => {
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/hub-settings" element={<HubSettings />} />
+
+        {/* POS Routes wrapped in PosLayout */}
+        <Route path="/pos" element={<PosLayout />}>
+          <Route index element={<PosDashboard />} />
+          <Route path="checkout" element={<PosCheckout />} />
+          <Route path="orders" element={<CurrentOrders />} />
+          <Route path="inventory" element={<PosInventory />} />
+          <Route path="low-stock" element={<LowStockAlerts />} />
+          <Route path="procurement" element={<ProcurementStatus />} />
+          <Route path="cash-drawer" element={<PosCashDrawer />} />
+          <Route path="returns" element={<Returns />} />
+          <Route path="reports" element={<PosReports />} />
+          <Route path="settings" element={<PosSettings />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>
