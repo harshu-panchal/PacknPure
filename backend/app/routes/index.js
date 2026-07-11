@@ -25,6 +25,7 @@ import reportRoute from "./reportRoutes.js";
 import uploadRoute from "./uploadRoutes.js";
 import productRequestRoute from "./productRequestRoutes.js";
 import dynamicPageRoute from "./dynamicPageRoutes.js";
+import posRoute from "./posRoutes.js";
 
 import express from "express";
 
@@ -35,6 +36,7 @@ const setupRoutes = (app) => {
     router.use("/customer", customerRoute);
     router.use("/delivery", deliveryRoute);
     router.use("/admin/categories", categoryRoute);
+    router.use("/admin/pos", posRoute);
     router.use("/admin", adminRoute);
     router.use("/seller", sellerRoute);
     // Legacy alias — same seller procurement handlers; prefer /api/seller

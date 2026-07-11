@@ -8,10 +8,46 @@ const orderSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    receiptNumber: {
+      type: String,
+      index: true,
+      unique: true,
+      sparse: true,
+    },
+    invoiceNumber: {
+      type: String,
+      index: true,
+      unique: true,
+      sparse: true,
+    },
+    orderSource: {
+      type: String,
+      enum: ["ONLINE", "POS", "ADMIN", "PHONE", "MARKETPLACE", "API"],
+      default: "ONLINE",
+      index: true,
+    },
+    posDetails: {
+      posTerminalId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "PosTerminal",
+      },
+      posSessionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "PosSession",
+      },
+      cashierId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Admin",
+      },
+    },
+    guestCustomer: {
+      name: String,
+      phone: String,
+    },
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      // required validation handled in pre-save hook
     },
     seller: {
       type: mongoose.Schema.Types.ObjectId,
@@ -84,7 +120,7 @@ const orderSchema = new mongoose.Schema(
     payment: {
       method: {
         type: String,
-        enum: ["cash", "online", "wallet"],
+        enum: ["cash", "online", "wallet", "card", "upi"],
         default: "cash",
       },
       status: {
@@ -93,6 +129,18 @@ const orderSchema = new mongoose.Schema(
         default: "pending",
       },
       transactionId: String,
+      paidAmount: { type: Number, default: 0 },
+      remainingAmount: { type: Number, default: 0 },
+      changeReturned: { type: Number, default: 0 },
+      splitPayments: [
+        {
+          method: {
+            type: String,
+            enum: ["cash", "online", "wallet", "card", "upi"],
+          },
+          amount: Number,
+        },
+      ],
     },
     pricing: {
       subtotal: Number,
@@ -106,6 +154,17 @@ const orderSchema = new mongoose.Schema(
       discount: {
         type: Number,
         default: 0,
+      },
+      discountDetails: {
+        type: {
+          type: String,
+          enum: ["manual", "coupon", "membership", "employee", "none"],
+          default: "none",
+        },
+        amount: { type: Number, default: 0 },
+        reason: String,
+        managerOverride: { type: Boolean, default: false },
+        managerId: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
       },
       total: Number,
     },
@@ -122,6 +181,7 @@ const orderSchema = new mongoose.Schema(
         "out_for_delivery",
         "delivered",
         "cancelled",
+        "voided",
       ],
       default: "pending",
     },
@@ -254,7 +314,10 @@ const orderSchema = new mongoose.Schema(
         "return_pickup_assigned",
         "return_in_transit",
         "returned",
+        "exchange_requested",
+        "exchanged",
         "refund_completed",
+        "partial_refund_completed"
       ],
       default: "none",
     },
@@ -349,7 +412,7 @@ orderSchema.index({ deliveryBoy: 1, workflowStatus: 1 });
 
 // BUGFIX: Pre-save hook to validate customer reference integrity
 orderSchema.pre('save', function(next) {
-  if (!this.customer) {
+  if (this.orderSource !== "POS" && this.orderSource !== "ADMIN" && !this.customer) {
     const error = new Error('Order must have a valid customer reference');
     error.name = 'ValidationError';
     console.error('[ORDER_VALIDATION] Attempted to save order without customer reference', {
