@@ -288,7 +288,7 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                     </div>
 
                     {/* Scrollable Form Content */}
-                    <div className="px-6 pb-6 overflow-y-auto overscroll-contain flex-1 custom-scrollbar">
+                    <div className="px-6 pb-6 overflow-y-auto overscroll-contain flex-1 custom-scrollbar" data-lenis-prevent="true">
                         <form id="profile-form" onSubmit={handleSave} className="space-y-4 pt-2" noValidate>
 
                             {/* ── Personal Info Section ── */}

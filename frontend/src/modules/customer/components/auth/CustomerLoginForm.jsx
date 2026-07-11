@@ -224,7 +224,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
                             className="flex items-center overflow-hidden rounded-xl border border-slate-300 bg-white transition-all focus-within:ring-2"
                             style={inputRing}
                         >
-                            <span className="border-r border-slate-200 py-4 pl-4 pr-3 text-sm font-bold text-slate-800">
+                            <span className="shrink-0 border-r border-slate-200 py-4 pl-4 pr-3 text-sm font-bold text-slate-800">
                                 +91
                             </span>
                             <input
