@@ -80,14 +80,13 @@ jest.unstable_mockModule("../app/models/product.js", () => ({
       return mockFindChain([]);
     }),
     findById: jest.fn(async (id) => {
-      const p = {
-        _id: String(id) === SELLER_PRODUCT_ID ? SELLER_PRODUCT_ID : String(id),
-        variants: String(id) === SELLER_PRODUCT_ID ? sellerListing.variants : [],
-      };
-      return {
-        select: () => p,
-        ...p
-      };
+      if (String(id) === SELLER_PRODUCT_ID) {
+        return {
+          _id: SELLER_PRODUCT_ID,
+          variants: sellerListing.variants,
+        };
+      }
+      return null;
     }),
     updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
   },
@@ -100,7 +99,6 @@ jest.unstable_mockModule("../app/models/purchaseRequest.js", () => ({
       insertedPrs.push(...docs);
       return docs.map((d, i) => ({ ...d, _id: `pr-${i}` }));
     }),
-    deleteMany: jest.fn(async () => ({ deletedCount: 1 })),
   },
 }));
 

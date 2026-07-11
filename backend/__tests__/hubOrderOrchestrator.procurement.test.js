@@ -18,7 +18,6 @@ jest.unstable_mockModule("../app/models/product.js", () => ({
 jest.unstable_mockModule("../app/models/purchaseRequest.js", () => ({
   default: {
     insertMany: jest.fn(async () => []),
-    deleteMany: jest.fn(async () => ({ deletedCount: 0 })),
   },
 }));
 
