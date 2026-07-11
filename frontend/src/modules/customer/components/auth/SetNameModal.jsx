@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Sparkles, ChevronRight, Loader2, Mail, MapPin, Building2, FileText, Shield, Leaf, Briefcase, ChevronDown } from 'lucide-react';
+import { User, Sparkles, ChevronRight, Loader2, Mail, MapPin, Building2, FileText, Shield, Leaf, Briefcase, ChevronDown, X, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { customerApi } from '../../services/customerApi';
 import { BRAND_COLOR, BRAND_COLOR_DARK, BRAND_COLOR_LIGHT } from '../../constants/brandTheme';
@@ -22,7 +22,7 @@ const businessTypes = [
  *   open       — boolean: whether to show the modal
  *   onSuccess  — (name: string) => void: called after profile is saved to DB
  */
-const SetNameModal = ({ open, onSuccess }) => {
+const SetNameModal = ({ open, onSuccess, onLogout }) => {
     const [form, setForm] = useState({
         name: '',
         address: '',
@@ -42,6 +42,7 @@ const SetNameModal = ({ open, onSuccess }) => {
     const [showBusinessTypeDropdown, setShowBusinessTypeDropdown] = useState(false);
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
+    const [showConfirmLogout, setShowConfirmLogout] = useState(false);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -71,6 +72,7 @@ const SetNameModal = ({ open, onSuccess }) => {
             setAnimIn(false);
             const t = setTimeout(() => {
                 setVisible(false);
+                setShowConfirmLogout(false);
                 setForm({
                     name: '',
                     address: '',
@@ -240,7 +242,7 @@ const SetNameModal = ({ open, onSuccess }) => {
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="mx-auto w-full max-w-lg rounded-t-3xl md:rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[92vh] md:max-h-[90vh] flex flex-col">
+                <div className="mx-auto w-full max-w-lg rounded-t-3xl md:rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col relative">
 
                     {/* Drag pill — mobile only */}
                     <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
@@ -248,7 +250,15 @@ const SetNameModal = ({ open, onSuccess }) => {
                     </div>
 
                     {/* Fixed Header */}
-                    <div className="px-6 pt-5 pb-3 shrink-0">
+                    <div className="px-6 pt-5 pb-3 shrink-0 relative">
+                        <button
+                            type="button"
+                            onClick={() => setShowConfirmLogout(true)}
+                            className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors z-10"
+                            aria-label="Close"
+                        >
+                            <X size={20} />
+                        </button>
                         {/* Icon */}
                         <div
                             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
@@ -278,8 +288,8 @@ const SetNameModal = ({ open, onSuccess }) => {
                     </div>
 
                     {/* Scrollable Form Content */}
-                    <div className="px-6 pb-8 overflow-y-auto flex-1 custom-scrollbar">
-                        <form onSubmit={handleSave} className="space-y-4 pt-2" noValidate>
+                    <div className="px-6 pb-6 overflow-y-auto overscroll-contain flex-1 custom-scrollbar">
+                        <form id="profile-form" onSubmit={handleSave} className="space-y-4 pt-2" noValidate>
 
                             {/* ── Personal Info Section ── */}
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-1">Personal Info *</p>
@@ -473,36 +483,73 @@ const SetNameModal = ({ open, onSuccess }) => {
                                     className={inputInnerClass}
                                 />
                             </div>
-
-                            {/* Save button */}
-                            <button
-                                id="set-name-save-btn"
-                                type="submit"
-                                disabled={isLoading}
-                                className="relative w-full overflow-hidden rounded-2xl py-4 text-base font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
-                                style={{
-                                    background: isLoading
-                                        ? '#9ca3af'
-                                        : `linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_DARK} 100%)`,
-                                    boxShadow: !isLoading
-                                        ? `0 8px 24px ${BRAND_COLOR}40`
-                                        : 'none',
-                                }}
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 size={20} className="animate-spin" />
-                                        Saving…
-                                    </>
-                                ) : (
-                                    <>
-                                        Save &amp; Continue
-                                        <ChevronRight size={20} />
-                                    </>
-                                )}
-                            </button>
                         </form>
                     </div>
+
+                    {/* Fixed Footer */}
+                    <div className="shrink-0 p-4 md:px-6 border-t border-slate-100 bg-white shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.03)] z-10">
+                        <button
+                            id="set-name-save-btn"
+                            type="submit"
+                            form="profile-form"
+                            disabled={isLoading}
+                            className="relative w-full overflow-hidden rounded-2xl py-4 text-base font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            style={{
+                                background: isLoading
+                                    ? '#9ca3af'
+                                    : `linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_DARK} 100%)`,
+                                boxShadow: !isLoading
+                                    ? `0 8px 24px ${BRAND_COLOR}40`
+                                    : 'none',
+                            }}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <Loader2 size={20} className="animate-spin" />
+                                    Saving…
+                                </>
+                            ) : (
+                                <>
+                                    Save &amp; Continue
+                                    <ChevronRight size={20} />
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Confirmation Dialog Overlay */}
+                    {showConfirmLogout && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm p-6 animate-in fade-in duration-200">
+                            <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-center animate-in zoom-in-95 duration-200">
+                                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
+                                    <LogOut size={28} />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">Are you sure?</h3>
+                                <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                                    If you close this screen, you'll be logged out and will need to verify your OTP again.
+                                </p>
+                                <div className="space-y-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmLogout(false)}
+                                        className="w-full rounded-xl py-3.5 text-base font-bold text-white transition-all bg-slate-900 hover:bg-slate-800 active:scale-[0.98]"
+                                    >
+                                        Continue Profile
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowConfirmLogout(false);
+                                            onLogout?.();
+                                        }}
+                                        className="w-full rounded-xl py-3.5 text-base font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 active:scale-[0.98]"
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </>

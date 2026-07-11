@@ -16,7 +16,7 @@ const OTP_LENGTH = 4;
  */
 const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
     const navigate = useNavigate();
-    const { login, patchUser } = useAuth();
+    const { login, logout, patchUser } = useAuth();
     const { settings } = useSettings();
     const primary = brandColor(settings);
     const primaryDark = brandColorDark(settings);
@@ -140,6 +140,18 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
             onClose();
         } else {
             navigate('/');
+        }
+    };
+
+    const handleLogout = () => {
+        logout();
+        setPendingLoginData(null);
+        setShowSetName(false);
+        setStep('phone');
+        setPhone('');
+        setOtp('');
+        if (onClose) {
+            onClose();
         }
     };
 
@@ -364,6 +376,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
         <SetNameModal
             open={showSetName}
             onSuccess={handleNameSaved}
+            onLogout={handleLogout}
         />
         </>  
     );

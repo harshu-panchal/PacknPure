@@ -20,5 +20,6 @@ export const getPagination = (req, options = {}) => {
   return { page, limit, skip };
 };
 
+
 export default getPagination;
 

@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
 import { useAuth } from '@core/context/AuthContext';
 import { WishlistProvider } from '@modules/customer/context/WishlistContext';
@@ -23,7 +23,8 @@ import { isCustomerProfileComplete } from '@core/utils/profile';
  */
 const CustomerLayoutWrapper = () => {
   const { settings } = useSettings();
-  const { user, isLoading: authLoading, patchUser } = useAuth();
+  const { user, isLoading: authLoading, patchUser, logout } = useAuth();
+  const navigate = useNavigate();
   const [showSetName, setShowSetName] = useState(false);
 
   useEffect(() => {
@@ -54,6 +55,12 @@ const CustomerLayoutWrapper = () => {
     setShowSetName(false);
   };
 
+  const handleLogout = () => {
+    logout();
+    setShowSetName(false);
+    navigate('/login');
+  };
+
   return (
     <CustomerLoginProvider>
       <LocationProvider>
@@ -71,6 +78,7 @@ const CustomerLayoutWrapper = () => {
                 <SetNameModal
                   open={showSetName}
                   onSuccess={handleNameSaved}
+                  onLogout={handleLogout}
                 />
               </ProductDetailProvider>
             </CartAnimationProvider>
