@@ -15,7 +15,8 @@
     "seed:products": "node scripts/seedProducts.js",
     "seed:products:clear": "node scripts/seedProducts.js --clear",
     "seed:products:sellers": "node scripts/seedProducts.js --with-sellers",
-    "seed:products:full": "node scripts/seedProducts.js --clear --with-sellers"
+    "seed:products:full": "node scripts/seedProducts.js --clear --with-sellers",
+    "migrate:notifications": "node scripts/migrate-notification-tokens.js"
   },
   "jest": {
     "testEnvironment": "node",

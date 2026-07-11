@@ -1,5 +1,4 @@
 import Admin from "../models/admin.js";
-import Notification from "../models/notification.js";
 import Order from "../models/order.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 

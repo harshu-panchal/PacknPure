@@ -1,6 +1,5 @@
 import PurchaseRequest from "../models/purchaseRequest.js";
 import Admin from "../models/admin.js";
-import Notification from "../models/notification.js";
 import { fallbackPurchaseRequest, releasePurchaseRequestCommitments } from "../services/hubOrderOrchestrator.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
-    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, PackagePlus
+    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, PackagePlus, Bell
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -87,6 +87,14 @@ const ProfilePage = () => {
                                 path="/wallet"
                                 color="#E23744"
                                 bg="rgba(16,185,129,0.10)"
+                            />
+                            <MenuItem
+                                icon={Bell}
+                                label="Notifications"
+                                sub="Order updates and alerts"
+                                path="/notifications"
+                                color="#E23744"
+                                bg="rgba(244,63,94,0.10)"
                             />
                             <MenuItem
                                 icon={Heart}

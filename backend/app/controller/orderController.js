@@ -5,7 +5,6 @@ import Product from "../models/product.js";
 import HubInventory from "../models/hubInventory.js";
 import Transaction from "../models/transaction.js";
 import StockHistory from "../models/stockHistory.js";
-import Notification from "../models/notification.js";
 import { createNotification, createNotificationBatch } from "../services/notificationService.js";
 import Seller from "../models/seller.js";
 import PurchaseRequest from "../models/purchaseRequest.js";

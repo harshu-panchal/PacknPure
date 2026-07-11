@@ -8,6 +8,10 @@ import {
     SUSPENDED_MESSAGE,
     getPlatformSupportContact,
 } from "../utils/supportContact.js";
+import {
+    removeRecipientPushToken,
+    upsertRecipientPushToken,
+} from "../services/notificationHelper.js";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 
@@ -219,13 +223,20 @@ export const registerCustomerFcmToken = async (req, res) => {
             return handleResponse(res, 404, "Customer not found");
         }
 
-        customer.fcmTokens = Array.from(
-            new Set([...(customer.fcmTokens || []), token.trim()]),
-        );
-        await customer.save();
+        const tokens = await upsertRecipientPushToken({
+            recipientId: customer._id,
+            recipientModel: "User",
+            token,
+            platform: req.body?.platform,
+            deviceId: req.body?.deviceId,
+            deviceName: req.body?.deviceName,
+            browser: req.body?.browser,
+            os: req.body?.os,
+            appVersion: req.body?.appVersion,
+        });
 
         return handleResponse(res, 200, "FCM token registered successfully", {
-            tokens: customer.fcmTokens,
+            tokens,
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);
@@ -235,22 +246,19 @@ export const registerCustomerFcmToken = async (req, res) => {
 export const removeCustomerFcmToken = async (req, res) => {
     try {
         const { token } = req.body;
-        if (!token || typeof token !== "string") {
+        if ((!token || typeof token !== "string") && !req.body?.deviceId) {
             return handleResponse(res, 400, "A valid FCM token is required");
         }
 
-        const customer = await Customer.findById(req.user.id);
-        if (!customer) {
-            return handleResponse(res, 404, "Customer not found");
-        }
-
-        customer.fcmTokens = (customer.fcmTokens || []).filter(
-            (existing) => existing !== token.trim(),
-        );
-        await customer.save();
+        const tokens = await removeRecipientPushToken({
+            recipientId: req.user.id,
+            recipientModel: "User",
+            token,
+            deviceId: req.body?.deviceId,
+        });
 
         return handleResponse(res, 200, "FCM token removed successfully", {
-            tokens: customer.fcmTokens,
+            tokens,
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);

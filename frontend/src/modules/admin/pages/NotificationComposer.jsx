@@ -34,6 +34,9 @@ const NotificationComposer = () => {
     const [imageUrl, setImageUrl] = useState('');
     const [location, setLocation] = useState('all');
     const [lastOrder, setLastOrder] = useState('any');
+    const [targetRole, setTargetRole] = useState('all');
+    const [recipientModel, setRecipientModel] = useState('User');
+    const [recipientIdsText, setRecipientIdsText] = useState('');
     const [broadcastHistory, setBroadcastHistory] = useState([]);
     const [isSending, setIsSending] = useState(false);
 
@@ -64,11 +67,19 @@ const NotificationComposer = () => {
             showToast('Please complete the notification broadcast fields', 'warning');
             return;
         }
+        if (targetRole === 'specific' && !recipientIdsText.trim()) {
+            showToast('Please provide one or more recipient IDs', 'warning');
+            return;
+        }
         try {
             setIsSending(true);
             const targetRole = selectedSegment === 'all' ? 'all' : 'customer';
             const response = await adminApi.broadcastNotification({
-                targetRole,
+                targetRole: targetRole === 'specific' ? 'all' : targetRole,
+                recipientModel: targetRole === 'specific' ? recipientModel : undefined,
+                recipientIds: targetRole === 'specific'
+                    ? recipientIdsText.split(',').map((value) => value.trim()).filter(Boolean)
+                    : [],
                 title,
                 message,
                 deepLink,
@@ -85,7 +96,10 @@ const NotificationComposer = () => {
 
             if (response.data.success) {
                 showToast(`Broadcast queued for ${response.data.result.count || 0} recipients`, 'success');
-                setBroadcastHistory((current) => [response.data.result.notifications?.[0], ...current].filter(Boolean));
+                const historyResponse = await adminApi.getBroadcastHistory({ page: 1, limit: 5 });
+                if (historyResponse.data.success) {
+                    setBroadcastHistory(historyResponse.data.result.items || []);
+                }
                 setTitle('');
                 setMessage('');
                 setDeepLink('');
@@ -140,6 +154,53 @@ const NotificationComposer = () => {
 
                             {/* Form Fields */}
                             <div className="space-y-5">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="ds-label">Target Audience</label>
+                                        <select
+                                            value={targetRole}
+                                            onChange={(e) => setTargetRole(e.target.value)}
+                                            className="ds-input w-full"
+                                        >
+                                            <option value="all">All Users</option>
+                                            <option value="customer">Customers</option>
+                                            <option value="seller">Sellers</option>
+                                            <option value="delivery">Delivery Partners</option>
+                                            <option value="admin">Admins</option>
+                                            <option value="specific">Specific IDs</option>
+                                        </select>
+                                    </div>
+                                    {targetRole === 'specific' ? (
+                                        <div className="space-y-2">
+                                            <label className="ds-label">Recipient Model</label>
+                                            <select
+                                                value={recipientModel}
+                                                onChange={(e) => setRecipientModel(e.target.value)}
+                                                className="ds-input w-full"
+                                            >
+                                                <option value="User">Customer</option>
+                                                <option value="Seller">Seller</option>
+                                                <option value="Delivery">Delivery Partner</option>
+                                                <option value="Admin">Admin</option>
+                                                <option value="PickupPartner">Pickup Partner</option>
+                                            </select>
+                                        </div>
+                                    ) : null}
+                                </div>
+
+                                {targetRole === 'specific' ? (
+                                    <div className="space-y-2">
+                                        <label className="ds-label">Recipient IDs</label>
+                                        <textarea
+                                            rows={2}
+                                            value={recipientIdsText}
+                                            onChange={(e) => setRecipientIdsText(e.target.value)}
+                                            placeholder="Comma separated Mongo IDs"
+                                            className="ds-textarea w-full resize-none"
+                                        />
+                                    </div>
+                                ) : null}
+
                                 {/* Title */}
                                 <div className="space-y-2">
                                     <label className="ds-label">Notification Title</label>

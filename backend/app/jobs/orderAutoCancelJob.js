@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
 import Order from "../models/order.js";
-import Notification from "../models/notification.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { processSellerTimeoutJob, processDeliveryTimeoutJob } from "../services/orderWorkflowService.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";

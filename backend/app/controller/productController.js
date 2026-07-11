@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import Product from "../models/product.js";
 import HubInventory from "../models/hubInventory.js";
 import Admin from "../models/admin.js";
-import Notification from "../models/notification.js";
 import Seller from "../models/seller.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 import { handleResponse } from "../utils/helper.js";

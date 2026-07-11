@@ -14,12 +14,30 @@ export const getFirebaseAdminApp = () => {
 
   const json = process.env.FIREBASE_SERVICE_ACCOUNT;
   const databaseURL = process.env.FIREBASE_DATABASE_URL;
-  if (!json || !databaseURL) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (!databaseURL) {
     return null;
   }
 
   try {
-    const serviceAccount = JSON.parse(json);
+    let serviceAccount = null;
+    if (json) {
+      serviceAccount = JSON.parse(json);
+    } else if (projectId && clientEmail && privateKey) {
+      serviceAccount = {
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, "\n"),
+      };
+    }
+
+    if (!serviceAccount) {
+      return null;
+    }
+
     firebaseAdminApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL,

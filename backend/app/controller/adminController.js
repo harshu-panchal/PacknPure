@@ -7,7 +7,6 @@ import DeliveryActivity from "../models/deliveryActivity.js";
 import Order from "../models/order.js";
 import Product from "../models/product.js";
 import Transaction from "../models/transaction.js";
-import Notification from "../models/notification.js";
 import Setting from "../models/setting.js";
 import PickupPartner from "../models/pickupPartner.js";
 import handleResponse from "../utils/helper.js";

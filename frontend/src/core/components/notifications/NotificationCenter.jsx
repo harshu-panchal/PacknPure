@@ -57,7 +57,6 @@ const NotificationCenter = ({
   api,
   title = "Notifications",
   description = "Stay on top of updates across your account.",
-  canBroadcast = false,
   showPreferences = true,
   showBroadcastHistory = false,
 }) => {
@@ -284,7 +283,7 @@ const NotificationCenter = ({
             </Card>
           ) : null}
 
-          {showBroadcastHistory && canBroadcast ? (
+          {showBroadcastHistory ? (
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <Send size={18} className="text-rose-600" />

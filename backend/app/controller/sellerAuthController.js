@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import Admin from "../models/admin.js";
-import Notification from "../models/notification.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
 import { normalizePhone, isValidIndianPhone } from "../utils/phone.js";
 import { createNotificationBatch } from "../services/notificationService.js";

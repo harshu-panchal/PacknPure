@@ -10,7 +10,6 @@ const Notifications = () => (
         title="Seller Notifications"
         description="Procurement, acceptance, payment, and operational alerts for your store."
         showPreferences
-        showBroadcastHistory
       />
     </div>
   </div>
