@@ -63,10 +63,15 @@ export const normalizeNotificationTokenRecord = (tokenLike = {}) => {
   const token = String(rawToken || "").trim();
   if (!token) return null;
 
+  let platform = String(tokenLike.platform || "web").toLowerCase();
+  if (platform === "android" || platform === "ios") {
+    platform = "app";
+  }
+
   const now = new Date();
   return {
     token,
-    platform: String(tokenLike.platform || "web").toLowerCase(),
+    platform,
     deviceId: String(tokenLike.deviceId || "").trim(),
     deviceName: String(tokenLike.deviceName || "").trim(),
     browser: String(tokenLike.browser || "").trim(),

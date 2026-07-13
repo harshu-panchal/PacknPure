@@ -2,8 +2,7 @@ import mongoose from "mongoose";
 
 export const MAX_ACTIVE_TOKENS_PER_PLATFORM = 10;
 
-export const NOTIFICATION_PLATFORMS = ["web", "android", "ios", "unknown"];
-
+export const NOTIFICATION_PLATFORMS = ["web", "app", "unknown"];
 export const notificationTokenSchema = new mongoose.Schema(
   {
     token: {
