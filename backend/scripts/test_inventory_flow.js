@@ -3,7 +3,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 
 dotenv.config();
-const API_URL = "http://localhost:5002/api";
+const API_URL = "http://localhost:5000/api";
 
 const Product = mongoose.model("Product", new mongoose.Schema({}, { strict: false }));
 const HubInventory = mongoose.model("HubInventory", new mongoose.Schema({}, { strict: false }));

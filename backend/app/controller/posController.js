@@ -467,8 +467,12 @@ export const calculateCartTotals = async (req, res) => {
     let totalGst = 0;
 
     for (const item of items) {
+      console.log("Processing item:", JSON.stringify(item));
       const product = await Product.findById(item.product || item.productId).lean();
-      if (!product) continue;
+      if (!product) {
+        console.log("Product not found for:", item.product || item.productId);
+        continue;
+      }
       
       let price = product.basePrice || product.price || 0;
       let variant = null;
@@ -495,6 +499,7 @@ export const calculateCartTotals = async (req, res) => {
 
       subtotal += itemBaseTotal;
       totalGst += itemGstTotal;
+      console.log(`Item total: base=${itemBaseTotal}, gst=${itemGstTotal}, price=${price}`);
     }
 
     const discountAmount = Number(manualDiscount.amount) || 0;

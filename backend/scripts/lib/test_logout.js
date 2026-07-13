@@ -31,7 +31,7 @@ async function test() {
 
     console.log("Token generated:", token);
 
-    const response = await axios.post("http://localhost:5002/api/delivery/logout", {}, {
+    const response = await axios.post("http://localhost:5000/api/delivery/logout", {}, {
       headers: {
         Authorization: `Bearer ${token}`
       }

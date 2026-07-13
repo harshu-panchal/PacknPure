@@ -11,11 +11,15 @@ import cors from "cors"
 import { initSocket, getIO } from "./app/socket/socketManager.js"
 import { registerOrderSocketGetter } from "./app/services/orderSocketEmitter.js"
 import { registerNotificationQueueProcessors } from "./app/queues/notificationQueueProcessors.js";
+
 dotenv.config();
+
 const app = express();
 const server = http.createServer(app);
+
 const PORT = process.env.PORT || 7000;
 const NODE_ENV = process.env.NODE_ENV || "development";
+
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const productionOrigins = FRONTEND_URL.split(",").map((url) => url.trim()).filter(Boolean);
 
@@ -43,6 +47,7 @@ const io = new Server(server, {
     credentials: true,
   },
 });
+
 initSocket(io);
 registerOrderSocketGetter(getIO);
 
