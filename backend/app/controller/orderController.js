@@ -243,24 +243,29 @@ export const placeOrder = async (req, res) => {
         validatedPricing.deliveryFee = 0;
       }
 
-      // GST on (Subtotal - Discount + Delivery + Platform)
+      // Inclusive GST Calculation on Selling Price
       let totalItemGst = 0;
-      const subtotal = validatedPricing.subtotal || 0;
-      const discount = validatedPricing.discount || 0;
+      let trueSubtotal = 0;
       
       orderItems = orderItems.map(item => {
-        const baseCost = item.purchasePrice || 0;
-        const costTotal = baseCost * (item.quantity || 0);
+        const itemSellingTotal = (item.price || 0) * (item.quantity || 0);
         const rate = Number(item.gstRate || 0);
         
-        let amount = 0;
-        if (item.gstEnabled) {
-           amount = Number((costTotal * (rate / 100)).toFixed(2));
+        let itemGstAmount = 0;
+        let itemBasePrice = itemSellingTotal;
+
+        if (item.gstEnabled && rate > 0) {
+           itemBasePrice = itemSellingTotal / (1 + (rate / 100));
+           itemGstAmount = itemSellingTotal - itemBasePrice;
         }
-        totalItemGst += amount;
-        
-        const finalCost = Number((costTotal + amount).toFixed(2));
-        const itemSellingTotal = (item.price || 0) * (item.quantity || 0);
+
+        totalItemGst += itemGstAmount;
+        trueSubtotal += itemBasePrice;
+
+        const baseCost = item.purchasePrice || 0;
+        const costTotal = baseCost * (item.quantity || 0);
+        const vendorGstAmount = item.gstEnabled ? Number((costTotal * (rate / 100)).toFixed(2)) : 0;
+        const finalCost = Number((costTotal + vendorGstAmount).toFixed(2));
         const profit = Number((itemSellingTotal - finalCost).toFixed(2));
 
         return { 
@@ -268,22 +273,24 @@ export const placeOrder = async (req, res) => {
           baseCost,
           gstEnabled: Boolean(item.gstEnabled),
           gstRate: rate, 
-          gstAmount: amount,
+          gstAmount: Number(itemGstAmount.toFixed(2)),
           finalCost,
           profit
         };
       });
 
-      // GST on Services (Removed Global Fallback - Defaulting to 0% for fees)
       const serviceGst = 0;
-      validatedPricing.gst = totalItemGst + serviceGst;
+      
+      validatedPricing.subtotal = Number(trueSubtotal.toFixed(2));
+      validatedPricing.gst = Number((totalItemGst + serviceGst).toFixed(2));
 
-      // Final Total Recalculation (Customer price is inclusive of GST)
-      validatedPricing.total = (validatedPricing.subtotal || 0) 
+      // Final Total Recalculation
+      validatedPricing.total = Number((validatedPricing.subtotal 
+        + validatedPricing.gst
         - (validatedPricing.discount || 0)
         + validatedPricing.deliveryFee 
         + validatedPricing.platformFee
-        + (validatedPricing.tip || 0);
+        + (validatedPricing.tip || 0)).toFixed(2));
     }
 
     let newOrder = null;

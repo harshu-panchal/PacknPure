@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { posApi } from '../services/posApi';
 
 const PosCartContext = createContext();
 
@@ -26,13 +27,14 @@ export const PosCartProvider = ({ children }) => {
             }
 
             return [...prev, {
-                product: product._id,
+                product: product._id, // Keep as string for API payloads if needed
+                productData: product, // Store the full product object from search results
                 name: product.name,
                 image: product.images?.[0]?.url || product.image,
-                variantId: variant?._id || null,
-                variantName: variant?.name || null,
-                price: variant?.price || product.basePrice || 0,
-                purchasePrice: variant?.purchasePrice || product.purchasePrice || 0,
+                variantId: variant?._id || product.variantId || null,
+                variantName: variant?.name || product.variantName || null,
+                price: product.price || variant?.price || product.basePrice || 0,
+                purchasePrice: product.purchasePrice || variant?.purchasePrice || 0,
                 gstEnabled: product.gstEnabled || false,
                 gstRate: product.gstRate || 0,
                 quantity: 1,
@@ -82,33 +84,38 @@ export const PosCartProvider = ({ children }) => {
         setDeliveryAddress(null);
     };
 
-    // Calculations
-    const cartTotals = useMemo(() => {
-        let subtotal = 0;
-        let totalGst = 0;
+    const [cartTotals, setCartTotals] = useState({ subtotal: 0, totalGst: 0, discount: 0, total: 0 });
+    const [isCalculating, setIsCalculating] = useState(false);
 
-        cart.forEach(item => {
-            const itemTotal = item.price * item.quantity;
-            subtotal += itemTotal;
-            
-            // Reversing GST if it's inclusive (based on the system's logic, usually customer price is inclusive of GST)
-            if (item.gstEnabled && item.gstRate) {
-                // If price is inclusive of GST: Base = Price / (1 + Rate/100)
-                // For this platform, pricing calculation in backend treats final price as inclusive.
-                // We'll just show approximate breakdown. The backend validates it exactly.
-                const base = itemTotal / (1 + (item.gstRate / 100));
-                totalGst += (itemTotal - base);
+    useEffect(() => {
+        const calculateTotals = async () => {
+            if (cart.length === 0) {
+                setCartTotals({ subtotal: 0, totalGst: 0, discount: manualDiscount.amount || 0, total: 0 });
+                return;
             }
-        });
-
-        const total = Math.max(0, subtotal - manualDiscount.amount);
-
-        return {
-            subtotal: Number(subtotal.toFixed(2)),
-            totalGst: Number(totalGst.toFixed(2)),
-            discount: Number(manualDiscount.amount.toFixed(2)),
-            total: Number(total.toFixed(2))
+            setIsCalculating(true);
+            try {
+                const payload = {
+                    items: cart.map(item => ({ 
+                        product: item.product, 
+                        variantId: item.variantId, 
+                        quantity: item.quantity 
+                    })),
+                    manualDiscount
+                };
+                const res = await posApi.calculateCartTotals(payload);
+                if (res.data?.success) {
+                    setCartTotals(res.data.data);
+                }
+            } catch (error) {
+                console.error("Failed to calculate totals from backend:", error);
+            } finally {
+                setIsCalculating(false);
+            }
         };
+
+        const timeoutId = setTimeout(calculateTotals, 300);
+        return () => clearTimeout(timeoutId);
     }, [cart, manualDiscount]);
 
     return (
@@ -125,9 +132,9 @@ export const PosCartProvider = ({ children }) => {
             addToCart,
             updateQuantity,
             setExactQuantity,
-            removeItem,
             clearCart,
-            cartTotals
+            cartTotals,
+            isCalculating
         }}>
             {children}
         </PosCartContext.Provider>

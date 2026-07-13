@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, PackageSearch, Store, Boxes, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, PackageSearch, Store, Boxes, AlertTriangle, Flame, ScanLine } from 'lucide-react';
 import { posApi } from '../../services/posApi';
 import { usePosCart } from '../../context/PosCartContext';
 import { toast } from 'sonner';
+import { CameraScanner } from './CameraScanner';
 
 export const ProductSearch = () => {
     const { addToCart } = usePosCart();
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [showScanner, setShowScanner] = useState(false);
     const searchInputRef = useRef(null);
     const typingTimeoutRef = useRef(null);
 
@@ -44,6 +46,22 @@ export const ProductSearch = () => {
         } finally {
             setIsSearching(false);
         }
+    };
+
+    // Quick Grid Items (Could be fetched from API in future, hardcoded staples for now)
+    const quickItems = [
+        { name: "Basmati Rice 5kg", query: "rice" },
+        { name: "Atta 10kg", query: "atta" },
+        { name: "Sugar 1kg", query: "sugar" },
+        { name: "Mustard Oil 1L", query: "oil" },
+        { name: "Eggs (Tray)", query: "egg" },
+        { name: "Bread", query: "bread" }
+    ];
+
+    const handleQuickItemClick = (query) => {
+        setSearchTerm(query);
+        executeSearch(query);
+        searchInputRef.current?.focus();
     };
 
     const handleInputChange = (e) => {
@@ -94,10 +112,20 @@ export const ProductSearch = () => {
         searchInputRef.current?.focus();
     };
 
+    const handleScan = (decodedText) => {
+        setShowScanner(false);
+        setSearchTerm(decodedText);
+        executeSearch(decodedText);
+        // Also simulate enter press to auto-add if it's a direct barcode match
+        setTimeout(() => {
+            handleKeyDown({ key: 'Enter', preventDefault: () => {} });
+        }, 500);
+    };
+
     return (
         <div className="relative w-full">
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div className="relative flex items-center">
+                <Search className="absolute left-3 text-gray-400 w-5 h-5" />
                 <input
                     ref={searchInputRef}
                     type="text"
@@ -108,10 +136,26 @@ export const ProductSearch = () => {
                     className="w-full pl-10 pr-12 py-4 bg-white border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-medium"
                     autoComplete="off"
                 />
+                
+                <button 
+                    onClick={() => setShowScanner(true)}
+                    className="absolute right-4 p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Open Camera Scanner"
+                >
+                    <ScanLine className="w-5 h-5" />
+                </button>
+
                 {isSearching && (
-                    <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 w-5 h-5 animate-spin" />
+                    <Loader2 className="absolute right-14 text-blue-500 w-5 h-5 animate-spin" />
                 )}
             </div>
+
+            {showScanner && (
+                <CameraScanner 
+                    onScan={handleScan} 
+                    onClose={() => setShowScanner(false)} 
+                />
+            )}
 
             {/* Dropdown Results - Deep Inventory View */}
             {results.length > 0 && searchTerm && (
@@ -138,8 +182,8 @@ export const ProductSearch = () => {
                                     <div className="flex justify-between items-start mb-1">
                                         <h4 className="font-bold text-gray-900 truncate pr-4">{product.name}</h4>
                                         <div className="text-right flex-shrink-0">
-                                            <div className="font-black text-gray-900 text-lg">₹{product.basePrice || product.price || 0}</div>
-                                            <div className="text-[10px] text-gray-500 line-through">MRP: ₹{product.mrp || 0}</div>
+                                            <div className="font-black text-green-700 text-lg">Price: ₹{product.price || 0}</div>
+                                            <div className="text-xs text-gray-500 line-through">MRP: ₹{product.mrp || 0}</div>
                                         </div>
                                     </div>
                                     
@@ -153,7 +197,7 @@ export const ProductSearch = () => {
                                     <div className="flex items-center gap-4 text-xs font-semibold mt-3">
                                         <div className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2 py-1 rounded">
                                             <Boxes className="w-3.5 h-3.5" />
-                                            Hub Available: {hubStock}
+                                            Hub Stock: {product.hubTotalQty || 0} (Avail: {hubStock}, Res: {product.hubReservedQty || 0})
                                         </div>
                                         <div className="flex items-center gap-1.5 text-purple-700 bg-purple-50 px-2 py-1 rounded">
                                             <Store className="w-3.5 h-3.5" />
@@ -174,6 +218,26 @@ export const ProductSearch = () => {
                             </div>
                         );
                     })}
+                </div>
+            )}
+            {/* Quick Product Grid */}
+            {!results.length && !searchTerm && (
+                <div className="mt-4">
+                    <div className="flex items-center gap-2 mb-3 text-sm font-bold text-gray-600">
+                        <Flame className="w-4 h-4 text-orange-500" />
+                        Frequently Sold
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {quickItems.map((item, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleQuickItemClick(item.query)}
+                                className="p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-400 hover:bg-blue-50 transition-colors text-sm font-semibold text-gray-700 text-center truncate"
+                            >
+                                {item.name}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

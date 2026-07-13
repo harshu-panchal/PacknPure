@@ -1,38 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { PackageSearch, Clock, MapPin, Store, CheckCircle, AlertTriangle } from 'lucide-react';
+import axiosInstance from '@core/api/axios';
+import { format } from 'date-fns';
 
 export default function ProcurementStatus() {
     const [procurements, setProcurements] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Mock data for Procurement Status
-        setTimeout(() => {
-            setProcurements([
-                {
-                    _id: 'PRQ-901',
-                    productName: 'Aashirvaad Shudh Chakki Atta',
-                    variantName: '10kg',
-                    requiredQty: 25,
-                    status: 'PENDING',
-                    sellerAssigned: 'SuperMart Wholesale',
-                    eta: '2 Hours',
-                    orderId: 'POS173000123'
-                },
-                {
-                    _id: 'PRQ-902',
-                    productName: 'Amul Taaza Milk',
-                    variantName: '1L',
-                    requiredQty: 10,
-                    status: 'ACCEPTED',
-                    sellerAssigned: 'FreshDairy Distributor',
-                    eta: '30 Mins',
-                    orderId: 'POS173000456'
-                }
-            ]);
-            setLoading(false);
-        }, 1000);
+        fetchProcurements();
+        const interval = setInterval(fetchProcurements, 30000);
+        return () => clearInterval(interval);
     }, []);
+
+    const fetchProcurements = async () => {
+        try {
+            const { data } = await axiosInstance.get('/admin/purchase-requests', {
+                params: { source: 'POS_SHORTAGE' } // Try to get POS specific if supported, or just all
+            });
+            if (data.success) {
+                // Filter to show active/pending ones recently triggered
+                const activeRequests = (data.data || []).filter(req => 
+                    ['pending', 'accepted', 'in_transit', 'assigned'].includes(req.status.toLowerCase())
+                );
+                setProcurements(activeRequests);
+            }
+        } catch (error) {
+            console.error("Failed to fetch procurement status", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -81,27 +79,24 @@ export default function ProcurementStatus() {
                             ) : (
                                 procurements.map((req, idx) => (
                                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                        <td className="py-4 px-6 font-medium text-gray-900">{req._id}</td>
+                                        <td className="py-4 px-6 font-medium text-gray-900">{req.requestId}</td>
                                         <td className="py-4 px-6">
-                                            <div className="font-bold text-gray-800">{req.productName}</div>
-                                            <div className="text-xs text-gray-500 mt-0.5">{req.variantName}</div>
-                                            <div className="text-[10px] text-gray-400 mt-1">Triggered by: {req.orderId}</div>
+                                            <div className="font-bold text-gray-800">{req.product?.name || 'Unknown Product'}</div>
+                                            <div className="text-xs text-gray-500 mt-0.5">{req.variant?.name || ''}</div>
+                                            <div className="text-[10px] text-gray-400 mt-1">Generated: {format(new Date(req.createdAt), 'hh:mm a')}</div>
                                         </td>
-                                        <td className="py-4 px-6 text-center font-bold text-gray-700">{req.requiredQty}</td>
+                                        <td className="py-4 px-6 text-center font-bold text-gray-700">{req.requestedQty}</td>
                                         <td className="py-4 px-6">
                                             <div className="flex items-center text-sm font-medium text-gray-700">
                                                 <Store className="w-4 h-4 mr-2 text-gray-400" />
-                                                {req.sellerAssigned}
+                                                {req.assignedVendor?.businessName || 'Finding Seller...'}
                                             </div>
                                         </td>
                                         <td className="py-4 px-6">
                                             <div className="flex flex-col gap-2">
-                                                <span className={`px-2 py-1 rounded-md text-xs font-bold w-fit border ${getStatusColor(req.status)}`}>
-                                                    {req.status}
+                                                <span className={`px-2 py-1 rounded-md text-xs font-bold w-fit border ${getStatusColor(req.status?.toUpperCase() || 'PENDING')}`}>
+                                                    {req.status?.toUpperCase()}
                                                 </span>
-                                                <div className="flex items-center text-xs text-gray-500 font-medium">
-                                                    <Clock className="w-3.5 h-3.5 mr-1" /> ETA: {req.eta}
-                                                </div>
                                             </div>
                                         </td>
                                     </tr>

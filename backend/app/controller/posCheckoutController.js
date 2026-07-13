@@ -8,8 +8,41 @@ import { handleResponse } from "../utils/helper.js";
 import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "../services/hubOrderOrchestrator.js";
 import crypto from "crypto";
 
+import Razorpay from "razorpay";
+import dotenv from "dotenv";
+import PosSession from "../models/posSession.js";
+import Product from "../models/product.js";
+
+dotenv.config();
+
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
 const hashPayload = (payload) => {
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+};
+
+export const createPosPaymentOrder = async (req, res) => {
+    try {
+        const { amount, currency = "INR" } = req.body;
+        if (!amount) {
+            return handleResponse(res, 400, "Amount is required");
+        }
+
+        const options = {
+            amount: Math.round(amount * 100),
+            currency,
+            receipt: `pos_receipt_${Date.now()}`,
+        };
+
+        const order = await razorpay.orders.create(options);
+        return handleResponse(res, 200, "POS Razorpay order created", order);
+    } catch (error) {
+        console.error("Razorpay Order Error:", error);
+        return handleResponse(res, 500, error.message);
+    }
 };
 
 export const processPosCheckout = async (req, res) => {
@@ -50,14 +83,88 @@ export const processPosCheckout = async (req, res) => {
     const { 
       items, 
       payment, 
-      pricing, 
       guestCustomer, 
       posDetails,
       discountDetails,
-      fulfillmentDetails
+      fulfillmentDetails,
+      razorpay_payment_id,
+      razorpay_order_id,
+      razorpay_signature
     } = req.body;
 
     const { posTerminalId, posSessionId } = posDetails || {};
+
+    // Validate Session
+    const activeSession = await PosSession.findOne({ _id: posSessionId, cashier: cashierId, status: "open" }).session(session);
+    if (!activeSession) {
+      throw new Error("Invalid or closed POS Session.");
+    }
+
+    // Verify Razorpay if online payment
+    if (payment.method === "upi" || payment.method === "card") {
+      if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+        throw new Error("Razorpay payment details are missing.");
+      }
+      const body = razorpay_order_id + "|" + razorpay_payment_id;
+      const expectedSignature = crypto
+          .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+          .update(body.toString())
+          .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        throw new Error("Payment verification failed (Invalid signature).");
+      }
+    }
+
+    // Recalculate Pricing natively
+    let subtotal = 0;
+    let totalGst = 0;
+    const validatedItems = [];
+
+    for (const item of items) {
+      const product = await Product.findById(item.product || item.productId).session(session).lean();
+      if (!product) throw new Error(`Product ${item.product || item.productId} not found`);
+      
+      let price = product.basePrice || product.price || 0;
+      let variant = null;
+      let gstRate = product.gstRate || 0;
+      let gstEnabled = product.gstEnabled || false;
+
+      if (item.variantId && product.variants) {
+        variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
+        if (variant) {
+          price = variant.price || price;
+          if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
+          if (gstEnabled) gstRate = variant.gstRate || gstRate;
+        }
+      }
+
+      const itemTotal = price * (item.quantity || 1);
+      subtotal += itemTotal;
+
+      if (gstEnabled && gstRate > 0) {
+        const base = itemTotal / (1 + (gstRate / 100));
+        totalGst += (itemTotal - base);
+      }
+
+      validatedItems.push({
+        ...item,
+        price,
+        gstRate,
+        gstEnabled
+      });
+    }
+
+    const discountAmount = Number(discountDetails?.amount || 0);
+    const total = Math.max(0, subtotal - discountAmount);
+
+    const pricing = {
+      subtotal: Number(subtotal.toFixed(2)),
+      gst: Number(totalGst.toFixed(2)),
+      discount: Number(discountAmount.toFixed(2)),
+      discountDetails,
+      total: Number(total.toFixed(2))
+    };
 
     // 2. Generate Identifiers
     const receiptNumber = await generateReceiptNumber(session);
@@ -77,7 +184,7 @@ export const processPosCheckout = async (req, res) => {
         posSessionId,
         cashierId
       },
-      items,
+      items: validatedItems,
       payment: {
         method: payment.method || "cash",
         status: "completed",

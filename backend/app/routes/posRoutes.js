@@ -8,11 +8,16 @@ import {
   addCashMovement,
   voidBill,
   getPosDashboardStats,
+  getPosReports,
   searchPosProducts,
   returnPosOrder,
-  getPosOrders
+  getPosOrders,
+  searchCustomer,
+  calculateCartTotals,
+  getPaymentConfig,
+  sharePosReceipt
 } from "../controller/posController.js";
-import { processPosCheckout } from "../controller/posCheckoutController.js";
+import { processPosCheckout, createPosPaymentOrder } from "../controller/posCheckoutController.js";
 import { verifyToken, requireAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -31,6 +36,7 @@ router.get("/sessions/current", getCurrentSession);
 
 // Dashboard & Search
 router.get("/dashboard", getPosDashboardStats);
+router.get("/reports", getPosReports);
 router.get("/products/search", searchPosProducts);
 
 // Cash Drawer
@@ -38,8 +44,19 @@ router.post("/cash-drawer", addCashMovement);
 
 // Checkout & Void & Returns
 router.post("/checkout", processPosCheckout);
+router.post("/checkout/calculate", calculateCartTotals);
 router.post("/void", voidBill);
 router.post("/orders/return", returnPosOrder);
 router.get("/orders", getPosOrders);
+
+// Customers
+router.get("/customers/search", searchCustomer);
+
+// Payment
+router.get("/payment/config", getPaymentConfig);
+router.post("/payment/create-order", createPosPaymentOrder);
+
+// Receipt
+router.post("/receipt/share", sharePosReceipt);
 
 export default router;

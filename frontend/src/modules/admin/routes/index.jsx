@@ -107,6 +107,7 @@ const ProductRequestsList = React.lazy(() => import("../pages/ProductRequestsLis
 
 // POS Components
 const PosDashboard = React.lazy(() => import("../pages/pos/PosDashboard"));
+const PosTerminals = React.lazy(() => import("../pages/pos/PosTerminals"));
 const PosCheckout = React.lazy(() => import("../pages/pos/PosCheckout"));
 const CurrentOrders = React.lazy(() => import("../pages/pos/CurrentOrders"));
 const PosInventory = React.lazy(() => import("../pages/pos/PosInventory"));
@@ -147,6 +148,7 @@ const navItems = [
     color: "cyan",
     children: [
       { label: "Dashboard", path: "/admin/pos" },
+      { label: "Terminals", path: "/admin/pos/terminals" },
       { label: "Quick Order", path: "/admin/pos/checkout" },
       { label: "Current Orders", path: "/admin/pos/orders" },
       { label: "Hub Inventory", path: "/admin/pos/inventory" },
@@ -354,6 +356,7 @@ const AdminRoutes = () => {
         {/* POS Routes wrapped in PosLayout */}
         <Route path="/pos" element={<PosLayout />}>
           <Route index element={<PosDashboard />} />
+          <Route path="terminals" element={<PosTerminals />} />
           <Route path="checkout" element={<PosCheckout />} />
           <Route path="orders" element={<CurrentOrders />} />
           <Route path="inventory" element={<PosInventory />} />

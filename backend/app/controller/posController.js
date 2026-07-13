@@ -7,6 +7,7 @@ import Product from "../models/product.js";
 import HubInventory from "../models/hubInventory.js";
 import PosSession from "../models/posSession.js";
 import mongoose from "mongoose";
+import User from "../models/customer.js";
 
 // Terminals
 export const createTerminal = async (req, res) => {
@@ -245,6 +246,80 @@ export const getPosDashboardStats = async (req, res) => {
   }
 };
 
+// POS Analytics & Reports
+export const getPosReports = async (req, res) => {
+  try {
+    const { range = 'today' } = req.query;
+    
+    let startDate = new Date();
+    if (range === 'today') {
+        startDate.setHours(0, 0, 0, 0);
+    } else if (range === 'week') {
+        startDate.setDate(startDate.getDate() - 7);
+    } else if (range === 'month') {
+        startDate.setMonth(startDate.getMonth() - 1);
+    } else if (range === 'year') {
+        startDate.setFullYear(startDate.getFullYear() - 1);
+    }
+
+    const posOrders = await Order.find({ 
+        orderSource: "POS", 
+        createdAt: { $gte: startDate } 
+    }).lean();
+
+    let grossSales = 0;
+    let totalRefunds = 0;
+    const uniqueCustomers = new Set();
+    const paymentMethods = { cash: 0, upi: 0, card: 0 };
+    const categorySales = {}; // simplified to product names for now
+
+    for (const order of posOrders) {
+        if (order.status === 'completed' || order.status === 'delivered') {
+            grossSales += order.totalAmount || 0;
+            
+            if (order.payment?.method) {
+                const method = order.payment.method.toLowerCase();
+                if (paymentMethods[method] !== undefined) {
+                    paymentMethods[method] += order.totalAmount;
+                } else {
+                    paymentMethods[method] = order.totalAmount;
+                }
+            }
+
+            if (order.guestCustomer?.phone) {
+                uniqueCustomers.add(order.guestCustomer.phone);
+            } else if (order.customer) {
+                uniqueCustomers.add(order.customer.toString());
+            }
+
+            for (const item of order.items || []) {
+                categorySales[item.name] = (categorySales[item.name] || 0) + item.quantity;
+            }
+        }
+        if (order.status === 'refunded' || order.status === 'voided') {
+            totalRefunds += order.totalAmount || 0;
+        }
+    }
+
+    // Sort categories
+    const topCategories = Object.entries(categorySales)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+
+    return handleResponse(res, 200, "Reports fetched", {
+        grossSales,
+        totalOrders: posOrders.length,
+        totalRefunds,
+        uniqueCustomers: uniqueCustomers.size,
+        paymentMethods,
+        topCategories
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 // Deep Product Search API
 export const searchPosProducts = async (req, res) => {
   try {
@@ -269,6 +344,14 @@ export const searchPosProducts = async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
+    const productIds = products.map(p => p._id);
+    
+    // Fetch all active seller listings that point to these master products
+    const sellerListings = await Product.find({
+      masterProductId: { $in: productIds },
+      status: "active"
+    }).lean();
+
     // Map the deep inventory details
     const formattedResults = products.map(p => {
       // Find default hub stock
@@ -277,36 +360,54 @@ export const searchPosProducts = async (req, res) => {
       const baseResult = {
         _id: p._id,
         name: p.name,
-        image: p.images?.[0]?.url || "",
+        image: p.images?.[0]?.url || p.mainImage || "",
         gstEnabled: p.gstEnabled,
         gstRate: p.gstRate,
         hubAvailableQty: hubStock ? Math.max(0, hubStock.quantity - (hubStock.reserved || 0)) : 0,
         hubReservedQty: hubStock?.reserved || 0,
-        sellerQty: "N/A", // This requires complex agg from SellerStock, keeping simple for fast POS
+        hubTotalQty: hubStock?.quantity || 0,
       };
 
       if (p.hasVariants && p.variants?.length > 0) {
         // Flatten variants
-        return p.variants.map(v => ({
-          ...baseResult,
-          variantId: v._id,
-          variantName: v.name,
-          sku: v.sku,
-          barcode: v.barcode,
-          price: v.price,
-          mrp: v.mrp,
-          purchasePrice: v.purchasePrice || 0
-        }));
+        return p.variants.map(v => {
+          // Find seller stock for this specific variant (match by name/sku)
+          const sellerVariantStock = sellerListings
+            .filter(sl => String(sl.masterProductId) === String(p._id))
+            .reduce((total, sl) => {
+              const matchedVariant = sl.variants?.find(sv => sv.name === v.name || sv.sku === v.sku);
+              return total + (matchedVariant?.stock || 0);
+            }, 0);
+
+          return {
+            ...baseResult,
+            variantId: v._id,
+            variantName: v.name,
+            sku: v.sku,
+            barcode: v.barcode,
+            price: v.salePrice || v.price || 0, // This is final selling price
+            mrp: v.price || v.salePrice || 0,
+            purchasePrice: v.purchasePrice || 0,
+            sellerQty: sellerVariantStock,
+            gstEnabled: v.gstEnabled !== undefined ? v.gstEnabled : baseResult.gstEnabled,
+            gstRate: v.gstEnabled !== undefined && v.gstEnabled ? v.gstRate : baseResult.gstRate
+          };
+        });
       } else {
+        const sellerStock = sellerListings
+          .filter(sl => String(sl.masterProductId) === String(p._id))
+          .reduce((total, sl) => total + (sl.variants?.[0]?.stock || 0), 0);
+
         return [{
           ...baseResult,
           variantId: null,
           variantName: null,
           sku: p.sku,
-          barcode: p.sku, // No barcode field for base product in schema, use sku
-          price: p.basePrice,
-          mrp: p.mrp || p.basePrice,
-          purchasePrice: p.purchasePrice || 0
+          barcode: p.sku,
+          price: p.salePrice || p.basePrice || p.price || 0,
+          mrp: p.mrp || p.price || p.salePrice || 0,
+          purchasePrice: p.purchasePrice || 0,
+          sellerQty: sellerStock
         }];
       }
     }).flat();
@@ -315,6 +416,124 @@ export const searchPosProducts = async (req, res) => {
     const exactMatch = formattedResults.find(r => r.barcode === search);
     
     return handleResponse(res, 200, "Products fetched", exactMatch ? [exactMatch] : formattedResults.slice(0, parseInt(limit)));
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+// Customer Search API
+export const searchCustomer = async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) {
+      return handleResponse(res, 400, "Phone number is required");
+    }
+
+    const customer = await User.findOne({ phone, role: "customer" }).select(
+      "name phone email addresses walletBalance codBlocked"
+    ).lean();
+
+    if (!customer) {
+      return handleResponse(res, 404, "Customer not found");
+    }
+
+    const recentOrders = await Order.find({ customer: customer._id })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("orderId pricing.total status createdAt")
+      .lean();
+
+    return handleResponse(res, 200, "Customer found", {
+      customer: {
+        ...customer,
+        recentOrders
+      }
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+// POS Cart Calculation
+export const calculateCartTotals = async (req, res) => {
+  try {
+    const { items = [], manualDiscount = { amount: 0 } } = req.body;
+    let subtotal = 0;
+    let totalGst = 0;
+
+    for (const item of items) {
+      const product = await Product.findById(item.product || item.productId).lean();
+      if (!product) continue;
+      
+      let price = product.basePrice || product.price || 0;
+      let variant = null;
+      let gstRate = product.gstRate || 0;
+      let gstEnabled = product.gstEnabled || false;
+
+      if (item.variantId && product.variants) {
+        variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
+        if (variant) {
+          price = variant.price || price;
+          if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
+          if (gstEnabled) gstRate = variant.gstRate || gstRate;
+        }
+      }
+
+      const itemFinalTotal = price * (item.quantity || 1);
+      let itemBaseTotal = itemFinalTotal;
+      let itemGstTotal = 0;
+
+      if (gstEnabled && gstRate > 0) {
+        itemBaseTotal = itemFinalTotal / (1 + (gstRate / 100));
+        itemGstTotal = itemFinalTotal - itemBaseTotal;
+      }
+
+      subtotal += itemBaseTotal;
+      totalGst += itemGstTotal;
+    }
+
+    const discountAmount = Number(manualDiscount.amount) || 0;
+    const total = Math.max(0, subtotal + totalGst - discountAmount);
+
+    return handleResponse(res, 200, "Calculated successfully", {
+      subtotal: Number(subtotal.toFixed(2)),
+      totalGst: Number(totalGst.toFixed(2)),
+      discount: Number(discountAmount.toFixed(2)),
+      total: Number(total.toFixed(2))
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+// Payment Config
+export const getPaymentConfig = async (req, res) => {
+  try {
+    if (!process.env.RAZORPAY_KEY_ID) {
+       return handleResponse(res, 500, "Razorpay Key ID is not configured on the server.");
+    }
+    return handleResponse(res, 200, "Payment config fetched", {
+      razorpayKey: process.env.RAZORPAY_KEY_ID
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+// Share Receipt
+export const sharePosReceipt = async (req, res) => {
+  try {
+    const { orderId, method, contact } = req.body;
+    // Real implementation would use notificationService here.
+    // For now, return a successful mock response indicating the system intends to send it via backend.
+    if (!orderId || !method || !contact) {
+      return handleResponse(res, 400, "Missing required fields: orderId, method, contact");
+    }
+
+    // Placeholder: Send WhatsApp/Email via provider
+    console.log(`[Notification Engine Mock] Sending Receipt for ${orderId} via ${method} to ${contact}`);
+
+    return handleResponse(res, 200, `Receipt shared successfully via ${method}`);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

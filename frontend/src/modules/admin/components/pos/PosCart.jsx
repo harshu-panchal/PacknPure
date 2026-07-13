@@ -15,14 +15,14 @@ export const PosCart = () => {
     }
 
     return (
-        <div className="flex-1 overflow-y-auto bg-white rounded-lg border border-gray-200">
+        <div className="flex-1 overflow-auto bg-white rounded-lg border border-gray-200">
             <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                     <tr>
-                        <th className="py-3 px-4 text-sm font-semibold text-gray-600">Product & Inventory Status</th>
-                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-center w-32">Qty</th>
-                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-right w-24">Price</th>
-                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-right w-24">Total</th>
+                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 min-w-[200px]">Product & Inventory Status</th>
+                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-center w-32 min-w-[120px]">Qty</th>
+                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-right w-24 min-w-[100px]">Unit Price</th>
+                        <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-right w-24 min-w-[100px]">Total Price</th>
                         <th className="py-3 px-4 w-12"></th>
                     </tr>
                 </thead>
@@ -41,11 +41,12 @@ export const PosCart = () => {
                                     
                                     {/* PacknPure Specific: Inventory Validation Indicator */}
                                     <div className="flex flex-col gap-1 mt-1">
-                                        <div className="text-[11px] text-gray-500 flex items-center gap-2">
+                                        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-2">
                                             <span>Hub Stock: <strong className="text-gray-700">{hubAvailable}</strong></span>
+                                            <span>| Seller Stock: <strong className="text-gray-700">{item.productData?.sellerQty || 'N/A'}</strong></span>
                                             {isShortage ? (
                                                 <span className="flex items-center text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100 font-semibold">
-                                                    <AlertTriangle className="w-3 h-3 mr-1" /> Procurement Required
+                                                    <AlertTriangle className="w-3 h-3 mr-1" /> Only {hubAvailable} available at Hub. Procurement will be triggered.
                                                 </span>
                                             ) : (
                                                 <span className="flex items-center text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 font-semibold">
@@ -76,11 +77,14 @@ export const PosCart = () => {
                                         </button>
                                     </div>
                                 </td>
-                                <td className="py-3 px-4 text-right text-sm text-gray-600 font-medium">
-                                    ₹{item.price.toFixed(2)}
+                                <td className="py-3 px-4 text-right">
+                                    <div className="text-sm font-bold text-gray-900">₹{item.price.toFixed(2)}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">
+                                        {item.productData?.gstEnabled ? `Inc. ${item.productData?.gstRate || 0}% GST` : 'No GST'}
+                                    </div>
                                 </td>
-                                <td className="py-3 px-4 text-right font-bold text-gray-900">
-                                    ₹{(item.price * item.quantity).toFixed(2)}
+                                <td className="py-3 px-4 text-right">
+                                    <div className="text-base font-black text-gray-900">₹{(item.price * item.quantity).toFixed(2)}</div>
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                     <button 

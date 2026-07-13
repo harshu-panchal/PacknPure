@@ -1,9 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Calendar, Banknote, ShoppingBag } from 'lucide-react';
 import { Button } from '@mui/material';
+import { posApi } from '../../services/posApi';
 
 export default function PosReports() {
     const [dateRange, setDateRange] = useState('today');
+    const [reportData, setReportData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        fetchReports();
+    }, [dateRange]);
+
+    const fetchReports = async () => {
+        setIsLoading(true);
+        try {
+            const { data } = await posApi.getPosReports({ range: dateRange });
+            if (data.success) {
+                setReportData(data.data);
+            }
+        } catch (error) {
+            console.error("Failed to load POS reports", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <div className="p-6 max-w-7xl mx-auto w-full">
@@ -38,9 +59,9 @@ export default function PosReports() {
                         <div className="text-gray-500 font-medium">Gross Sales</div>
                         <Banknote className="text-green-500 w-6 h-6" />
                     </div>
-                    <div className="text-3xl font-black text-gray-900 mb-2">₹124,500</div>
+                    <div className="text-3xl font-black text-gray-900 mb-2">₹{reportData?.grossSales?.toLocaleString() || 0}</div>
                     <div className="text-sm font-medium text-green-600 flex items-center">
-                        <TrendingUp className="w-4 h-4 mr-1" /> +12.5% vs previous
+                        Based on completed orders
                     </div>
                 </div>
                 
@@ -49,9 +70,9 @@ export default function PosReports() {
                         <div className="text-gray-500 font-medium">Total Orders</div>
                         <ShoppingBag className="text-blue-500 w-6 h-6" />
                     </div>
-                    <div className="text-3xl font-black text-gray-900 mb-2">482</div>
+                    <div className="text-3xl font-black text-gray-900 mb-2">{reportData?.totalOrders || 0}</div>
                     <div className="text-sm font-medium text-green-600 flex items-center">
-                        <TrendingUp className="w-4 h-4 mr-1" /> +5.2% vs previous
+                        POS orders placed
                     </div>
                 </div>
                 
@@ -60,9 +81,9 @@ export default function PosReports() {
                         <div className="text-gray-500 font-medium">Total Refunds</div>
                         <BarChart3 className="text-orange-500 w-6 h-6" />
                     </div>
-                    <div className="text-3xl font-black text-gray-900 mb-2">₹4,200</div>
+                    <div className="text-3xl font-black text-gray-900 mb-2">₹{reportData?.totalRefunds?.toLocaleString() || 0}</div>
                     <div className="text-sm font-medium text-red-600 flex items-center">
-                        <TrendingUp className="w-4 h-4 mr-1" /> +1.1% vs previous
+                        Voided or refunded
                     </div>
                 </div>
 
@@ -71,9 +92,9 @@ export default function PosReports() {
                         <div className="text-gray-500 font-medium">Unique Customers</div>
                         <Users className="text-purple-500 w-6 h-6" />
                     </div>
-                    <div className="text-3xl font-black text-gray-900 mb-2">315</div>
+                    <div className="text-3xl font-black text-gray-900 mb-2">{reportData?.uniqueCustomers || 0}</div>
                     <div className="text-sm font-medium text-green-600 flex items-center">
-                        <TrendingUp className="w-4 h-4 mr-1" /> +18.4% vs previous
+                        Walk-in & Registered
                     </div>
                 </div>
             </div>
@@ -84,15 +105,15 @@ export default function PosReports() {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <span className="font-semibold text-gray-700">Cash</span>
-                            <span className="font-bold text-gray-900">₹85,000 (68%)</span>
+                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.cash || 0).toLocaleString()}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <span className="font-semibold text-gray-700">UPI</span>
-                            <span className="font-bold text-gray-900">₹32,500 (26%)</span>
+                            <span className="font-semibold text-gray-700">UPI / Razorpay</span>
+                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.upi || 0).toLocaleString()}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <span className="font-semibold text-gray-700">Card</span>
-                            <span className="font-bold text-gray-900">₹7,000 (6%)</span>
+                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.card || 0).toLocaleString()}</span>
                         </div>
                     </div>
                 </div>
@@ -100,18 +121,16 @@ export default function PosReports() {
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                     <h3 className="font-bold text-gray-800 mb-6">Top Selling Categories</h3>
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 border-l-4 border-blue-500 bg-gray-50 rounded-r-lg">
-                            <span className="font-semibold text-gray-700">Staples & Grains</span>
-                            <span className="font-bold text-gray-900">1,245 units</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 border-l-4 border-green-500 bg-gray-50 rounded-r-lg">
-                            <span className="font-semibold text-gray-700">Dairy & Beverages</span>
-                            <span className="font-bold text-gray-900">892 units</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 border-l-4 border-purple-500 bg-gray-50 rounded-r-lg">
-                            <span className="font-semibold text-gray-700">Snacks & Packaged Food</span>
-                            <span className="font-bold text-gray-900">456 units</span>
-                        </div>
+                        {reportData?.topCategories?.length > 0 ? (
+                            reportData.topCategories.map((cat, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 border-l-4 border-blue-500 bg-gray-50 rounded-r-lg">
+                                    <span className="font-semibold text-gray-700">{cat.name}</span>
+                                    <span className="font-bold text-gray-900">{cat.count} units</span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-gray-500">No category data for this period</div>
+                        )}
                     </div>
                 </div>
             </div>

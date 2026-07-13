@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@shared/components/ui/dialog';
-import { Button } from '@mui/material';
+import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
 import { Banknote, CreditCard, Smartphone, Wallet, Loader2 } from 'lucide-react';
+import { posApi } from '../../services/posApi';
+import { toast } from 'sonner';
+
+const loadRazorpay = () => {
+    return new Promise((resolve) => {
+        if (window.Razorpay) {
+            return resolve(true);
+        }
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+};
 
 export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isProcessing }) => {
     const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -25,14 +39,72 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
         setPaidAmount(total);
     };
 
-    const handlePaymentSubmit = () => {
+    const handlePaymentSubmit = async () => {
         if (!isAmountValid) return;
         
-        onProcessPayment({
-            method: paymentMethod,
-            paidAmount: Number(paidAmount),
-            changeReturned: changeDue
-        });
+        if (paymentMethod === 'upi' || paymentMethod === 'card') {
+            try {
+                const isLoaded = await loadRazorpay();
+                if (!isLoaded) {
+                    toast.error("Failed to load Razorpay SDK. Check your connection.");
+                    return;
+                }
+
+                // Get Razorpay Config Key
+                const configRes = await posApi.getPaymentConfig();
+                const razorpayKey = configRes.data?.data?.razorpayKey;
+                if (!razorpayKey) throw new Error("Could not fetch payment configuration");
+
+                // Create Order on Backend
+                const orderRes = await posApi.createRazorpayOrder({ amount: total });
+                const orderData = orderRes.data?.data;
+
+                if (!orderData?.id) throw new Error("Failed to create online payment order");
+
+                const options = {
+                    key: razorpayKey,
+                    amount: orderData.amount,
+                    currency: orderData.currency,
+                    name: "PacknPure POS",
+                    description: "POS Checkout",
+                    order_id: orderData.id,
+                    handler: function (response) {
+                        onProcessPayment({
+                            method: paymentMethod,
+                            paidAmount: Number(total), // online payment is exact
+                            changeReturned: 0,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_signature: response.razorpay_signature
+                        });
+                    },
+                    theme: {
+                        color: "#2563EB",
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            toast.error("Payment was cancelled");
+                        }
+                    }
+                };
+
+                const rzp = new window.Razorpay(options);
+                rzp.on("payment.failed", function (response) {
+                    toast.error(response.error.description);
+                });
+                rzp.open();
+
+            } catch (error) {
+                console.error("Payment initialization failed:", error);
+                toast.error("Failed to initialize payment gateway");
+            }
+        } else {
+            onProcessPayment({
+                method: paymentMethod,
+                paidAmount: Number(paidAmount),
+                changeReturned: changeDue
+            });
+        }
     };
 
     // Keyboard shortcut for Enter
@@ -48,14 +120,20 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
     }, [open, isAmountValid, paidAmount, paymentMethod]);
 
     return (
-        <Dialog open={open} onOpenChange={(val) => !isProcessing && onOpenChange(val)}>
-            <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden bg-white">
-                <DialogHeader className="p-6 bg-gray-50 border-b border-gray-100">
-                    <DialogTitle className="text-xl font-bold flex items-center">
-                        Complete Payment
-                    </DialogTitle>
-                </DialogHeader>
-
+        <Dialog 
+            open={open} 
+            onClose={() => !isProcessing && onOpenChange(false)} 
+            maxWidth="sm" 
+            fullWidth
+            PaperProps={{ className: "overflow-hidden rounded-xl" }}
+        >
+            <div className="p-6 bg-gray-50 border-b border-gray-100">
+                <h2 className="text-xl font-bold flex items-center m-0">
+                    Complete Payment
+                </h2>
+            </div>
+            
+            <DialogContent className="!p-0">
                 <div className="p-6 space-y-6">
                     {/* Amount to Pay */}
                     <div className="flex justify-between items-center bg-blue-50 p-4 rounded-lg border border-blue-100">

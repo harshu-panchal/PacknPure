@@ -126,6 +126,20 @@ export const CustomerPanel = () => {
                                 <span className="font-bold text-blue-900 text-xs">₹{customerProfile.walletBalance}</span>
                             </div>
                         )}
+                        {customerProfile.recentOrders?.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-blue-200/50">
+                                <div className="text-blue-800 text-xs mb-1 font-bold">Recent Orders:</div>
+                                <div className="space-y-1">
+                                    {customerProfile.recentOrders.slice(0, 3).map((order, i) => (
+                                        <div key={i} className="flex justify-between text-[10px] text-blue-900 bg-white/50 px-2 py-1 rounded">
+                                            <span>{order.orderId}</span>
+                                            <span className="font-bold">₹{order.pricing?.total}</span>
+                                            <span className="uppercase text-blue-600">{order.status}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-2">
@@ -160,8 +174,8 @@ export const CustomerPanel = () => {
                                             : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
                                         }`}
                                     >
-                                        <div className="font-bold mb-0.5">{addr.type || 'Home'}</div>
-                                        <div>{addr.street}, {addr.city}</div>
+                                        <div className="font-bold mb-0.5 capitalize">{addr.label || 'Home'}</div>
+                                        <div className="line-clamp-2">{addr.fullAddress}</div>
                                     </div>
                                 ))}
                             </div>
@@ -169,7 +183,7 @@ export const CustomerPanel = () => {
                             <textarea 
                                 placeholder="Enter full delivery address..."
                                 className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 min-h-[60px]"
-                                onChange={(e) => setDeliveryAddress({ street: e.target.value })}
+                                onChange={(e) => setDeliveryAddress({ fullAddress: e.target.value })}
                             />
                         )}
                     </div>

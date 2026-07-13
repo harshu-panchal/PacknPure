@@ -30,6 +30,20 @@ export const posApi = {
     // Orders
     getOrders: () => axiosInstance.get('/admin/pos/orders'),
 
-    // Dashboard
+    // Dashboard & Reports
     getDashboardStats: () => axiosInstance.get('/admin/pos/dashboard'),
+    getPosReports: (params) => axiosInstance.get('/admin/pos/reports', { params }),
+
+    // Customer
+    searchCustomer: (phone) => axiosInstance.get('/admin/pos/customers/search', { params: { phone } }),
+
+    // Cart Calculation
+    calculateCartTotals: (data) => axiosInstance.post('/admin/pos/checkout/calculate', data),
+
+    // Payment Config & Creation
+    getPaymentConfig: () => axiosInstance.get('/admin/pos/payment/config'),
+    createRazorpayOrder: (data) => axiosInstance.post('/admin/pos/payment/create-order', data),
+
+    // Receipt
+    shareReceipt: (data) => axiosInstance.post('/admin/pos/receipt/share', data),
 };

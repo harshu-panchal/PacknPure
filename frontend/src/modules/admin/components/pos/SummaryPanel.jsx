@@ -27,7 +27,7 @@ export const SummaryPanel = ({ onCheckoutClick }) => {
                 </div>
                 
                 <div className="flex justify-between text-sm text-gray-600 border-b border-gray-200 pb-3">
-                    <span>GST (Included)</span>
+                    <span>GST</span>
                     <span>₹{cartTotals.totalGst}</span>
                 </div>
 

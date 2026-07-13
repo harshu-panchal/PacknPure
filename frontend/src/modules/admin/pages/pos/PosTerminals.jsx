@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { posApi } from '../../services/posApi';
-import { Button, IconButton } from '@mui/material';
+import { Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,6 +26,34 @@ export default function PosTerminals() {
         }
     };
 
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newTerminal, setNewTerminal] = useState({ name: '', storeLocation: '' });
+    const [isCreating, setIsCreating] = useState(false);
+
+    const handleCreateTerminal = async () => {
+        if (!newTerminal.name || !newTerminal.storeLocation) {
+            toast.error("Please fill all fields");
+            return;
+        }
+        setIsCreating(true);
+        try {
+            const { data } = await posApi.createTerminal({
+                ...newTerminal,
+                deviceIdentifiers: [navigator.userAgent]
+            });
+            if (data.success) {
+                toast.success("Terminal created successfully");
+                setIsAddModalOpen(false);
+                setNewTerminal({ name: '', storeLocation: '' });
+                loadTerminals();
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to create terminal");
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
     if (isLoading) return <div className="p-8 text-center text-gray-500">Loading Terminals...</div>;
 
     return (
@@ -38,7 +66,7 @@ export default function PosTerminals() {
                     </h1>
                     <p className="text-gray-500 mt-1">Manage physical registers and store locations</p>
                 </div>
-                <Button variant="contained" startIcon={<Plus />} color="primary">
+                <Button variant="contained" startIcon={<Plus />} color="primary" onClick={() => setIsAddModalOpen(true)}>
                     Add Terminal
                 </Button>
             </div>
@@ -93,6 +121,32 @@ export default function PosTerminals() {
                     </div>
                 )}
             </div>
+
+            <Dialog open={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Add New POS Terminal</DialogTitle>
+                <DialogContent>
+                    <div className="space-y-4 pt-4">
+                        <TextField
+                            fullWidth
+                            label="Terminal Name (e.g., Register 1)"
+                            value={newTerminal.name}
+                            onChange={(e) => setNewTerminal({ ...newTerminal, name: e.target.value })}
+                        />
+                        <TextField
+                            fullWidth
+                            label="Store Location"
+                            value={newTerminal.storeLocation}
+                            onChange={(e) => setNewTerminal({ ...newTerminal, storeLocation: e.target.value })}
+                        />
+                    </div>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+                    <Button variant="contained" onClick={handleCreateTerminal} disabled={isCreating}>
+                        {isCreating ? 'Creating...' : 'Create Terminal'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </div>
     );
 }
