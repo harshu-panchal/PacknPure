@@ -9,6 +9,7 @@ import cartRoute from "./cartRoutes.js";
 import wishlistRoute from "./wishlistRoutes.js";
 import orderRoute from "./orderRoutes.js";
 import paymentRoute from "./paymentRoutes.js";
+import paymentWebhookRoute from "./paymentWebhookRoutes.js";
 import notificationRoute from "./notificationRoutes.js";
 import ticketRoute from "./ticketRoutes.js";
 import reviewRoute from "./reviewRoutes.js";
@@ -54,6 +55,7 @@ const setupRoutes = (app) => {
     router.use("/wishlist", wishlistRoute);
     router.use("/orders", orderRoute);
     router.use("/payments", paymentRoute);
+    router.use("/payments/webhook", paymentWebhookRoute);
     router.use("/", experienceRoute);
     router.use("/", offerRoute);
     router.use("/", promotionRoute);

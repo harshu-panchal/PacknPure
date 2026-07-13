@@ -52,12 +52,12 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
 
                 // Get Razorpay Config Key
                 const configRes = await posApi.getPaymentConfig();
-                const razorpayKey = configRes.data?.data?.razorpayKey;
+                const razorpayKey = configRes.data?.result?.razorpayKey;
                 if (!razorpayKey) throw new Error("Could not fetch payment configuration");
 
                 // Create Order on Backend
                 const orderRes = await posApi.createRazorpayOrder({ amount: total });
-                const orderData = orderRes.data?.data;
+                const orderData = orderRes.data?.result;
 
                 if (!orderData?.id) throw new Error("Failed to create online payment order");
 

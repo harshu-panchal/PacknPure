@@ -105,7 +105,7 @@ export const PosCartProvider = ({ children }) => {
                 };
                 const res = await posApi.calculateCartTotals(payload);
                 if (res.data?.success) {
-                    setCartTotals(res.data.data);
+                    setCartTotals(res.data.result);
                 }
             } catch (error) {
                 console.error("Failed to calculate totals from backend:", error);
@@ -132,6 +132,7 @@ export const PosCartProvider = ({ children }) => {
             addToCart,
             updateQuantity,
             setExactQuantity,
+            removeItem,
             clearCart,
             cartTotals,
             isCalculating

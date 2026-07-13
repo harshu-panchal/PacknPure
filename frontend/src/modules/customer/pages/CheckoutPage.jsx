@@ -456,33 +456,23 @@ const CheckoutPage = () => {
   const executePlaceOrder = useCallback(async () => {
     setIsPlacingOrder(true);
     try {
-      // Create order object for API
-      // Note: The backend placeOrder can derive items from cart if not passed,
-      // but let's pass it for consistency with frontend logic.
       const addressForOrder = savedRecipient
         ? {
-          type: "Other",
-          name: savedRecipient.name,
-          address: savedRecipient.completeAddress,
-          landmark: savedRecipient.landmark || "",
-          city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
-          phone: savedRecipient.phone,
-          location: savedRecipient.location || undefined,
-        }
+            type: "Other",
+            name: savedRecipient.name,
+            address: savedRecipient.completeAddress,
+            landmark: savedRecipient.landmark || "",
+            city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
+            phone: savedRecipient.phone,
+            location: savedRecipient.location || undefined,
+          }
         : {
-          ...currentAddress,
-          location: currentAddress.location || undefined,
-        };
+            ...currentAddress,
+            location: currentAddress.location || undefined,
+          };
 
-      const orderData = {
+      const checkoutPayload = {
         address: addressForOrder,
-        payment: {
-          method: selectedPayment,
-          status:
-            selectedPayment === "wallet"
-              ? "completed"
-              : "pending",
-        },
         pricing: {
           subtotal: cartTotal,
           deliveryFee,
@@ -495,46 +485,125 @@ const CheckoutPage = () => {
         promotionId: selectedCoupon ? (selectedCoupon._id || selectedCoupon.promotionId) : null,
         timeSlot: selectedTimeSlot,
         items: cart.map((item) => ({
-          // Prefer backend Mongo _id for procurement/vendor mapping.
           product: item._id || item.id,
           name: item.name,
           quantity: item.quantity,
           price: item.price,
           image: item.image,
           variantId: item.variantId || item.selectedVariantId || undefined,
-          variantSlot:
-            [item.variantLabel || item.weight, item.unit].filter(Boolean).join(" · ") ||
-            undefined,
+          variantSlot: [item.variantLabel || item.weight, item.unit].filter(Boolean).join(" · ") || undefined,
         })),
       };
 
-      const response = await customerApi.placeOrder(orderData);
+      if (selectedPayment === "online") {
+        // Online flow: ask backend to create Razorpay order + payment intent
+        const res = await customerApi.createPaymentOrder({ checkout: checkoutPayload });
+        if (!res.data.success) throw new Error(res.data.message || "Failed to create payment order");
 
-      if (response.data.success) {
-        const order = response.data.result;
+        const data = res.data.result;
+        // Load Razorpay SDK
+        if (typeof window !== "undefined") {
+          if (!window.Razorpay) {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement("script");
+              s.src = "https://checkout.razorpay.com/v1/checkout.js";
+              s.onload = resolve;
+              s.onerror = reject;
+              document.body.appendChild(s);
+            });
+          }
 
-        clearCart();
+          const options = {
+            key: data.key,
+            amount: data.amount,
+            currency: data.currency,
+            name: settings?.appName || "PacknPure",
+            description: "Order Payment",
+            order_id: data.razorpayOrderId,
+            handler: async function (response) {
+              // Verify on backend
+              try {
+                const verifyRes = await customerApi.verifyPayment({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  intentId: data.intentId,
+                });
 
-        showToast(`Order placed — processing at hub.`, "success");
-        setOrderId(order.orderId);
-        setShowSuccess(true);
+                if (verifyRes.data.success) {
+                  const order = verifyRes.data.result?.order;
+                  clearCart();
+                  showToast("Payment successful — order confirmed", "success");
+                  setOrderId(order.orderId);
+                  setShowSuccess(true);
+                  setTimeout(() => navigate(`/orders/${order.orderId}`), 2000);
+                } else {
+                  showToast(verifyRes.data.message || "Verification failed", "error");
+                }
+              } catch (err) {
+                console.error("Verification error", err);
+                showToast("Verification failed. Contact support.", "error");
+              } finally {
+                setIsPlacingOrder(false);
+              }
+            },
+            modal: {
+              ondismiss: function () {
+                setIsPlacingOrder(false);
+                showToast("Payment cancelled", "error");
+              },
+            },
+            prefill: {
+              name: user?.name,
+              email: user?.email,
+              contact: user?.phone,
+            },
+            theme: { color: BRAND_COLOR },
+          };
 
-        if (postOrderNavigateRef.current) {
-          clearTimeout(postOrderNavigateRef.current);
+          const rzp = new window.Razorpay(options);
+          rzp.open();
         }
-        postOrderNavigateRef.current = setTimeout(() => {
-          postOrderNavigateRef.current = null;
-          navigate(`/orders/${order.orderId}`);
-        }, 3000);
+      } else {
+        // Non-online (wallet/cash) - keep existing behavior: place order immediately
+        const orderData = {
+          address: addressForOrder,
+          payment: {
+            method: selectedPayment,
+            status: selectedPayment === "wallet" ? "completed" : "pending",
+          },
+          pricing: checkoutPayload.pricing,
+          promotionId: checkoutPayload.promotionId,
+          timeSlot: checkoutPayload.timeSlot,
+          items: checkoutPayload.items,
+        };
+
+        const response = await customerApi.placeOrder(orderData);
+
+        if (response.data.success) {
+          const order = response.data.result;
+
+          clearCart();
+          showToast(`Order placed — processing at hub.`, "success");
+          setOrderId(order.orderId);
+          setShowSuccess(true);
+
+          if (postOrderNavigateRef.current) {
+            clearTimeout(postOrderNavigateRef.current);
+          }
+          postOrderNavigateRef.current = setTimeout(() => {
+            postOrderNavigateRef.current = null;
+            navigate(`/orders/${order.orderId}`);
+          }, 3000);
+        }
       }
     } catch (error) {
       console.error("Failed to place order:", error);
       showToast(
         error.response?.data?.message ||
-        "Failed to place order. Please try again.",
+          "Failed to place order. Please try again.",
         "error",
       );
-    } finally {
       setIsPlacingOrder(false);
     }
   }, [
@@ -552,6 +621,8 @@ const CheckoutPage = () => {
     clearCart,
     showToast,
     navigate,
+    settings,
+    user,
   ]);
 
   const handlePlaceOrder = useCallback(() => {

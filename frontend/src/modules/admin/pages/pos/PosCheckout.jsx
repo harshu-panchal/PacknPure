@@ -81,7 +81,7 @@ export default function PosCheckout() {
             
             if (data.success) {
                 toast.success("Payment successful! Receipt generated.");
-                setReceiptData(data.data);
+                setReceiptData(data.result);
                 setReceiptModalOpen(true);
                 clearCart();
                 setPaymentModalOpen(false);

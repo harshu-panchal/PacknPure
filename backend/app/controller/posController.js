@@ -336,16 +336,21 @@ export const searchPosProducts = async (req, res) => {
         { "variants.sku": { $regex: search, $options: "i" } },
         { "variants.barcode": search } // exact barcode search
       ],
-      isDeleted: false
+      ownerType: "admin",
+      status: "active"
     };
 
     const products = await Product.find(query)
-      .populate("hubStocks", "quantity reserved lowStockThreshold")
       .limit(parseInt(limit))
       .lean();
 
     const productIds = products.map(p => p._id);
     
+    // Fetch Hub Inventory manually since it's not a virtual on Product
+    const hubStocks = await HubInventory.find({
+      productId: { $in: productIds }
+    }).lean();
+
     // Fetch all active seller listings that point to these master products
     const sellerListings = await Product.find({
       masterProductId: { $in: productIds },
@@ -354,8 +359,8 @@ export const searchPosProducts = async (req, res) => {
 
     // Map the deep inventory details
     const formattedResults = products.map(p => {
-      // Find default hub stock
-      const hubStock = p.hubStocks && p.hubStocks.length > 0 ? p.hubStocks[0] : null;
+      // Find hub stock for this product
+      const hubStock = hubStocks.find(h => String(h.productId) === String(p._id));
       
       const baseResult = {
         _id: p._id,
@@ -363,12 +368,12 @@ export const searchPosProducts = async (req, res) => {
         image: p.images?.[0]?.url || p.mainImage || "",
         gstEnabled: p.gstEnabled,
         gstRate: p.gstRate,
-        hubAvailableQty: hubStock ? Math.max(0, hubStock.quantity - (hubStock.reserved || 0)) : 0,
-        hubReservedQty: hubStock?.reserved || 0,
-        hubTotalQty: hubStock?.quantity || 0,
+        hubAvailableQty: hubStock ? Math.max(0, hubStock.availableQty || hubStock.quantity - (hubStock.reservedQty || hubStock.reserved || 0)) : 0,
+        hubReservedQty: hubStock?.reservedQty || hubStock?.reserved || 0,
+        hubTotalQty: hubStock?.quantity || hubStock?.availableQty || 0,
       };
 
-      if (p.hasVariants && p.variants?.length > 0) {
+      if (p.variants && p.variants.length > 0) {
         // Flatten variants
         return p.variants.map(v => {
           // Find seller stock for this specific variant (match by name/sku)
@@ -473,7 +478,7 @@ export const calculateCartTotals = async (req, res) => {
       if (item.variantId && product.variants) {
         variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
         if (variant) {
-          price = variant.price || price;
+          price = variant.salePrice || variant.price || price;
           if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
           if (gstEnabled) gstRate = variant.gstRate || gstRate;
         }

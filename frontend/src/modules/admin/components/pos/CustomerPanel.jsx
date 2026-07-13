@@ -30,9 +30,9 @@ export const CustomerPanel = () => {
             // Note: In a real implementation this would hit the exact users search API. 
             // Mocking successful lookup for UI purposes until hooked up.
             const { data } = await posApi.searchCustomer(searchPhone);
-            if (data.success && data.customer) {
-                setCustomerProfile(data.customer);
-                setGuestCustomer({ name: data.customer.name, phone: data.customer.phone });
+            if (data.success && data.result?.customer) {
+                setCustomerProfile(data.result.customer);
+                setGuestCustomer({ name: data.result.customer.name, phone: data.result.customer.phone });
                 toast.success("Customer found!");
             } else {
                 toast.error("Customer not found. Will proceed as guest.");
