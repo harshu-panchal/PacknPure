@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { posApi } from '../../services/posApi';
 import { Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
-import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power } from 'lucide-react';
+import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power, Play } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export default function PosTerminals() {
+    const navigate = useNavigate();
     const [terminals, setTerminals] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -23,6 +25,18 @@ export default function PosTerminals() {
             toast.error("Failed to load terminals");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleToggleTerminal = async (id) => {
+        try {
+            const { data } = await posApi.toggleTerminal(id);
+            if (data.success) {
+                toast.success(data.message);
+                loadTerminals();
+            }
+        } catch (error) {
+            toast.error("Failed to toggle terminal status");
         }
     };
 
@@ -108,9 +122,28 @@ export default function PosTerminals() {
 
                         <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                             <span className="text-xs text-gray-500">Created: {new Date(terminal.createdAt).toLocaleDateString()}</span>
-                            <Button size="small" variant="text" color={terminal.isActive ? 'error' : 'success'} startIcon={<Power className="w-4 h-4" />}>
-                                {terminal.isActive ? 'Deactivate' : 'Activate'}
-                            </Button>
+                            <div className="flex gap-2">
+                                {!terminal.currentSessionId && terminal.isActive && (
+                                    <Button 
+                                        size="small" 
+                                        variant="outlined" 
+                                        color="primary" 
+                                        onClick={() => navigate('/admin/pos')}
+                                        startIcon={<Play className="w-4 h-4" />}
+                                    >
+                                        Open Session
+                                    </Button>
+                                )}
+                                <Button 
+                                    size="small" 
+                                    variant="text" 
+                                    color={terminal.isActive ? 'error' : 'success'} 
+                                    onClick={() => handleToggleTerminal(terminal._id)}
+                                    startIcon={<Power className="w-4 h-4" />}
+                                >
+                                    {terminal.isActive ? 'Deactivate' : 'Activate'}
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 ))}

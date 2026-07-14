@@ -2,6 +2,7 @@ import express from "express";
 import {
   createTerminal,
   getTerminals,
+  toggleTerminalStatus,
   startSession,
   endSession,
   getCurrentSession,
@@ -28,6 +29,7 @@ router.use(verifyToken, requireAdmin);
 // Terminals
 router.post("/terminals", createTerminal);
 router.get("/terminals", getTerminals);
+router.put("/terminals/:id/toggle", toggleTerminalStatus);
 
 // Sessions
 router.post("/sessions/open", startSession);

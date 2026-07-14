@@ -95,7 +95,7 @@ export const processPosCheckout = async (req, res) => {
     const { posTerminalId, posSessionId } = posDetails || {};
 
     // Validate Session
-    const activeSession = await PosSession.findOne({ _id: posSessionId, cashier: cashierId, status: "open" }).session(session);
+    const activeSession = await PosSession.findOne({ _id: posSessionId, cashierId: cashierId, status: "OPEN" }).session(session);
     if (!activeSession) {
       throw new Error("Invalid or closed POS Session.");
     }
@@ -200,9 +200,9 @@ export const processPosCheckout = async (req, res) => {
         discountDetails,
         total: pricing.total
       },
-      // If Home Delivery, route through standard workflow starting at pending. If Take Away, instantly complete.
+      // If Home Delivery, route through standard workflow starting at created. If Take Away, instantly complete.
       status: fulfillmentDetails?.type === "HOME_DELIVERY" ? "pending" : "delivered",
-      workflowStatus: fulfillmentDetails?.type === "HOME_DELIVERY" ? "PENDING" : "DELIVERED",
+      workflowStatus: fulfillmentDetails?.type === "HOME_DELIVERY" ? "CREATED" : "DELIVERED",
     });
 
     await newOrder.save({ session });
@@ -261,9 +261,9 @@ export const processPosCheckout = async (req, res) => {
     
     // Since we are instantly completing a POS order (Take Away), deduct the reserved stock permanently.
     if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
-      const { deductHubInventory } = await import("../services/inventoryLifecycleService.js");
+      const { completeHubDelivery } = await import("../services/inventoryLifecycleService.js");
       for (const alloc of hubPlan.allocations) {
-         await deductHubInventory(alloc.productId, alloc.variantId, alloc.reserveQty, session);
+         await completeHubDelivery(alloc.productId, alloc.reserveQty, session);
       }
     }
 
@@ -296,7 +296,7 @@ export const processPosCheckout = async (req, res) => {
     const responseBody = {
       success: true,
       message: "POS Checkout completed successfully",
-      data: newOrder
+      order: newOrder
     };
 
     // Update Idempotency record with success

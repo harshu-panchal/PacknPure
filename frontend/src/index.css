@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "./styles/design-system.css";
 @plugin "@tailwindcss/typography";
 
@@ -347,3 +347,24 @@ body {
 .compact-card-content {
   padding: 1rem;
 }
+
+.hide-spin-button::-webkit-outer-spin-button,
+.hide-spin-button::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.hide-spin-button[type=number] {
+  -moz-appearance: textfield;
+}
+
+
+/* Hide arrows in number input */
+.hide-spin-button::-webkit-outer-spin-button,
+.hide-spin-button::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.hide-spin-button[type=number] {
+  -moz-appearance: textfield;
+}
+

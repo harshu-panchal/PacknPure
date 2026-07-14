@@ -242,8 +242,8 @@ export const getOrderDetails = async (req, res) => {
     }
 
     // BUGFIX: Defensive check for customer reference integrity
-    // If customer field is null or undefined, log error and attempt recovery
-    if (!order.customer) {
+    // If customer field is null or undefined, log error and attempt recovery (Skip for POS orders)
+    if (!order.customer && order.orderSource !== "POS") {
       console.error(`[ORDER_BUG] Order ${orderId} has null/undefined customer field`, {
         orderId: order.orderId,
         _id: order._id,

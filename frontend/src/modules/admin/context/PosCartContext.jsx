@@ -48,9 +48,11 @@ export const PosCartProvider = ({ children }) => {
 
             if (existingIndex >= 0) {
                 const newCart = [...prev];
-                if (newCart[existingIndex].quantity < maxQty) {
-                    newCart[existingIndex].quantity += 1;
+                const item = { ...newCart[existingIndex] };
+                if (item.quantity < maxQty) {
+                    item.quantity += 1;
                 }
+                newCart[existingIndex] = item;
                 return newCart;
             }
 
@@ -74,9 +76,11 @@ export const PosCartProvider = ({ children }) => {
     const updateQuantity = (index, delta, maxQty = Infinity) => {
         setCart(prev => {
             const newCart = [...prev];
-            const newQty = newCart[index].quantity + delta;
+            const item = { ...newCart[index] };
+            const newQty = item.quantity + delta;
             if (newQty > 0 && newQty <= maxQty) {
-                newCart[index].quantity = newQty;
+                item.quantity = newQty;
+                newCart[index] = item;
             } else if (newQty <= 0) {
                 newCart.splice(index, 1);
             }
@@ -87,10 +91,13 @@ export const PosCartProvider = ({ children }) => {
     const setExactQuantity = (index, qty, maxQty = Infinity) => {
         setCart(prev => {
             const newCart = [...prev];
-            if (qty > 0 && qty <= maxQty) {
-                newCart[index].quantity = qty;
-            } else if (qty <= 0) {
-                newCart.splice(index, 1);
+            const item = { ...newCart[index] };
+            if (qty >= 0 && qty <= maxQty) { // Allow 0 so user can clear input before typing
+                item.quantity = qty;
+                newCart[index] = item;
+            } else if (qty > maxQty) {
+                item.quantity = maxQty; // Cap at max
+                newCart[index] = item;
             }
             return newCart;
         });

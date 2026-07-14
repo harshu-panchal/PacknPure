@@ -1,9 +1,41 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePosCart } from '../../context/PosCartContext';
 import { Minus, Plus, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
+const QuantityInput = ({ initialQuantity, onChange, onBlur }) => {
+    const [val, setVal] = useState(initialQuantity === 0 ? '' : initialQuantity);
+
+    useEffect(() => {
+        setVal(initialQuantity === 0 ? '' : initialQuantity);
+    }, [initialQuantity]);
+
+    return (
+        <input 
+            type="number"
+            value={val}
+            onChange={(e) => {
+                setVal(e.target.value);
+                const parsed = parseInt(e.target.value, 10);
+                if (e.target.value === '') {
+                    onChange(0);
+                } else if (!isNaN(parsed)) {
+                    onChange(parsed);
+                }
+            }}
+            onBlur={(e) => {
+                const parsed = parseInt(e.target.value, 10);
+                if (!e.target.value || isNaN(parsed) || parsed <= 0) {
+                    setVal(1);
+                    onBlur(1);
+                }
+            }}
+            className="w-12 text-center font-bold text-gray-800 text-sm border-0 focus:ring-2 focus:ring-blue-500 rounded bg-transparent p-0 hide-spin-button"
+        />
+    );
+};
+
 export const PosCart = () => {
-    const { cart, updateQuantity, removeItem } = usePosCart();
+    const { cart, updateQuantity, removeItem, setExactQuantity } = usePosCart();
 
     if (cart.length === 0) {
         return (
@@ -71,9 +103,11 @@ export const PosCart = () => {
                                         >
                                             <Minus className="w-4 h-4" />
                                         </button>
-                                        <span className="w-10 text-center font-bold text-gray-800 text-sm">
-                                            {item.quantity}
-                                        </span>
+                                        <QuantityInput 
+                                            initialQuantity={item.quantity}
+                                            onChange={(qty) => setExactQuantity(index, qty, Infinity)}
+                                            onBlur={(qty) => setExactQuantity(index, qty, Infinity)}
+                                        />
                                         <button 
                                             // We remove the hard maxQty block so the cashier CAN ring up an item 
                                             // that triggers procurement backend orchestration

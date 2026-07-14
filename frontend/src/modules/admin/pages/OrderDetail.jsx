@@ -330,25 +330,29 @@ const OrderDetail = () => {
                         </h4>
                         <div className="flex items-center gap-4">
                             <div className="h-16 w-16 bg-indigo-50 rounded-2xl flex items-center justify-center ds-h2 font-black text-indigo-600 uppercase">
-                                {order.customer?.name?.split(" ").map((n) => n[0]).join("") || "C"}
+                                {(order.customer?.name || order.guestCustomer?.name)?.split(" ").map((n) => n[0]).join("") || "C"}
                             </div>
                             <div className="text-left">
                                 <h3 className="text-lg font-black text-slate-900 leading-tight">
-                                    {order.customer?.name}
+                                    {order.customer?.name || order.guestCustomer?.name || (order.orderSource === "POS" ? "Walk-in Customer" : "Unknown")}
                                 </h3>
                                 <p className="text-xs font-bold text-slate-400">
-                                    Node ID: {order.customer?._id}
+                                    Node ID: {order.customer?._id || "GUEST"}
                                 </p>
                             </div>
                         </div>
                         <div className="space-y-6 text-left mt-6">
                             <div className="flex flex-col gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
-                                    <Mail className="h-3.5 w-3.5" /> {order.customer?.email}
-                                </span>
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
-                                    <Phone className="h-3.5 w-3.5" /> {order.customer?.phone}
-                                </span>
+                                {(order.customer?.email || order.guestCustomer?.email) && (
+                                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
+                                        <Mail className="h-3.5 w-3.5" /> {order.customer?.email || order.guestCustomer?.email}
+                                    </span>
+                                )}
+                                {(order.customer?.phone || order.guestCustomer?.phone) && (
+                                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
+                                        <Phone className="h-3.5 w-3.5" /> {order.customer?.phone || order.guestCustomer?.phone}
+                                    </span>
+                                )}
                             </div>
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                 <div className="flex items-center justify-between gap-2 mb-1">

@@ -87,19 +87,21 @@ export const SummaryPanel = ({ onCheckoutClick }) => {
                     <span className="text-3xl font-black text-blue-600">₹{cartTotals.total}</span>
                 </div>
 
-                <Button 
-                    variant="contained" 
-                    color="primary" 
-                    fullWidth 
-                    size="large"
-                    disabled={cart.length === 0}
-                    onClick={onCheckoutClick}
-                    className="!py-3 !text-lg !font-bold flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
-                    sx={{ borderRadius: '8px' }}
-                >
-                    Checkout (F4)
-                    <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
+                <div className="sticky bottom-4 z-10 bg-white/90 backdrop-blur-sm p-2 -mx-2 -mb-2 mt-4 rounded-lg shadow-sm border border-gray-100">
+                    <Button 
+                        variant="contained" 
+                        color="primary" 
+                        fullWidth 
+                        size="large"
+                        disabled={cart.length === 0}
+                        onClick={onCheckoutClick}
+                        className="!py-3 !text-lg !font-bold flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
+                        sx={{ borderRadius: '8px' }}
+                    >
+                        Checkout (F4)
+                        <ArrowRight className="ml-2 w-5 h-5" />
+                    </Button>
+                </div>
             </div>
         </div>
     );

@@ -29,6 +29,20 @@ export const getTerminals = async (req, res) => {
   }
 };
 
+export const toggleTerminalStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const terminal = await PosTerminal.findById(id);
+    if (!terminal) return handleResponse(res, 404, "Terminal not found");
+    
+    terminal.isActive = !terminal.isActive;
+    await terminal.save();
+    return handleResponse(res, 200, `Terminal ${terminal.isActive ? 'activated' : 'deactivated'} successfully`, terminal);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 // Sessions
 export const startSession = async (req, res) => {
   try {
@@ -395,7 +409,10 @@ export const searchPosProducts = async (req, res) => {
             purchasePrice: v.purchasePrice || 0,
             sellerQty: sellerVariantStock,
             gstEnabled: v.gstEnabled !== undefined ? v.gstEnabled : baseResult.gstEnabled,
-            gstRate: v.gstEnabled !== undefined && v.gstEnabled ? v.gstRate : baseResult.gstRate
+            gstRate: v.gstEnabled !== undefined && v.gstEnabled ? v.gstRate : baseResult.gstRate,
+            hubAvailableQty: Math.max(0, (v.stock || 0) - (v.committedStock || 0)),
+            hubTotalQty: v.stock || 0,
+            hubReservedQty: v.committedStock || 0
           };
         });
       } else {

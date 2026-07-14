@@ -1,5 +1,6 @@
 import PosSession from "../models/posSession.js";
 import PosCashTransaction from "../models/posCashTransaction.js";
+import PosTerminal from "../models/posTerminal.js";
 import { logPosAction } from "./posAuditService.js";
 
 /**
@@ -29,6 +30,7 @@ export const openSession = async (cashierId, terminalId, openingCash) => {
   });
 
   await session.save();
+  await PosTerminal.findByIdAndUpdate(terminalId, { currentSessionId: session._id });
 
   // Log the initial cash into the drawer
   if (openingCash > 0) {
@@ -66,6 +68,7 @@ export const closeSession = async (sessionId, cashierId, actualCash) => {
   session.cashDifference = actualCash - session.expectedCash;
 
   await session.save();
+  await PosTerminal.findByIdAndUpdate(session.terminalId, { currentSessionId: null });
 
   // Log the closing cash movement
   await PosCashTransaction.create({
