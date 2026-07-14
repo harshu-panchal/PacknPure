@@ -4,18 +4,46 @@ import { posApi } from '../services/posApi';
 const PosCartContext = createContext();
 
 export const PosCartProvider = ({ children }) => {
-    const [cart, setCart] = useState([]);
-    const [guestCustomer, setGuestCustomer] = useState({ name: '', phone: '' });
-    const [manualDiscount, setManualDiscount] = useState({ amount: 0, reason: '' });
-    const [fulfillmentType, setFulfillmentType] = useState('TAKE_AWAY'); // TAKE_AWAY or HOME_DELIVERY
-    const [deliveryAddress, setDeliveryAddress] = useState(null);
+    const [cart, setCart] = useState(() => {
+        const saved = localStorage.getItem('posCart');
+        return saved ? JSON.parse(saved) : [];
+    });
+    const [guestCustomer, setGuestCustomer] = useState(() => {
+        const saved = localStorage.getItem('posGuestCustomer');
+        return saved ? JSON.parse(saved) : { name: '', phone: '' };
+    });
+    const [manualDiscount, setManualDiscount] = useState(() => {
+        const saved = localStorage.getItem('posManualDiscount');
+        return saved ? JSON.parse(saved) : { amount: 0, reason: '' };
+    });
+    const [fulfillmentType, setFulfillmentType] = useState(() => {
+        return localStorage.getItem('posFulfillmentType') || 'TAKE_AWAY';
+    });
+    const [deliveryAddress, setDeliveryAddress] = useState(() => {
+        const saved = localStorage.getItem('posDeliveryAddress');
+        return saved ? JSON.parse(saved) : null;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('posCart', JSON.stringify(cart));
+        localStorage.setItem('posGuestCustomer', JSON.stringify(guestCustomer));
+        localStorage.setItem('posManualDiscount', JSON.stringify(manualDiscount));
+        localStorage.setItem('posFulfillmentType', fulfillmentType);
+        localStorage.setItem('posDeliveryAddress', JSON.stringify(deliveryAddress));
+    }, [cart, guestCustomer, manualDiscount, fulfillmentType, deliveryAddress]);
     
     // Add item to cart
     const addToCart = (product, variant = null, maxQty = Infinity) => {
         setCart(prev => {
+            // Because variant might be passed as a flattened product object (where _id is master ID, but variantId is the actual variant),
+            // or as a separate variant object, we resolve the target variant ID here.
+            const targetVariantId = variant && variant._id && variant._id !== product._id 
+                ? variant._id 
+                : (product.variantId || null);
+
             const existingIndex = prev.findIndex(item => 
                 item.product === product._id && 
-                (variant ? item.variantId === variant._id : !item.variantId)
+                item.variantId === targetVariantId
             );
 
             if (existingIndex >= 0) {
@@ -31,10 +59,10 @@ export const PosCartProvider = ({ children }) => {
                 productData: product, // Store the full product object from search results
                 name: product.name,
                 image: product.images?.[0]?.url || product.image,
-                variantId: variant?._id || product.variantId || null,
+                variantId: targetVariantId,
                 variantName: variant?.name || product.variantName || null,
-                price: product.price || variant?.price || product.basePrice || 0,
-                purchasePrice: product.purchasePrice || variant?.purchasePrice || 0,
+                price: variant?.price || product.price || product.basePrice || 0, // Use resolved price
+                purchasePrice: variant?.purchasePrice || product.purchasePrice || 0,
                 gstEnabled: product.gstEnabled || false,
                 gstRate: product.gstRate || 0,
                 quantity: 1,
@@ -133,7 +161,19 @@ export const PosCartProvider = ({ children }) => {
             updateQuantity,
             setExactQuantity,
             removeItem,
-            clearCart,
+            removeItem,
+            clearCart: () => {
+                setCart([]);
+                setGuestCustomer({ name: '', phone: '' });
+                setManualDiscount({ amount: 0, reason: '' });
+                setFulfillmentType('TAKE_AWAY');
+                setDeliveryAddress(null);
+                localStorage.removeItem('posCart');
+                localStorage.removeItem('posGuestCustomer');
+                localStorage.removeItem('posManualDiscount');
+                localStorage.removeItem('posFulfillmentType');
+                localStorage.removeItem('posDeliveryAddress');
+            },
             cartTotals,
             isCalculating
         }}>

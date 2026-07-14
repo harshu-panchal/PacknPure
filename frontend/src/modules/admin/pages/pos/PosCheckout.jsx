@@ -96,7 +96,7 @@ export default function PosCheckout() {
     return (
         <div className="flex flex-col lg:flex-row h-auto min-h-[calc(100vh-64px)] lg:h-[calc(100vh-64px)] w-full overflow-y-auto lg:overflow-hidden bg-gray-100 p-2 sm:p-4 gap-4">
             {/* Left Side: Search & Cart */}
-            <div className="flex flex-col w-full lg:flex-[2] lg:min-w-[60%] gap-4 h-auto lg:h-full">
+            <div className="flex flex-col w-full lg:flex-[2] lg:min-w-[60%] gap-4 h-auto lg:h-full lg:min-h-0">
                 <ProductSearch />
                 <div className="flex-1 min-h-[300px] lg:min-h-0">
                     <PosCart />
@@ -104,7 +104,7 @@ export default function PosCheckout() {
             </div>
 
             {/* Right Side: Customer & Summary */}
-            <div className="flex flex-col w-full lg:flex-1 lg:min-w-[300px] lg:max-w-md gap-4 h-auto lg:h-full lg:overflow-y-auto pb-20 lg:pb-0">
+            <div className="flex flex-col w-full lg:flex-1 lg:min-w-[300px] lg:max-w-md gap-4 h-auto lg:h-full lg:min-h-0 lg:overflow-y-auto pb-20 lg:pb-8">
                 <CustomerPanel />
                 <SummaryPanel onCheckoutClick={handleCheckoutClick} />
             </div>

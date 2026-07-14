@@ -55,6 +55,13 @@ export const PosCart = () => {
                                             )}
                                         </div>
                                     </div>
+                                    
+                                    {/* Admin Insights */}
+                                    <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
+                                        <div className="text-[10px] text-blue-600 font-medium">
+                                            Admin View (Margin per unit): ₹{(item.price - (item.purchasePrice * (1 + (item.gstEnabled ? (item.gstRate || 0) / 100 : 0)))).toFixed(2)}
+                                        </div>
+                                    </div>
                                 </td>
                                 <td className="py-3 px-4">
                                     <div className="flex items-center justify-center border border-gray-200 rounded-md bg-white overflow-hidden shadow-sm">
@@ -78,13 +85,41 @@ export const PosCart = () => {
                                     </div>
                                 </td>
                                 <td className="py-3 px-4 text-right">
-                                    <div className="text-sm font-bold text-gray-900">₹{item.price.toFixed(2)}</div>
-                                    <div className="text-[10px] text-gray-500 mt-1">
-                                        {item.productData?.gstEnabled ? `Inc. ${item.productData?.gstRate || 0}% GST` : 'No GST'}
-                                    </div>
+                                    {(() => {
+                                        const gstRate = item.productData?.gstEnabled ? (item.productData?.gstRate || 0) : 0;
+                                        const sellingPrice = item.price;
+                                        const basePrice = gstRate > 0 ? sellingPrice / (1 + (gstRate / 100)) : sellingPrice;
+                                        const gstAmount = sellingPrice - basePrice;
+
+                                        return (
+                                            <div className="flex flex-col items-end text-xs">
+                                                <div className="text-gray-500 mb-0.5"><span className="mr-1">Selling Price:</span> <span className="font-bold text-gray-900 text-sm">₹{sellingPrice.toFixed(2)}</span></div>
+                                                <div className="text-gray-500 mb-0.5"><span className="mr-1">Base Price:</span> <span>₹{basePrice.toFixed(2)}</span></div>
+                                                <div className="text-gray-500"><span className="mr-1">GST @{gstRate}%:</span> <span>₹{gstAmount.toFixed(2)}</span></div>
+                                            </div>
+                                        );
+                                    })()}
                                 </td>
                                 <td className="py-3 px-4 text-right">
-                                    <div className="text-base font-black text-gray-900">₹{(item.price * item.quantity).toFixed(2)}</div>
+                                    {(() => {
+                                        const gstRate = item.productData?.gstEnabled ? (item.productData?.gstRate || 0) : 0;
+                                        const sellingPrice = item.price;
+                                        const basePrice = gstRate > 0 ? sellingPrice / (1 + (gstRate / 100)) : sellingPrice;
+                                        const gstAmount = sellingPrice - basePrice;
+                                        
+                                        const totalQty = item.quantity;
+                                        const totalBase = basePrice * totalQty;
+                                        const totalGst = gstAmount * totalQty;
+                                        const grandTotal = sellingPrice * totalQty;
+
+                                        return (
+                                            <div className="flex flex-col items-end text-xs">
+                                                <div className="text-gray-500 mb-0.5"><span className="mr-1">Grand Total:</span> <span className="text-base font-black text-gray-900">₹{grandTotal.toFixed(2)}</span></div>
+                                                <div className="text-gray-500 mb-0.5"><span className="mr-1">Base Total:</span> <span>₹{totalBase.toFixed(2)}</span></div>
+                                                <div className="text-gray-500"><span className="mr-1">GST Total:</span> <span>₹{totalGst.toFixed(2)}</span></div>
+                                            </div>
+                                        );
+                                    })()}
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                     <button 

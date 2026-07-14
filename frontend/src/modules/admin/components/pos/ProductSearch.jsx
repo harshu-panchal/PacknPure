@@ -89,7 +89,7 @@ export const ProductSearch = () => {
                     // Exact barcode match -> Add directly to cart and clear
                     const item = data.results[0];
                     // Instead of failing if out of stock, we add it, and let the Cart explicitly show "Procurement Required"
-                    addToCart(item, item.variantId ? item : null, item.hubAvailableQty || 0);
+                    addToCart(item, null, item.hubAvailableQty || 0);
                     setSearchTerm('');
                     setResults([]);
                     toast.success(`Added ${item.name}`);
@@ -106,7 +106,7 @@ export const ProductSearch = () => {
 
     const handleProductSelect = (product) => {
         // Allow adding to cart even if 0 stock, the Cart logic handles Procurement orchestration.
-        addToCart(product, product.variantId ? product : null, product.hubAvailableQty || 0);
+        addToCart(product, null, product.hubAvailableQty || 0);
         setSearchTerm('');
         setResults([]);
         searchInputRef.current?.focus();

@@ -14,15 +14,15 @@ export const SummaryPanel = ({ onCheckoutClick }) => {
     };
 
     return (
-        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col h-full">
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center">
                 <Receipt className="w-4 h-4 mr-2" />
                 Order Summary
             </h3>
 
-            <div className="flex-1 space-y-3">
+            <div className="space-y-3">
                 <div className="flex justify-between text-sm text-gray-600">
-                    <span>Items ({cart.length})</span>
+                    <span>Base Price (Subtotal)</span>
                     <span className="font-medium text-gray-800">₹{cartTotals.subtotal}</span>
                 </div>
                 
@@ -68,6 +68,20 @@ export const SummaryPanel = ({ onCheckoutClick }) => {
             </div>
 
             <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-300">
+                {/* Admin Insights: Margin & Cost */}
+                {cartTotals.totalMargin !== undefined && (
+                    <div className="mb-4 bg-blue-50 p-3 rounded-md border border-blue-100 flex justify-between items-center text-xs">
+                        <div className="flex flex-col">
+                            <span className="text-blue-700 font-semibold">Admin Insights</span>
+                            <span className="text-blue-600">Total Vendor Cost: ₹{cartTotals.totalVendorCost}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-blue-600">Gross Margin</span>
+                            <span className="text-blue-800 font-bold text-sm">₹{cartTotals.totalMargin}</span>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex justify-between items-end mb-6">
                     <span className="text-gray-800 font-bold">Grand Total</span>
                     <span className="text-3xl font-black text-blue-600">₹{cartTotals.total}</span>

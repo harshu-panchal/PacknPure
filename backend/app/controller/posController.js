@@ -465,6 +465,8 @@ export const calculateCartTotals = async (req, res) => {
     const { items = [], manualDiscount = { amount: 0 } } = req.body;
     let subtotal = 0;
     let totalGst = 0;
+    let totalVendorCost = 0;
+    let totalMargin = 0;
 
     for (const item of items) {
       console.log("Processing item:", JSON.stringify(item));
@@ -475,6 +477,7 @@ export const calculateCartTotals = async (req, res) => {
       }
       
       let price = product.basePrice || product.price || 0;
+      let purchasePrice = 0;
       let variant = null;
       let gstRate = product.gstRate || 0;
       let gstEnabled = product.gstEnabled || false;
@@ -483,6 +486,7 @@ export const calculateCartTotals = async (req, res) => {
         variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
         if (variant) {
           price = variant.salePrice || variant.price || price;
+          purchasePrice = variant.purchasePrice || 0;
           if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
           if (gstEnabled) gstRate = variant.gstRate || gstRate;
         }
@@ -499,7 +503,19 @@ export const calculateCartTotals = async (req, res) => {
 
       subtotal += itemBaseTotal;
       totalGst += itemGstTotal;
-      console.log(`Item total: base=${itemBaseTotal}, gst=${itemGstTotal}, price=${price}`);
+
+      // Admin Analytics: Vendor Cost & Margin
+      let vendorGstAmount = 0;
+      if (gstEnabled && gstRate > 0) {
+        vendorGstAmount = purchasePrice * (gstRate / 100);
+      }
+      const unitVendorCost = purchasePrice + vendorGstAmount;
+      const itemVendorCost = unitVendorCost * (item.quantity || 1);
+      
+      totalVendorCost += itemVendorCost;
+      totalMargin += (itemFinalTotal - itemVendorCost);
+
+      console.log(`Item total: base=${itemBaseTotal}, gst=${itemGstTotal}, price=${price}, vendorCost=${itemVendorCost}, margin=${itemFinalTotal - itemVendorCost}`);
     }
 
     const discountAmount = Number(manualDiscount.amount) || 0;
@@ -509,7 +525,9 @@ export const calculateCartTotals = async (req, res) => {
       subtotal: Number(subtotal.toFixed(2)),
       totalGst: Number(totalGst.toFixed(2)),
       discount: Number(discountAmount.toFixed(2)),
-      total: Number(total.toFixed(2))
+      total: Number(total.toFixed(2)),
+      totalVendorCost: Number(totalVendorCost.toFixed(2)),
+      totalMargin: Number(totalMargin.toFixed(2))
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

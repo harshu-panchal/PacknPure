@@ -33,7 +33,7 @@ const corsOptions = {
       : true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
+  allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "x-idempotency-key"],
 };
 
 // Socket.IO — match Express CORS so the delivery/customer apps can connect cross-origin
