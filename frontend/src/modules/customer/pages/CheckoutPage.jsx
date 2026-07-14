@@ -23,6 +23,8 @@ import {
   Check,
   AlertCircle,
   Contact2,
+  CheckCircle2,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -201,6 +203,12 @@ const CheckoutPage = () => {
         sublabel: "Pay after delivery",
       },
       {
+        id: "online",
+        label: "Pay Online (UPI/Card)",
+        icon: Smartphone,
+        sublabel: "Secure online payment",
+      },
+      {
         id: "wallet",
         label: "Wallet",
         icon: CreditCard,
@@ -361,11 +369,11 @@ const CheckoutPage = () => {
         const res = await customerApi.getActivePromotions({ customerId: user?._id }, { forceRefresh: true });
         if (res.data.success) {
           const list = res.data.result || res.data.results || [];
-          
+
           // Separate automatic and manual promos
           const manualPromos = list.filter(p => p.promotionType !== 'automatic');
           setCoupons(manualPromos);
-          
+
           const autoList = list.filter(p => p.promotionType === 'automatic' && p.autoApply);
           setAutoPromos(autoList);
         }
@@ -434,7 +442,7 @@ const CheckoutPage = () => {
             // Ignore validation errors for silent auto-apply
           }
         }
-        
+
         if (isMounted) {
           if (bestPromo) {
             setSelectedCoupon(bestPromo);
@@ -447,7 +455,7 @@ const CheckoutPage = () => {
     };
 
     evaluateCoupons();
-    
+
     return () => {
       isMounted = false;
     };
@@ -458,21 +466,28 @@ const CheckoutPage = () => {
     try {
       const addressForOrder = savedRecipient
         ? {
-            type: "Other",
-            name: savedRecipient.name,
-            address: savedRecipient.completeAddress,
-            landmark: savedRecipient.landmark || "",
-            city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
-            phone: savedRecipient.phone,
-            location: savedRecipient.location || undefined,
-          }
+          type: "Other",
+          name: savedRecipient.name,
+          address: savedRecipient.completeAddress,
+          landmark: savedRecipient.landmark || "",
+          city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
+          phone: savedRecipient.phone,
+          location: savedRecipient.location || undefined,
+        }
         : {
-            ...currentAddress,
-            location: currentAddress.location || undefined,
-          };
+          ...currentAddress,
+          location: currentAddress.location || undefined,
+        };
+
+      const rawLoc = addressForOrder.location || (currentLocation?.latitude ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null);
+      const deliveryLoc = rawLoc ? { lat: Number(rawLoc.lat), lng: Number(rawLoc.lng) } : null;
 
       const checkoutPayload = {
         address: addressForOrder,
+        deliveryCoords: deliveryLoc,
+        couponCode: selectedCoupon ? selectedCoupon.code : null,
+        walletToUse: 0, // Wallet integration is not fully active in online yet or handles its own
+        deliverySlot: selectedTimeSlot,
         pricing: {
           subtotal: cartTotal,
           deliveryFee,
@@ -601,7 +616,7 @@ const CheckoutPage = () => {
       console.error("Failed to place order:", error);
       showToast(
         error.response?.data?.message ||
-          "Failed to place order. Please try again.",
+        "Failed to place order. Please try again.",
         "error",
       );
       setIsPlacingOrder(false);
@@ -851,7 +866,7 @@ const CheckoutPage = () => {
                               <span className="text-xs font-bold">Map</span>
                             </button>
                           </div>
-                          
+
                           {/* Fetch location error handling was removed since we use MapPicker now */}
                           <Input
                             placeholder="Find landmark (optional)"
@@ -1242,30 +1257,32 @@ const CheckoutPage = () => {
                         className={cn(
                           "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors",
                           active
-                            ? "border-brand-600 bg-brand-50"
+                            ? "border-[#E23744] bg-rose-50"
                             : "border-slate-200 hover:border-slate-300",
                         )}
                       >
                         <span
                           className={cn(
                             "flex h-9 w-9 items-center justify-center rounded-full",
-                            active ? "bg-brand-100 text-brand-600" : "bg-slate-100 text-slate-600",
+                            active ? "bg-rose-100 text-[#E23744]" : "bg-slate-100 text-slate-600",
                           )}
                         >
                           <Icon size={18} />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className={cn("text-sm font-semibold", active ? "text-brand-600" : "text-slate-800")}>
+                          <p className={cn("text-sm font-semibold", active ? "text-[#E23744]" : "text-slate-800")}>
                             {method.label}
                           </p>
                           <p className="text-xs text-slate-500">{method.sublabel}</p>
                         </div>
                         <span
                           className={cn(
-                            "h-4 w-4 shrink-0 rounded-full border-2",
-                            active ? "border-brand-600 bg-brand-600" : "border-slate-300",
+                            "h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors",
+                            active ? "border-[#E23744]" : "border-slate-300",
                           )}
-                        />
+                        >
+                          {active && <span className="h-2 w-2 rounded-full bg-[#E23744]" />}
+                        </span>
                       </button>
                     );
                   })}
@@ -1275,7 +1292,7 @@ const CheckoutPage = () => {
               <div className="mt-4 border-t border-slate-200 pt-4">
                 <div className="mb-4 flex items-center justify-between">
                   <span className="text-sm font-semibold text-slate-900">To pay</span>
-                  <span className="text-xl font-bold text-brand-600">₹{totalAmount}</span>
+                  <span className="text-xl font-bold text-[#E23744]">₹{totalAmount}</span>
                 </div>
 
                 {!isAuthenticated && (

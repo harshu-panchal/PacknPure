@@ -1,0 +1,5 @@
+{
+  "message": "Authentication failed",
+  "stack": null,
+  "errorObj": "{\n  statusCode: 401,\n  error: { code: 'BAD_REQUEST_ERROR', description: 'Authentication failed' }\n}"
+}
