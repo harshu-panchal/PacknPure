@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Calendar, Banknote, ShoppingBag } from 'lucide-react';
 import { Button } from '@mui/material';
 import { posApi } from '../../services/posApi';
+import jsPDF from 'jspdf';
+import brandLogo from '../../../../assets/brand_logo.png';
 
 export default function PosReports() {
     const [dateRange, setDateRange] = useState('today');
@@ -17,13 +19,106 @@ export default function PosReports() {
         try {
             const { data } = await posApi.getPosReports({ range: dateRange });
             if (data.success) {
-                setReportData(data.data);
+                setReportData(data.result || data.data);
             }
         } catch (error) {
             console.error("Failed to load POS reports", error);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleExport = async () => {
+        if (!reportData) return;
+
+        const doc = new jsPDF();
+        
+        // Helper to load image
+        const img = new Image();
+        img.src = brandLogo;
+        
+        await new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+        });
+
+        // Header / Logo area
+        try {
+            // Draw image centered (approx 60x20)
+            doc.addImage(img, 'PNG', 75, 10, 60, 20);
+        } catch (error) {
+            // Fallback to text if image fails
+            doc.setFontSize(24);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(37, 99, 235);
+            doc.text("PackNPure", 105, 20, null, null, "center");
+        }
+        
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(31, 41, 55); // Gray-800
+        doc.text("POS Analytics & Reports", 105, 38, null, null, "center");
+        
+        doc.setFontSize(12);
+        doc.setTextColor(107, 114, 128); // Gray-500
+        doc.text(`Period: ${dateRange.toUpperCase()}`, 105, 45, null, null, "center");
+
+        // Separator
+        doc.setDrawColor(229, 231, 235); // Gray-200
+        doc.setLineWidth(0.5);
+        doc.line(20, 50, 190, 50);
+
+        let y = 60;
+        
+        // Summary
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(17, 24, 39); // Gray-900
+        doc.text("Executive Summary", 20, y);
+        y += 10;
+        
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(55, 65, 81);
+        doc.text(`Gross Sales: Rs. ${(reportData.grossSales || 0).toLocaleString()}`, 20, y); y += 8;
+        doc.text(`Total Orders: ${reportData.totalOrders || 0}`, 20, y); y += 8;
+        doc.text(`Total Refunds: Rs. ${(reportData.totalRefunds || 0).toLocaleString()}`, 20, y); y += 8;
+        doc.text(`Unique Customers: ${reportData.uniqueCustomers || 0}`, 20, y); y += 15;
+
+        // Payment Methods
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(17, 24, 39);
+        doc.text("Payment Methods", 20, y);
+        y += 10;
+        
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(55, 65, 81);
+        doc.text(`Cash: Rs. ${(reportData.paymentMethods?.cash || 0).toLocaleString()}`, 20, y); y += 8;
+        doc.text(`UPI / Razorpay: Rs. ${(reportData.paymentMethods?.upi || 0).toLocaleString()}`, 20, y); y += 8;
+        doc.text(`Card: Rs. ${(reportData.paymentMethods?.card || 0).toLocaleString()}`, 20, y); y += 15;
+
+        // Categories
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(17, 24, 39);
+        doc.text("Top Selling Categories", 20, y);
+        y += 10;
+        
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(55, 65, 81);
+        if (reportData.topCategories && reportData.topCategories.length > 0) {
+            reportData.topCategories.forEach(cat => {
+                doc.text(`${cat.name} (${cat.count} units)`, 20, y); 
+                y += 8;
+            });
+        } else {
+            doc.text("No category data for this period", 20, y);
+        }
+
+        doc.save(`PackNPure_POS_Report_${dateRange}.pdf`);
     };
 
     return (
@@ -136,8 +231,8 @@ export default function PosReports() {
             </div>
             
             <div className="mt-8 text-center">
-                <Button variant="outlined" startIcon={<Calendar />}>
-                    Export Detailed Report (CSV/PDF)
+                <Button variant="outlined" startIcon={<Calendar />} onClick={handleExport} disabled={!reportData || isLoading}>
+                    Download Report (PDF)
                 </Button>
             </div>
         </div>

@@ -5,6 +5,7 @@ import { Printer, Download, Share2, ArrowLeft, Plus } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { posApi } from '../../services/posApi';
 import { toast } from 'sonner';
+import brandLogo from '../../../../assets/brand_logo.png';
 
 export default function PosReceiptPage() {
     const location = useLocation();
@@ -106,9 +107,8 @@ export default function PosReceiptPage() {
                 <div className="bg-white shadow-xl rounded-2xl w-full max-w-md overflow-hidden flex flex-col h-max">
                     <div className="p-8 text-sm receipt-content flex-1" id="printable-receipt" style={{ fontFamily: 'monospace' }}>
                         <div className="text-center mb-6">
-                            <img src="/packnpure-icon.svg" alt="PacknPure Logo" className="h-12 mx-auto mb-2 opacity-90 filter grayscale" />
-                            <h2 className="text-2xl font-black tracking-tight">PacknPure</h2>
-                            <p className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-widest">Supermarket & Retail</p>
+                            <img src={brandLogo} alt="PacknPure Logo" className="h-12 mx-auto mb-2 object-contain" />
+                            <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Supermarket & Retail</p>
                             <p className="text-xs text-gray-400 mt-1">123 Market Street, City</p>
                             <p className="text-xs text-gray-400">GSTIN: 22AAAAA0000A1Z5</p>
                         </div>

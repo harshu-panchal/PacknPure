@@ -338,14 +338,15 @@ export const getPosReports = async (req, res) => {
 
     for (const order of posOrders) {
         if (order.status === 'completed' || order.status === 'delivered') {
-            grossSales += order.totalAmount || 0;
+            const orderTotal = order.pricing?.total || order.totalAmount || 0;
+            grossSales += orderTotal;
             
             if (order.payment?.method) {
                 const method = order.payment.method.toLowerCase();
                 if (paymentMethods[method] !== undefined) {
-                    paymentMethods[method] += order.totalAmount;
+                    paymentMethods[method] += orderTotal;
                 } else {
-                    paymentMethods[method] = order.totalAmount;
+                    paymentMethods[method] = orderTotal;
                 }
             }
 
@@ -360,7 +361,7 @@ export const getPosReports = async (req, res) => {
             }
         }
         if (order.status === 'refunded' || order.status === 'voided') {
-            totalRefunds += order.totalAmount || 0;
+            totalRefunds += order.pricing?.total || order.totalAmount || 0;
         }
     }
 
