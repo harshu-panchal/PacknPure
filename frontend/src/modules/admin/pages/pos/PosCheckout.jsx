@@ -15,7 +15,7 @@ export default function PosCheckout() {
     const navigate = useNavigate();
     const { 
         cart, cartTotals, addToCart, updateQuantity, setExactQuantity, removeItem, clearCart, isCalculating,
-        guestCustomer, setGuestCustomer, manualDiscount
+        guestCustomer, setGuestCustomer, manualDiscount, setManualDiscount
     } = usePosCart();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -30,6 +30,12 @@ export default function PosCheckout() {
     const [paymentMethod, setPaymentMethod] = useState('cash'); // cash, upi, card
     const [amountGiven, setAmountGiven] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    
+    const [showDiscount, setShowDiscount] = useState(false);
+    const [discountInput, setDiscountInput] = useState(manualDiscount.amount || '');
+    const [discountReason, setDiscountReason] = useState(manualDiscount.reason || '');
+
+    const [posSettings, setPosSettings] = useState({});
 
     const searchDebounceRef = useRef(null);
 
@@ -52,7 +58,39 @@ export default function PosCheckout() {
             }
         };
         fetchSession();
+
+        try {
+            const savedSettings = localStorage.getItem('posSettings');
+            if (savedSettings) setPosSettings(JSON.parse(savedSettings));
+        } catch (e) {}
     }, [navigate]);
+
+    const handleApplyDiscount = () => {
+        const amount = Number(discountInput);
+        if (isNaN(amount) || amount < 0) {
+            toast.error("Invalid discount amount");
+            return;
+        }
+        
+        const limitPercent = posSettings.discountLimit ?? 15;
+        const maxAllowedDiscount = (cartTotals.subtotal * limitPercent) / 100;
+
+        if (amount > maxAllowedDiscount) {
+            toast.error(`Maximum allowed discount is ${limitPercent}% (₹${maxAllowedDiscount.toFixed(2)})`);
+            return;
+        }
+
+        setManualDiscount({ amount, reason: discountReason });
+        setShowDiscount(false);
+        toast.success("Discount applied");
+    };
+
+    const handleRemoveDiscount = () => {
+        setManualDiscount({ amount: 0, reason: '' });
+        setDiscountInput('');
+        setDiscountReason('');
+        setShowDiscount(false);
+    };
 
     // Product Search Logic
     const handleSearch = useCallback(async (query) => {
@@ -304,11 +342,54 @@ export default function PosCheckout() {
                         <span>₹{cartTotals.totalGst?.toFixed(2) || '0.00'}</span>
                     </div>
                     {cartTotals.discount > 0 && (
-                        <div className="flex justify-between text-sm text-green-600 font-medium">
-                            <span>Discount</span>
-                            <span>-₹{cartTotals.discount?.toFixed(2) || '0.00'}</span>
+                        <div className="flex justify-between items-center text-sm text-green-600 font-medium group">
+                            <span>
+                                Discount {manualDiscount.reason && `(${manualDiscount.reason})`}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span>-₹{cartTotals.discount?.toFixed(2) || '0.00'}</span>
+                                <button onClick={handleRemoveDiscount} className="text-red-400 hover:text-red-600 text-xs hidden group-hover:block">
+                                    Remove
+                                </button>
+                            </div>
                         </div>
                     )}
+                    
+                    {!showDiscount && manualDiscount.amount === 0 && cart.length > 0 && (
+                        <button 
+                            onClick={() => setShowDiscount(true)} 
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium text-left"
+                        >
+                            + Add Custom Discount
+                        </button>
+                    )}
+
+                    {showDiscount && (
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 space-y-2 mt-2">
+                            <div className="flex gap-2">
+                                <TextField 
+                                    size="small" 
+                                    placeholder="Amount (₹)" 
+                                    type="number"
+                                    value={discountInput}
+                                    onChange={(e) => setDiscountInput(e.target.value)}
+                                    className="bg-white"
+                                />
+                                <TextField 
+                                    size="small" 
+                                    placeholder="Reason" 
+                                    value={discountReason}
+                                    onChange={(e) => setDiscountReason(e.target.value)}
+                                    className="bg-white"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <Button size="small" variant="contained" onClick={handleApplyDiscount}>Apply</Button>
+                                <Button size="small" onClick={() => setShowDiscount(false)}>Cancel</Button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex justify-between text-xl font-black text-gray-900 pt-2 border-t border-dashed border-gray-300 mt-2">
                         <span>Total Payable</span>
                         <span>

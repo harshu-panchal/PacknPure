@@ -4,24 +4,34 @@ import { Button, Switch } from '@mui/material';
 import { toast } from 'sonner';
 
 export default function PosSettings() {
-    const [settings, setSettings] = useState({
-        enableGuestCheckout: true,
-        enableSplitPayment: true,
-        autoPrintReceipt: true,
-        receiptSize: '80mm',
-        discountLimit: 15,
-        barcodeMode: 'auto',
-        managerOverrideRefunds: true
+    const [settings, setSettings] = useState(() => {
+        try {
+            const saved = localStorage.getItem('posSettings');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return {
+            enableGuestCheckout: true,
+            enableSplitPayment: true,
+            autoPrintReceipt: true,
+            receiptSize: '80mm',
+            discountLimit: 15,
+            barcodeMode: 'auto',
+            managerOverrideRefunds: true
+        };
     });
     
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = () => {
         setIsSaving(true);
-        setTimeout(() => {
+        try {
+            localStorage.setItem('posSettings', JSON.stringify(settings));
             toast.success("POS Settings saved successfully");
+        } catch (error) {
+            toast.error("Failed to save settings");
+        } finally {
             setIsSaving(false);
-        }, 800);
+        }
     };
 
     const handleChange = (key, value) => {
