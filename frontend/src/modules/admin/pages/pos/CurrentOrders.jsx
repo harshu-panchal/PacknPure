@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { posApi } from '../../services/posApi';
-import { Package, Clock, Truck, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Package, Clock, Truck, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
+import { Button } from '@mui/material';
 
 export default function CurrentOrders() {
+    const navigate = useNavigate();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -123,6 +126,19 @@ export default function CurrentOrders() {
                                 Waiting for procurement from seller
                             </div>
                         )}
+                        
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                            <Button
+                                variant="outlined"
+                                color="primary"
+                                fullWidth
+                                startIcon={<Receipt size={16} />}
+                                onClick={() => navigate(`/admin/pos/receipt/${order.orderId}`, { state: { orderData: order } })}
+                                className="!rounded-lg !text-sm"
+                            >
+                                Generate Receipt
+                            </Button>
+                        </div>
                     </div>
                 ))}
 

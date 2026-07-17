@@ -175,8 +175,11 @@ export const returnPosOrder = async (req, res) => {
     // Update order status if fully returned
     const allReturned = order.items.every(i => i.returnedQty === i.quantity);
     if (allReturned) {
-      order.status = "refunded";
-      order.workflowStatus = "REFUNDED";
+      order.status = "cancelled";
+      order.workflowStatus = "CANCELLED";
+      order.returnStatus = "refund_completed";
+    } else {
+      order.returnStatus = "partial_refund_completed";
     }
     
     await order.save();
