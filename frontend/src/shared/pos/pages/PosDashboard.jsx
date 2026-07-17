@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePosSession } from '../context/PosSessionContext';
+import { usePosEngine } from '../context/PosEngineContext';
 import { posApi } from '../services/posApi';
 import { Terminal, Banknote, Power, CheckCircle, Store, AlertTriangle, ArrowRight, PackageSearch, Boxes, ShoppingCart } from 'lucide-react';
 import { Button } from '@mui/material';
@@ -14,6 +15,7 @@ export default function PosDashboard() {
     const [openingCash, setOpeningCash] = useState(0);
     const [isOpening, setIsOpening] = useState(false);
     const navigate = useNavigate();
+    const { role: posRole } = usePosEngine();
 
     const [stats, setStats] = useState(null);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -82,7 +84,7 @@ export default function PosDashboard() {
                         color="primary" 
                         size="large"
                         startIcon={<ShoppingCart />}
-                        onClick={() => navigate('/admin/pos/checkout')}
+                        onClick={() => navigate(`/${posRole}/pos/checkout`)}
                     >
                         Quick Order (F4)
                     </Button>

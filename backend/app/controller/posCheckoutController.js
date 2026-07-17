@@ -49,7 +49,7 @@ export const createPosPaymentOrder = async (req, res) => {
 export const processPosCheckout = async (req, res) => {
   const idempotencyKey = req.headers["x-idempotency-key"];
   const cashierId = req.user.id;
-  const providers = getPosProviders(req.user.role);
+  const providers = getPosProviders(req.user);
   
   if (!idempotencyKey) {
     return handleResponse(res, 400, "Idempotency key is required for POS checkout.");

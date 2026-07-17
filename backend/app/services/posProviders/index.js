@@ -3,10 +3,10 @@ import { AdminPaymentProvider, SellerPaymentProvider } from "./PaymentProvider.j
 import { AdminReportProvider, SellerReportProvider } from "./ReportProvider.js";
 import { AdminReceiptProvider, SellerReceiptProvider } from "./ReceiptProvider.js";
 
-export const getPosProviders = (role) => {
-    if (role === "seller") {
+export const getPosProviders = (user) => {
+    if (user.role === "seller") {
         return {
-            inventory: new SellerInventoryProvider(),
+            inventory: new SellerInventoryProvider(user.id),
             payment: new SellerPaymentProvider(),
             report: new SellerReportProvider(),
             receipt: new SellerReceiptProvider(),

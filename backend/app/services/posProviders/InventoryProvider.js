@@ -112,7 +112,7 @@ export class SellerInventoryProvider extends InventoryProvider {
                     variantName: v.name,
                     sku: v.sku,
                     barcode: v.barcode,
-                    price: v.salePrice || v.price || 0,
+                    price: v.salePrice || v.price || v.purchasePrice || 0,
                     availableQty: Math.max(0, (v.stock || 0) - (v.committedStock || 0))
                 }));
             }
@@ -122,7 +122,7 @@ export class SellerInventoryProvider extends InventoryProvider {
                 variantName: null,
                 sku: p.sku,
                 barcode: p.sku,
-                price: p.salePrice || p.basePrice || p.price || 0
+                price: p.salePrice || p.basePrice || p.price || p.purchasePrice || 0
             }];
         }).flat();
 

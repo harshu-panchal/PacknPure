@@ -124,7 +124,7 @@ export const getCurrentSession = async (req, res) => {
 export const getAllSessions = async (req, res) => {
   try {
     const { search } = req.query;
-    const providers = getPosProviders(req.user.role);
+    const providers = getPosProviders(req.user);
     const sessions = await providers.report.getSessions(search, req.user);
       
     let filteredSessions = sessions;
@@ -216,7 +216,7 @@ export const returnPosOrder = async (req, res) => {
         
         // Sync Inventory back if it was delivered
         if (order.status === "delivered" || order.status === "completed" || order.status === "refunded") {
-          const providers = getPosProviders(req.user.role);
+          const providers = getPosProviders(req.user);
           await providers.inventory.restoreStock(orderItem.product, orderItem.variantId, returnItem.qty);
         }
       }
@@ -262,7 +262,7 @@ export const returnPosOrder = async (req, res) => {
 
 export const getPosOrders = async (req, res) => {
   try {
-    const providers = getPosProviders(req.user.role);
+    const providers = getPosProviders(req.user);
     const orders = await providers.report.getOrders(req.user);
     return handleResponse(res, 200, "POS Orders fetched", orders);
   } catch (error) {
@@ -275,7 +275,7 @@ export const getPosDashboardStats = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const providers = getPosProviders(req.user.role);
+    const providers = getPosProviders(req.user);
     const stats = await providers.report.getDashboardStats(today, req.user);
 
     return handleResponse(res, 200, "Dashboard stats fetched", stats);
@@ -300,7 +300,7 @@ export const getPosReports = async (req, res) => {
         startDate.setFullYear(startDate.getFullYear() - 1);
     }
 
-    const providers = getPosProviders(req.user.role);
+    const providers = getPosProviders(req.user);
     const posOrders = await providers.report.getReports(startDate, req.user);
 
     let grossSales = 0;
@@ -365,7 +365,7 @@ export const searchPosProducts = async (req, res) => {
       return handleResponse(res, 400, "Search term is required.");
     }
 
-    const providers = getPosProviders(req.user.role);
+    const providers = getPosProviders(req.user);
     const formattedResults = await providers.inventory.searchProducts(search, limit);
 
     return handleResponse(res, 200, "Products fetched", formattedResults);
