@@ -69,74 +69,104 @@ export const ReceiptModal = ({ open, onOpenChange, orderData }) => {
             </div>
 
             <DialogContent className="!p-0">
-                <div className="p-6 text-sm receipt-content" id="printable-receipt">
-                    <div className="text-center mb-4">
-                        <h2 className="text-xl font-black">PacknPure</h2>
-                        <p className="text-gray-500">Retail Invoice</p>
+                <div className="p-6 text-sm receipt-content" id="printable-receipt" style={{ fontFamily: 'monospace' }}>
+                    <div className="text-center mb-6">
+                        <img src="/packnpure-icon.svg" alt="PacknPure Logo" className="h-12 mx-auto mb-2 opacity-90 filter grayscale" />
+                        <h2 className="text-2xl font-black tracking-tight">PacknPure</h2>
+                        <p className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-widest">Supermarket & Retail</p>
+                        <p className="text-xs text-gray-400 mt-1">123 Market Street, City</p>
+                        <p className="text-xs text-gray-400">GSTIN: 22AAAAA0000A1Z5</p>
                     </div>
 
-                    <div className="mb-4 text-xs space-y-1 text-gray-600">
-                        <p>Order ID: {orderData.orderId}</p>
-                        <p>Date: {new Date(orderData.createdAt || Date.now()).toLocaleString()}</p>
-                        {orderData.posDetails?.cashierId && <p>Cashier ID: {orderData.posDetails.cashierId}</p>}
+                    <div className="border-t-2 border-b-2 border-dashed border-gray-300 py-3 mb-4 text-xs">
+                        <div className="flex justify-between mb-1">
+                            <span className="font-bold">Order ID:</span>
+                            <span>{orderData.orderId}</span>
+                        </div>
+                        <div className="flex justify-between mb-1">
+                            <span className="font-bold">Date:</span>
+                            <span>{new Date(orderData.createdAt || Date.now()).toLocaleString()}</span>
+                        </div>
+                        {orderData.posDetails?.cashierId && (
+                            <div className="flex justify-between mb-1">
+                                <span className="font-bold">Cashier:</span>
+                                <span>{orderData.posDetails.cashierId.slice(-6).toUpperCase()}</span>
+                            </div>
+                        )}
+                        {orderData.guestCustomer?.name && (
+                            <div className="flex justify-between mb-1">
+                                <span className="font-bold">Customer:</span>
+                                <span>{orderData.guestCustomer.name}</span>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="border-t border-b border-dashed border-gray-300 py-3 mb-4">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="text-left font-bold text-xs text-gray-700">
-                                    <th className="pb-2">Item</th>
-                                    <th className="pb-2 text-right">Qty</th>
-                                    <th className="pb-2 text-right">Price</th>
+                    <table className="w-full text-xs mb-4">
+                        <thead>
+                            <tr className="border-b-2 border-dashed border-gray-300">
+                                <th className="text-left py-2 w-1/2">ITEM</th>
+                                <th className="text-center py-2 w-1/6">QTY</th>
+                                <th className="text-right py-2 w-1/6">RATE</th>
+                                <th className="text-right py-2 w-1/6">AMT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {orderData.items?.map((item, idx) => (
+                                <tr key={idx}>
+                                    <td className="py-2 pr-2">
+                                        <div className="font-bold">{item.name}</div>
+                                        {item.variantId && <div className="text-[10px] text-gray-500">Var: {String(item.variantId).slice(-4)}</div>}
+                                    </td>
+                                    <td className="py-2 text-center align-top">{item.quantity}</td>
+                                    <td className="py-2 text-right align-top">{(item.price).toFixed(2)}</td>
+                                    <td className="py-2 text-right align-top">{(item.price * item.quantity).toFixed(2)}</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {orderData.items?.map((item, idx) => (
-                                    <tr key={idx} className="text-xs">
-                                        <td className="py-1">{item.name}</td>
-                                        <td className="py-1 text-right">{item.quantity}</td>
-                                        <td className="py-1 text-right">₹{Number(item.price * item.quantity).toFixed(2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
 
-                    <div className="space-y-1 text-xs">
+                    <div className="border-t-2 border-dashed border-gray-300 pt-3 space-y-2 text-xs">
                         <div className="flex justify-between text-gray-600">
                             <span>Subtotal</span>
                             <span>₹{Number(orderData.pricing?.subtotal || 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-gray-600">
-                            <span>GST</span>
+                            <span>GST Included</span>
                             <span>₹{Number(orderData.pricing?.gst || 0).toFixed(2)}</span>
                         </div>
                         {orderData.pricing?.discount > 0 && (
-                            <div className="flex justify-between text-green-600">
+                            <div className="flex justify-between text-green-600 font-bold">
                                 <span>Discount</span>
                                 <span>-₹{Number(orderData.pricing?.discount || 0).toFixed(2)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between font-bold text-sm mt-2 pt-2 border-t border-gray-200">
-                            <span>Total</span>
+                        <div className="flex justify-between font-black text-lg mt-3 pt-3 border-t-2 border-gray-800">
+                            <span>NET PAYABLE</span>
                             <span>₹{Number(orderData.pricing?.total || 0).toFixed(2)}</span>
                         </div>
                     </div>
 
-                    <div className="mt-8 text-center text-xs text-gray-500">
-                        <p>Thank you for shopping with us!</p>
+                    <div className="mt-8 pt-4 border-t-2 border-dashed border-gray-300 text-center text-xs">
+                        <p className="font-bold mb-1">Thank you for shopping with us!</p>
+                        <p className="text-gray-500">Visit again</p>
+                        <div className="mt-4 flex justify-center">
+                            {/* Barcode Placeholder */}
+                            <div className="w-48 h-10 bg-gray-200 flex items-center justify-center border border-gray-400" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #000 0, #000 2px, transparent 2px, transparent 5px, #000 5px, #000 8px, transparent 8px, transparent 10px)' }}>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2">{orderData.orderId}</p>
                     </div>
                 </div>
 
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between gap-2 print:hidden">
-                    <Button variant="outlined" size="small" onClick={handleDownloadPdf}>
+                <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between gap-2 print:hidden">
+                    <Button variant="outlined" size="small" onClick={handleDownloadPdf} className="!font-bold">
                         <Download className="w-4 h-4 mr-2"/> PDF
                     </Button>
-                    <Button variant="outlined" size="small" onClick={handleShare}>
+                    <Button variant="outlined" size="small" onClick={handleShare} className="!font-bold">
                         <Share2 className="w-4 h-4 mr-2"/> Share
                     </Button>
-                    <Button variant="contained" size="small" onClick={handlePrint} color="primary">
-                        <Printer className="w-4 h-4 mr-2"/> Print
+                    <Button variant="contained" size="small" onClick={handlePrint} color="primary" className="!font-bold !bg-slate-900">
+                        <Printer className="w-4 h-4 mr-2"/> Print Bill
                     </Button>
                 </div>
             </DialogContent>
@@ -156,6 +186,7 @@ export const ReceiptModal = ({ open, onOpenChange, orderData }) => {
                         width: 80mm;
                         margin: 0;
                         padding: 10px;
+                        color: #000 !important;
                     }
                 }
             `}} />

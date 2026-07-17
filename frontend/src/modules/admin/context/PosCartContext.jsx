@@ -5,23 +5,31 @@ const PosCartContext = createContext();
 
 export const PosCartProvider = ({ children }) => {
     const [cart, setCart] = useState(() => {
-        const saved = localStorage.getItem('posCart');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('posCart');
+            return saved && saved !== 'undefined' ? JSON.parse(saved) : [];
+        } catch(e) { return []; }
     });
     const [guestCustomer, setGuestCustomer] = useState(() => {
-        const saved = localStorage.getItem('posGuestCustomer');
-        return saved ? JSON.parse(saved) : { name: '', phone: '' };
+        try {
+            const saved = localStorage.getItem('posGuestCustomer');
+            return saved && saved !== 'undefined' ? JSON.parse(saved) : { name: '', phone: '' };
+        } catch(e) { return { name: '', phone: '' }; }
     });
     const [manualDiscount, setManualDiscount] = useState(() => {
-        const saved = localStorage.getItem('posManualDiscount');
-        return saved ? JSON.parse(saved) : { amount: 0, reason: '' };
+        try {
+            const saved = localStorage.getItem('posManualDiscount');
+            return saved && saved !== 'undefined' ? JSON.parse(saved) : { amount: 0, reason: '' };
+        } catch(e) { return { amount: 0, reason: '' }; }
     });
     const [fulfillmentType, setFulfillmentType] = useState(() => {
         return localStorage.getItem('posFulfillmentType') || 'TAKE_AWAY';
     });
     const [deliveryAddress, setDeliveryAddress] = useState(() => {
-        const saved = localStorage.getItem('posDeliveryAddress');
-        return saved ? JSON.parse(saved) : null;
+        try {
+            const saved = localStorage.getItem('posDeliveryAddress');
+            return saved && saved !== 'undefined' ? JSON.parse(saved) : null;
+        } catch(e) { return null; }
     });
 
     useEffect(() => {
@@ -167,7 +175,6 @@ export const PosCartProvider = ({ children }) => {
             addToCart,
             updateQuantity,
             setExactQuantity,
-            removeItem,
             removeItem,
             clearCart: () => {
                 setCart([]);

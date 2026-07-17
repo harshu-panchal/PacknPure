@@ -43,6 +43,18 @@ export const toggleTerminalStatus = async (req, res) => {
   }
 };
 
+export const deleteTerminal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const terminal = await PosTerminal.findByIdAndDelete(id);
+    if (!terminal) return handleResponse(res, 404, "Terminal not found");
+    
+    return handleResponse(res, 200, "Terminal deleted successfully");
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 // Sessions
 export const startSession = async (req, res) => {
   try {
@@ -153,10 +165,9 @@ export const returnPosOrder = async (req, res) => {
         refundAmount += (orderItem.price * returnItem.qty);
         
         // Sync Inventory back if it was delivered
-        if (order.status === "delivered" || order.status === "completed") {
-          const { incrementHubInventory } = await import("../services/inventoryLifecycleService.js");
-          // Reusing exact backend inventory orchestration
-          await incrementHubInventory(orderItem.product, orderItem.variantId, returnItem.qty);
+        if (order.status === "delivered" || order.status === "completed" || order.status === "refunded") {
+          const { restoreHubAvailableInventory } = await import("../services/inventoryLifecycleService.js");
+          await restoreHubAvailableInventory(orderItem.product, orderItem.variantId, returnItem.qty);
         }
       }
     }

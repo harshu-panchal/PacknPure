@@ -36,6 +36,47 @@ export const freezeHubInventory = async (productId, variantId, quantity, session
   return updated;
 };
 
+export const deductHubAvailableInventory = async (productId, variantId, quantity, session = null) => {
+  // Directly deducts from availableQty for immediate offline POS sales without involving reservedQty
+  const hubInventory = await HubInventory.findOne({ productId, hubId: "MAIN_HUB" }).session(session);
+  if (!hubInventory || hubInventory.availableQty < quantity) {
+    return null; // Deduction failed due to insufficient stock
+  }
+  
+  const updated = await HubInventory.findOneAndUpdate(
+    { _id: hubInventory._id, availableQty: hubInventory.availableQty }, // Optimistic concurrency
+    { $inc: { availableQty: -quantity } },
+    { new: true, session }
+  );
+
+  if (updated) {
+    try {
+      await syncProductStock(productId, variantId, -quantity, false, session);
+    } catch (e) {
+      console.warn("[InventoryLifecycle] Product stock mirroring failed:", e.message);
+    }
+  }
+  return updated;
+};
+
+export const restoreHubAvailableInventory = async (productId, variantId, quantity, session = null) => {
+  // Directly restores availableQty for returned offline POS sales
+  const updated = await HubInventory.findOneAndUpdate(
+    { productId, hubId: "MAIN_HUB" },
+    { $inc: { availableQty: quantity } },
+    { new: true, upsert: true, session }
+  );
+
+  if (updated) {
+    try {
+      await syncProductStock(productId, variantId, quantity, false, session);
+    } catch (e) {
+      console.warn("[InventoryLifecycle] Product stock mirroring failed:", e.message);
+    }
+  }
+  return updated;
+};
+
 export const releaseHubReservation = async (productId, variantId, quantity, session = null) => {
   const updated = await HubInventory.findOneAndUpdate(
     { productId, hubId: "MAIN_HUB" },

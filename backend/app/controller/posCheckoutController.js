@@ -86,11 +86,12 @@ export const processPosCheckout = async (req, res) => {
       guestCustomer, 
       posDetails,
       discountDetails,
-      fulfillmentDetails,
-      razorpay_payment_id,
-      razorpay_order_id,
-      razorpay_signature
+      fulfillmentDetails
     } = req.body;
+
+    const razorpay_payment_id = req.body.razorpay_payment_id || payment?.razorpay_payment_id;
+    const razorpay_order_id = req.body.razorpay_order_id || payment?.razorpay_order_id;
+    const razorpay_signature = req.body.razorpay_signature || payment?.razorpay_signature;
 
     const { posTerminalId, posSessionId } = posDetails || {};
 
@@ -125,7 +126,7 @@ export const processPosCheckout = async (req, res) => {
       const product = await Product.findById(item.product || item.productId).session(session).lean();
       if (!product) throw new Error(`Product ${item.product || item.productId} not found`);
       
-      let price = product.basePrice || product.price || 0;
+      let price = product.salePrice || product.price || 0;
       let variant = null;
       let gstRate = product.gstRate || 0;
       let gstEnabled = product.gstEnabled || false;
@@ -133,7 +134,7 @@ export const processPosCheckout = async (req, res) => {
       if (item.variantId && product.variants) {
         variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
         if (variant) {
-          price = variant.price || price;
+          price = variant.salePrice || variant.price || price;
           if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
           if (gstEnabled) gstRate = variant.gstRate || gstRate;
         }
@@ -207,47 +208,24 @@ export const processPosCheckout = async (req, res) => {
 
     await newOrder.save({ session });
 
-    // 4. Reserve & Commit Inventory (Reusing exact logic)
-    const hubPlan = await planHubFulfillment(newOrder.items);
+    // 4. Strict Hub Inventory Deduction (POS is offline sales from Hub ONLY)
+    const { deductHubAvailableInventory } = await import("../services/inventoryLifecycleService.js");
     
-    // Enrich order items with allocation data just like online checkout
-    const itemAllocations = new Map();
-    for (const alloc of hubPlan.allocations) {
-       itemAllocations.set(alloc.productId + (alloc.variantId || ""), alloc.reserveQty);
-    }
-    const itemShortages = new Map();
-    for (const short of hubPlan.shortages) {
-       itemShortages.set(short.productId + (short.variantId || ""), short.shortageQty);
-    }
-
-    newOrder.items = newOrder.items.map(item => {
-       const key = String(item.product) + (item.variantId ? String(item.variantId) : "");
-       return {
-         ...item.toObject(),
-         hubReservedQty: itemAllocations.get(key) || 0,
-         vendorProcuredQty: itemShortages.get(key) || 0
-       };
-    });
-
-    const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId, session);
-    
-    if (!reserveResult.ok) {
-      throw new Error("Stock unavailable: inventory was updated by another request. Please try again.");
+    // First, verify all items have sufficient physical stock and deduct it directly
+    for (const item of newOrder.items) {
+      const deductResult = await deductHubAvailableInventory(item.product, item.variantId, item.quantity, session);
+      if (!deductResult) {
+        throw new Error(`Insufficient available stock for product ${item.name}. POS can only sell from physically available Hub stock.`);
+      }
+      
+      // Since it's fulfilled from hub strictly
+      item.hubReservedQty = 0; // Not going to reserve, directly deducting available
+      item.vendorProcuredQty = 0;
     }
 
-    // Set procurement flags and trigger backend procurement engine
-    if (hubPlan.shortages.length > 0) {
-      await createAutoPurchaseRequests({
-        order: newOrder,
-        shortages: hubPlan.shortages,
-        hubId: hubPlan.hubId,
-      }, session);
-      newOrder.hubStatus = "procurement_required";
-      newOrder.procurementRequired = true;
-    } else {
-      newOrder.hubStatus = "inventory_reserved";
-      newOrder.procurementRequired = false;
-    }
+    // No procurement required for POS
+    newOrder.hubStatus = "inventory_reserved";
+    newOrder.procurementRequired = false;
 
     // Step through lifecycle rapidly ONLY if it's TAKE_AWAY
     if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
@@ -258,14 +236,6 @@ export const processPosCheckout = async (req, res) => {
     }
     
     await newOrder.save({ session });
-    
-    // Since we are instantly completing a POS order (Take Away), deduct the reserved stock permanently.
-    if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
-      const { completeHubDelivery } = await import("../services/inventoryLifecycleService.js");
-      for (const alloc of hubPlan.allocations) {
-         await completeHubDelivery(alloc.productId, alloc.reserveQty, session);
-      }
-    }
 
     // 5. Log POS Cash Transaction if cash
     if (newOrder.payment.method === "cash" && posSessionId) {

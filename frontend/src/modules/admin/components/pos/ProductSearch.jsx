@@ -172,8 +172,8 @@ export const ProductSearch = () => {
                                 className="flex items-start p-4 hover:bg-blue-50 cursor-pointer transition-colors"
                             >
                                 <div className="w-16 h-16 bg-gray-100 rounded-lg mr-4 flex-shrink-0 overflow-hidden border border-gray-200">
-                                    {product.images?.[0]?.url ? (
-                                        <img src={product.images[0].url} alt={product.name} className="w-full h-full object-cover" />
+                                    {product.image ? (
+                                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <PackageSearch className="w-8 h-8 m-4 text-gray-300" />
                                     )}

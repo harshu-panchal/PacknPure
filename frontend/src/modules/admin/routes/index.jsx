@@ -109,10 +109,9 @@ const ProductRequestsList = React.lazy(() => import("../pages/ProductRequestsLis
 const PosDashboard = React.lazy(() => import("../pages/pos/PosDashboard"));
 const PosTerminals = React.lazy(() => import("../pages/pos/PosTerminals"));
 const PosCheckout = React.lazy(() => import("../pages/pos/PosCheckout"));
+const PosReceiptPage = React.lazy(() => import("../pages/pos/PosReceiptPage"));
 const CurrentOrders = React.lazy(() => import("../pages/pos/CurrentOrders"));
-const PosInventory = React.lazy(() => import("../pages/pos/PosInventory"));
-const LowStockAlerts = React.lazy(() => import("../pages/pos/LowStockAlerts"));
-const ProcurementStatus = React.lazy(() => import("../pages/pos/ProcurementStatus"));
+const PosSessions = React.lazy(() => import("../pages/pos/PosSessions"));
 const PosCashDrawer = React.lazy(() => import("../pages/pos/PosCashDrawer"));
 const Returns = React.lazy(() => import("../pages/pos/Returns"));
 const PosReports = React.lazy(() => import("../pages/pos/PosReports"));
@@ -356,10 +355,9 @@ const AdminRoutes = () => {
           <Route index element={<PosDashboard />} />
           <Route path="terminals" element={<PosTerminals />} />
           <Route path="checkout" element={<PosCheckout />} />
+          <Route path="receipt/:orderId" element={<PosReceiptPage />} />
           <Route path="orders" element={<CurrentOrders />} />
-          <Route path="inventory" element={<PosInventory />} />
-          <Route path="low-stock" element={<LowStockAlerts />} />
-          <Route path="procurement" element={<ProcurementStatus />} />
+          <Route path="sessions" element={<PosSessions />} />
           <Route path="cash-drawer" element={<PosCashDrawer />} />
           <Route path="returns" element={<Returns />} />
           <Route path="reports" element={<PosReports />} />

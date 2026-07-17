@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { posApi } from '../../services/posApi';
 import { Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
-import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power, Play } from 'lucide-react';
+import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power, Play, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -37,6 +37,19 @@ export default function PosTerminals() {
             }
         } catch (error) {
             toast.error("Failed to toggle terminal status");
+        }
+    };
+
+    const handleDeleteTerminal = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this terminal? This action cannot be undone.")) return;
+        try {
+            const { data } = await posApi.deleteTerminal(id);
+            if (data.success) {
+                toast.success("Terminal deleted successfully");
+                loadTerminals();
+            }
+        } catch (error) {
+            toast.error("Failed to delete terminal");
         }
     };
 
@@ -100,7 +113,10 @@ export default function PosTerminals() {
                                     </span>
                                 </div>
                             </div>
-                            <IconButton size="small"><Edit className="w-4 h-4 text-gray-500" /></IconButton>
+                            <div className="flex gap-1">
+                                <IconButton size="small"><Edit className="w-4 h-4 text-gray-500" /></IconButton>
+                                <IconButton size="small" onClick={() => handleDeleteTerminal(terminal._id)} color="error"><Trash2 className="w-4 h-4" /></IconButton>
+                            </div>
                         </div>
                         
                         <div className="p-5 space-y-4">

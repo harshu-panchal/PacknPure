@@ -3,6 +3,7 @@ import {
   createTerminal,
   getTerminals,
   toggleTerminalStatus,
+  deleteTerminal,
   startSession,
   endSession,
   getCurrentSession,
@@ -30,6 +31,7 @@ router.use(verifyToken, requireAdmin);
 router.post("/terminals", createTerminal);
 router.get("/terminals", getTerminals);
 router.put("/terminals/:id/toggle", toggleTerminalStatus);
+router.delete("/terminals/:id", deleteTerminal);
 
 // Sessions
 router.post("/sessions/open", startSession);

@@ -5,6 +5,7 @@ export const posApi = {
     getTerminals: () => axiosInstance.get('/admin/pos/terminals'),
     createTerminal: (data) => axiosInstance.post('/admin/pos/terminals', data),
     toggleTerminal: (id) => axiosInstance.put(`/admin/pos/terminals/${id}/toggle`),
+    deleteTerminal: (id) => axiosInstance.delete(`/admin/pos/terminals/${id}`),
 
     // Sessions
     getCurrentSession: () => axiosInstance.get('/admin/pos/sessions/current'),
