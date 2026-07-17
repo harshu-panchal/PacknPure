@@ -8,6 +8,7 @@ import HubInventory from "../models/hubInventory.js";
 import PosSession from "../models/posSession.js";
 import mongoose from "mongoose";
 import User from "../models/customer.js";
+import PosCashTransaction from "../models/posCashTransaction.js";
 
 // Terminals
 export const createTerminal = async (req, res) => {
@@ -87,7 +88,16 @@ export const getCurrentSession = async (req, res) => {
     if (!session) {
       return handleResponse(res, 404, "No active POS session found");
     }
-    return handleResponse(res, 200, "Active session fetched", session);
+
+    const transactions = await PosCashTransaction.find({
+      sessionId: session._id,
+      type: { $in: ["DEPOSIT", "WITHDRAWAL"] }
+    }).sort({ createdAt: -1 }).lean();
+
+    return handleResponse(res, 200, "Active session fetched", {
+      ...session.toObject(),
+      transactions
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { usePosSession } from '../../context/PosSessionContext';
 import { posApi } from '../../services/posApi';
-import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight } from 'lucide-react';
+import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight, Power, X } from 'lucide-react';
 import { Button } from '@mui/material';
 import { toast } from 'sonner';
 
 export default function PosCashDrawer() {
-    const { activeSession, fetchCurrentSession } = usePosSession();
+    const { activeSession, fetchCurrentSession, closeSession } = usePosSession();
     const [amount, setAmount] = useState('');
     const [type, setType] = useState('deposit');
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+    const [actualCash, setActualCash] = useState('');
 
     if (!activeSession) {
         return <div className="p-8 text-center text-red-500 font-bold">No active session found. Please open a session first.</div>;
@@ -27,7 +29,7 @@ export default function PosCashDrawer() {
         try {
             const { data } = await posApi.addCashMovement({
                 sessionId: activeSession._id,
-                type,
+                type: type.toUpperCase(),
                 amount: Number(amount),
                 notes
             });
@@ -46,14 +48,41 @@ export default function PosCashDrawer() {
         }
     };
 
+    const handleCloseSession = async () => {
+        if (actualCash === '') {
+            toast.error("Please enter the actual cash amount");
+            return;
+        }
+        setIsSubmitting(true);
+        const success = await closeSession(Number(actualCash));
+        setIsSubmitting(false);
+        if (success) {
+            setIsClosingModalOpen(false);
+            window.location.href = '/admin/pos';
+        }
+    };
+
     return (
         <div className="p-6 max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Left Side: Actions */}
             <div>
-                <h1 className="text-2xl font-bold text-gray-800 flex items-center mb-6">
-                    <Banknote className="w-7 h-7 mr-3 text-blue-600" />
-                    Manage Cash Drawer
-                </h1>
+                <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
+                        <Banknote className="w-7 h-7 mr-3 text-blue-600" />
+                        Manage Cash Drawer
+                    </h1>
+                    <Button 
+                        variant="contained" 
+                        color="error" 
+                        startIcon={<Power />}
+                        onClick={() => {
+                            setActualCash(activeSession.expectedCash); // default to expected
+                            setIsClosingModalOpen(true);
+                        }}
+                    >
+                        End Session
+                    </Button>
+                </div>
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
                     <h2 className="text-lg font-bold text-gray-800 mb-4">Record Cash Movement</h2>
@@ -153,12 +182,78 @@ export default function PosCashDrawer() {
                             <MovementItem type="withdrawal" amount={activeSession.totalRefunds} note="Refunds (Aggregated)" />
                         )}
 
-                        <div className="py-8 text-center text-gray-400 text-sm italic">
-                            (Detailed transaction history loading...)
-                        </div>
+                        {activeSession.transactions?.map(tx => (
+                            <MovementItem 
+                                key={tx._id}
+                                type={tx.type.toLowerCase()} 
+                                amount={Math.abs(tx.amount)} 
+                                note={tx.remarks} 
+                                time={tx.createdAt}
+                            />
+                        ))}
+
+                        {(!activeSession.transactions || activeSession.transactions.length === 0) && (
+                            <div className="py-8 text-center text-gray-400 text-sm italic">
+                                No manual deposits or withdrawals yet.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* End Session Modal */}
+            {isClosingModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <h3 className="font-bold text-gray-800 flex items-center">
+                                <Power className="w-5 h-5 mr-2 text-red-500" /> End POS Session
+                            </h3>
+                            <button onClick={() => setIsClosingModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 flex justify-between items-center border border-blue-100">
+                                <div>
+                                    <p className="text-sm font-medium opacity-80">Expected Cash</p>
+                                    <h4 className="text-2xl font-bold">₹{activeSession.expectedCash.toFixed(2)}</h4>
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Actual Cash in Drawer (₹)</label>
+                                <input 
+                                    type="number" 
+                                    value={actualCash}
+                                    onChange={(e) => setActualCash(e.target.value)}
+                                    className="w-full text-2xl p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 font-bold"
+                                    placeholder="0.00"
+                                />
+                                <p className="text-xs text-gray-500 mt-2">Count the physical cash in your drawer and enter it above to calculate any discrepancies.</p>
+                            </div>
+                            <div className="flex gap-4">
+                                <Button 
+                                    variant="outlined" 
+                                    color="inherit" 
+                                    fullWidth
+                                    onClick={() => setIsClosingModalOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    variant="contained" 
+                                    color="error" 
+                                    fullWidth
+                                    disabled={isSubmitting || actualCash === ''}
+                                    onClick={handleCloseSession}
+                                >
+                                    {isSubmitting ? "Closing..." : "Close Session"}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
