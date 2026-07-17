@@ -12,6 +12,21 @@ export default function PosReceiptPage() {
     const navigate = useNavigate();
     const { orderId } = useParams();
     const orderData = location.state?.orderData;
+    const [receiptSettings, setReceiptSettings] = React.useState({
+        storeAddress: '123 Market Street, City',
+        gstNumber: '22AAAAA0000A1Z5'
+    });
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('posSettings');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.storeAddress) setReceiptSettings(prev => ({ ...prev, storeAddress: parsed.storeAddress }));
+                if (parsed.gstNumber) setReceiptSettings(prev => ({ ...prev, gstNumber: parsed.gstNumber }));
+            }
+        } catch (e) {}
+    }, []);
 
     useEffect(() => {
         if (!orderData) {
@@ -109,8 +124,8 @@ export default function PosReceiptPage() {
                         <div className="text-center mb-6">
                             <img src={brandLogo} alt="PacknPure Logo" className="h-12 mx-auto mb-2 object-contain" />
                             <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Supermarket & Retail</p>
-                            <p className="text-xs text-gray-400 mt-1">123 Market Street, City</p>
-                            <p className="text-xs text-gray-400">GSTIN: 22AAAAA0000A1Z5</p>
+                            <p className="text-xs text-gray-400 mt-1">{receiptSettings.storeAddress}</p>
+                            <p className="text-xs text-gray-400">GSTIN: {receiptSettings.gstNumber}</p>
                         </div>
 
                         <div className="border-t-2 border-b-2 border-dashed border-gray-300 py-3 mb-4 text-xs">

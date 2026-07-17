@@ -261,7 +261,7 @@ export default function PosCheckout() {
                         <ShoppingCart className="w-5 h-5 mr-2" /> Current Order
                     </h2>
                     <span className="bg-gray-700 px-2 py-1 rounded text-xs font-medium">
-                        Terminal: {currentSession.terminalId?.slice(-4) || 'UNK'}
+                        Terminal: {currentSession.terminalId?.name || (typeof currentSession.terminalId === 'string' ? currentSession.terminalId.slice(-4) : 'UNK')}
                     </span>
                 </div>
 

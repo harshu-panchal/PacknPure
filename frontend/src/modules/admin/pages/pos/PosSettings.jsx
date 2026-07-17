@@ -16,7 +16,9 @@ export default function PosSettings() {
             receiptSize: '80mm',
             discountLimit: 15,
             barcodeMode: 'auto',
-            managerOverrideRefunds: true
+            managerOverrideRefunds: true,
+            storeAddress: '123 Market Street, City',
+            gstNumber: '22AAAAA0000A1Z5'
         };
     });
     
@@ -137,6 +139,26 @@ export default function PosSettings() {
                                     80mm
                                 </label>
                             </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-gray-100">
+                            <div className="font-semibold text-gray-700 mb-2">Store Address (Receipt)</div>
+                            <input 
+                                type="text"
+                                value={settings.storeAddress}
+                                onChange={(e) => handleChange('storeAddress', e.target.value)}
+                                className="w-full p-2.5 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 mb-4"
+                                placeholder="e.g. 123 Market Street, City"
+                            />
+
+                            <div className="font-semibold text-gray-700 mb-2">GST Number (Receipt)</div>
+                            <input 
+                                type="text"
+                                value={settings.gstNumber}
+                                onChange={(e) => handleChange('gstNumber', e.target.value)}
+                                className="w-full p-2.5 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                                placeholder="e.g. 22AAAAA0000A1Z5"
+                            />
                         </div>
                     </div>
                 </div>
