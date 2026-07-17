@@ -103,6 +103,31 @@ export const getCurrentSession = async (req, res) => {
   }
 };
 
+export const getAllSessions = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const sessions = await PosSession.find()
+      .populate("cashierId", "name email")
+      .populate("terminalId", "name")
+      .sort({ createdAt: -1 })
+      .lean();
+      
+    let filteredSessions = sessions;
+    if (search) {
+      const s = search.toLowerCase();
+      filteredSessions = sessions.filter(session => {
+        const cashierName = session.cashierId?.name?.toLowerCase() || '';
+        const terminalName = session.terminalId?.name?.toLowerCase() || '';
+        return cashierName.includes(s) || terminalName.includes(s);
+      });
+    }
+
+    return handleResponse(res, 200, "All sessions fetched", filteredSessions);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 // Cash Drawer
 export const addCashMovement = async (req, res) => {
   try {

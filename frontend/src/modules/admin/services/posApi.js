@@ -8,6 +8,7 @@ export const posApi = {
     deleteTerminal: (id) => axiosInstance.delete(`/admin/pos/terminals/${id}`),
 
     // Sessions
+    getSessions: (params) => axiosInstance.get('/admin/pos/sessions', { params }),
     getCurrentSession: () => axiosInstance.get('/admin/pos/sessions/current'),
     openSession: (data) => axiosInstance.post('/admin/pos/sessions/open', data),
     closeSession: (data) => axiosInstance.post('/admin/pos/sessions/close', data),

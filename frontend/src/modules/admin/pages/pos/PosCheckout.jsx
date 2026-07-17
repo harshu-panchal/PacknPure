@@ -66,21 +66,22 @@ export default function PosCheckout() {
     }, [navigate]);
 
     const handleApplyDiscount = () => {
-        const amount = Number(discountInput);
-        if (isNaN(amount) || amount < 0) {
-            toast.error("Invalid discount amount");
+        const percent = Number(discountInput);
+        if (isNaN(percent) || percent < 0) {
+            toast.error("Invalid discount percentage");
             return;
         }
         
         const limitPercent = posSettings.discountLimit ?? 15;
-        const maxAllowedDiscount = (cartTotals.subtotal * limitPercent) / 100;
-
-        if (amount > maxAllowedDiscount) {
-            toast.error(`Maximum allowed discount is ${limitPercent}% (₹${maxAllowedDiscount.toFixed(2)})`);
+        
+        if (percent > limitPercent) {
+            toast.error(`Maximum allowed discount is ${limitPercent}%`);
             return;
         }
 
-        setManualDiscount({ amount, reason: discountReason });
+        const calculatedAmount = (cartTotals.subtotal * percent) / 100;
+
+        setManualDiscount({ amount: calculatedAmount, reason: discountReason });
         setShowDiscount(false);
         toast.success("Discount applied");
     };
@@ -369,7 +370,7 @@ export default function PosCheckout() {
                             <div className="flex gap-2">
                                 <TextField 
                                     size="small" 
-                                    placeholder="Amount (₹)" 
+                                    placeholder="Percent (%)" 
                                     type="number"
                                     value={discountInput}
                                     onChange={(e) => setDiscountInput(e.target.value)}

@@ -7,6 +7,7 @@ import {
   startSession,
   endSession,
   getCurrentSession,
+  getAllSessions,
   addCashMovement,
   voidBill,
   getPosDashboardStats,
@@ -37,6 +38,7 @@ router.delete("/terminals/:id", deleteTerminal);
 router.post("/sessions/open", startSession);
 router.post("/sessions/close", endSession);
 router.get("/sessions/current", getCurrentSession);
+router.get("/sessions", getAllSessions);
 
 // Dashboard & Search
 router.get("/dashboard", getPosDashboardStats);

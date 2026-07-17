@@ -31,7 +31,7 @@ export default function PosCashDrawer() {
                 sessionId: activeSession._id,
                 type: type.toUpperCase(),
                 amount: Number(amount),
-                notes
+                remarks: notes
             });
             
             if (data.success) {
