@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Calendar, Banknote, ShoppingBag } from 'lucide-react';
 import { Button } from '@mui/material';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import jsPDF from 'jspdf';
-import brandLogo from '../../../../assets/brand_logo.png';
+import brandLogo from '../../../assets/brand_logo.png';
 
 export default function PosReports() {
     const [dateRange, setDateRange] = useState('today');

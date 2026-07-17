@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { usePosCart } from '../../context/PosCartContext';
+import { usePosCart } from '../context/PosCartContext';
 import { Minus, Plus, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 const QuantityInput = ({ initialQuantity, onChange, onBlur }) => {

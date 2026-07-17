@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Phone, CheckCircle, Search, Home, Store, MapPin } from 'lucide-react';
-import { usePosCart } from '../../context/PosCartContext';
-import { posApi } from '../../services/posApi';
+import { usePosCart } from '../context/PosCartContext';
+import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 import { Button } from '@mui/material';
 

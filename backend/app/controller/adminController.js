@@ -1174,3 +1174,18 @@ export const rejectSeller = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+/* ===============================
+   APPROVE SELLER POS (Admin)
+================================ */
+export const approveSellerPos = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPosApproved } = req.body;
+    const seller = await Seller.findByIdAndUpdate(id, { isPosApproved }, { new: true });
+    if (!seller) return handleResponse(res, 404, "Seller not found");
+    return handleResponse(res, 200, `Seller POS access ${isPosApproved ? 'approved' : 'revoked'} successfully`, seller);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};

@@ -25,6 +25,7 @@ export const adminApi = {
     updateUserCodPolicy: (id, data) => axiosInstance.patch(`/admin/users/${id}/cod-policy`, data),
     updateUserStatus: (id, data) => axiosInstance.patch(`/admin/users/${id}/status`, data),
     approveSeller: (id) => axiosInstance.patch(`/admin/sellers/approve/${id}`),
+    approveSellerPos: (id, isPosApproved) => axiosInstance.patch(`/admin/sellers/approve-pos/${id}`, { isPosApproved }),
     rejectSeller: (id) => axiosInstance.delete(`/admin/sellers/reject/${id}`),
     getAdminWalletData: (params) => axiosInstance.get('/admin/wallet-data', { params }),
     getReports: (params) => axiosInstance.get('/admin/reports', { params }),

@@ -41,6 +41,7 @@ import {
     updateCustomerAccountStatus,
     approveSeller,
     rejectSeller,
+    approveSellerPos,
     getSellerById,
     getReports
 } from "../controller/adminController.js";
@@ -109,6 +110,7 @@ router.get("/sellers/:id", verifyToken, allowRoles("admin"), getSellerById);
 router.post("/sellers", verifyToken, allowRoles("admin"), createSellerByAdmin);
 router.put("/sellers/:id", verifyToken, allowRoles("admin"), updateSellerByAdmin);
 router.patch("/sellers/approve/:id", verifyToken, allowRoles("admin"), approveSeller);
+router.patch("/sellers/approve-pos/:id", verifyToken, allowRoles("admin"), approveSellerPos);
 router.delete("/sellers/reject/:id", verifyToken, allowRoles("admin"), rejectSeller);
 
 

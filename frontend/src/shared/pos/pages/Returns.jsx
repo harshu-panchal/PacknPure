@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { RotateCcw, Search, AlertCircle, RefreshCcw } from 'lucide-react';
 import { Button } from '@mui/material';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { History, Search, Terminal } from 'lucide-react';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 

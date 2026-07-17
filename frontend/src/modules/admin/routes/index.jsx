@@ -106,17 +106,18 @@ const Reports = React.lazy(() => import("../pages/Reports"));
 const ProductRequestsList = React.lazy(() => import("../pages/ProductRequestsList"));
 
 // POS Components
-const PosDashboard = React.lazy(() => import("../pages/pos/PosDashboard"));
-const PosTerminals = React.lazy(() => import("../pages/pos/PosTerminals"));
-const PosCheckout = React.lazy(() => import("../pages/pos/PosCheckout"));
-const PosReceiptPage = React.lazy(() => import("../pages/pos/PosReceiptPage"));
-const CurrentOrders = React.lazy(() => import("../pages/pos/CurrentOrders"));
-const PosSessions = React.lazy(() => import("../pages/pos/PosSessions"));
-const PosCashDrawer = React.lazy(() => import("../pages/pos/PosCashDrawer"));
-const Returns = React.lazy(() => import("../pages/pos/Returns"));
-const PosReports = React.lazy(() => import("../pages/pos/PosReports"));
-const PosSettings = React.lazy(() => import("../pages/pos/PosSettings"));
-import { PosLayout } from "../components/pos/PosLayout";
+const PosDashboard = React.lazy(() => import("@shared/pos/pages/PosDashboard"));
+const PosTerminals = React.lazy(() => import("@shared/pos/pages/PosTerminals"));
+const PosCheckout = React.lazy(() => import("@shared/pos/pages/PosCheckout"));
+const PosReceiptPage = React.lazy(() => import("@shared/pos/pages/PosReceiptPage"));
+const CurrentOrders = React.lazy(() => import("@shared/pos/pages/CurrentOrders"));
+const PosSessions = React.lazy(() => import("@shared/pos/pages/PosSessions"));
+const PosCashDrawer = React.lazy(() => import("@shared/pos/pages/PosCashDrawer"));
+const Returns = React.lazy(() => import("@shared/pos/pages/Returns"));
+const PosReports = React.lazy(() => import("@shared/pos/pages/PosReports"));
+const PosSettings = React.lazy(() => import("@shared/pos/pages/PosSettings"));
+import { PosLayout } from "@shared/pos/components/PosLayout";
+import { PosEngineProvider } from "@shared/pos/context/PosEngineContext";
 
 const navItems = [
   { sectionHeader: "Core Management" },
@@ -351,7 +352,11 @@ const AdminRoutes = () => {
         <Route path="/hub-settings" element={<HubSettings />} />
 
         {/* POS Routes wrapped in PosLayout */}
-        <Route path="/pos" element={<PosLayout />}>
+        <Route path="/pos" element={
+          <PosEngineProvider role="admin">
+            <PosLayout />
+          </PosEngineProvider>
+        }>
           <Route index element={<PosDashboard />} />
           <Route path="terminals" element={<PosTerminals />} />
           <Route path="checkout" element={<PosCheckout />} />

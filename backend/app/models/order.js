@@ -39,6 +39,16 @@ const orderSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: "Admin",
       },
+      sellerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Seller",
+      },
+      sellerSnapshot: {
+        businessName: String,
+        phone: String,
+        address: String,
+        gstin: String
+      }
     },
     guestCustomer: {
       name: String,

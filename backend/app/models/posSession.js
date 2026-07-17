@@ -10,7 +10,10 @@ const posSessionSchema = new mongoose.Schema(
     cashierId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
-      required: true,
+    },
+    sellerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Seller",
     },
     status: {
       type: String,

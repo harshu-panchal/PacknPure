@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePosCart } from '../../context/PosCartContext';
-import { posApi } from '../../services/posApi';
+import { usePosCart } from '../context/PosCartContext';
+import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 import { 
     Search, ShoppingCart, Trash2, Plus, Minus, User, 
     CreditCard, Banknote, Smartphone, CheckCircle, AlertCircle, ShoppingBag, ScanLine
 } from 'lucide-react';
 import { Button, TextField, CircularProgress } from '@mui/material';
-import { PaymentModal } from '../../components/pos/PaymentModal';
-import { CameraScanner } from '../../components/pos/CameraScanner';
+import { PaymentModal } from '../components/PaymentModal';
+import { CameraScanner } from '../components/CameraScanner';
 
 export default function PosCheckout() {
     const navigate = useNavigate();
@@ -218,7 +218,7 @@ export default function PosCheckout() {
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {searchResults.map((product, idx) => {
-                                const stock = product.hubAvailableQty || 0;
+                                const stock = product.availableQty || 0;
                                 const isOutOfStock = stock <= 0;
                                 return (
                                     <div 

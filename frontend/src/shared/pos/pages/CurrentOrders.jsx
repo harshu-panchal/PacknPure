@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { Package, Clock, Truck, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '@mui/material';

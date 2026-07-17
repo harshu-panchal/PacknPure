@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
 import { Banknote, CreditCard, Smartphone, Wallet, Loader2 } from 'lucide-react';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
+import { usePosEngine } from '../context/PosEngineContext';
 
 const loadRazorpay = () => {
     return new Promise((resolve) => {
@@ -18,6 +19,7 @@ const loadRazorpay = () => {
 };
 
 export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isProcessing }) => {
+    const { role } = usePosEngine();
     const [paymentMethod, setPaymentMethod] = useState('cash');
     const [paidAmount, setPaidAmount] = useState(total);
 
@@ -142,27 +144,29 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                     </div>
 
                     {/* Payment Methods */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
-                        <div className="grid grid-cols-4 gap-3">
-                            <MethodBtn 
-                                id="cash" label="Cash" icon={Banknote} 
-                                active={paymentMethod} onClick={setPaymentMethod} 
-                            />
-                            <MethodBtn 
-                                id="upi" label="UPI" icon={Smartphone} 
-                                active={paymentMethod} onClick={setPaymentMethod} 
-                            />
-                            <MethodBtn 
-                                id="card" label="Card" icon={CreditCard} 
-                                active={paymentMethod} onClick={setPaymentMethod} 
-                            />
-                            <MethodBtn 
-                                id="wallet" label="Wallet" icon={Wallet} 
-                                active={paymentMethod} onClick={setPaymentMethod} 
-                            />
+                    {role !== 'seller' && (
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
+                            <div className="grid grid-cols-4 gap-3">
+                                <MethodBtn 
+                                    id="cash" label="Cash" icon={Banknote} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                                <MethodBtn 
+                                    id="upi" label="UPI" icon={Smartphone} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                                <MethodBtn 
+                                    id="card" label="Card" icon={CreditCard} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                                <MethodBtn 
+                                    id="wallet" label="Wallet" icon={Wallet} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Cash Tendered & Change */}
                     {paymentMethod === 'cash' && (

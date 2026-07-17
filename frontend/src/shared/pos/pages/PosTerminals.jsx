@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power, Play, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';

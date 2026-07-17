@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { usePosSession } from '../../context/PosSessionContext';
-import { posApi } from '../../services/posApi';
+import { usePosSession } from '../context/PosSessionContext';
+import { posApi } from '../services/posApi';
 import { Terminal, Banknote, Power, CheckCircle, Store, AlertTriangle, ArrowRight, PackageSearch, Boxes, ShoppingCart } from 'lucide-react';
 import { Button } from '@mui/material';
 import { toast } from 'sonner';

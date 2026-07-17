@@ -21,12 +21,12 @@ import {
   sharePosReceipt
 } from "../controller/posController.js";
 import { processPosCheckout, createPosPaymentOrder } from "../controller/posCheckoutController.js";
-import { verifyToken, requireAdmin } from "../middleware/authMiddleware.js";
+import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// All POS routes should be protected for admins/cashiers
-router.use(verifyToken, requireAdmin);
+// All POS routes should be protected for admins/cashiers/sellers
+router.use(verifyToken, allowRoles("admin", "seller"));
 
 // Terminals
 router.post("/terminals", createTerminal);

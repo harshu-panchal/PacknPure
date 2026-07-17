@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePosCart } from '../../context/PosCartContext';
+import { usePosCart } from '../context/PosCartContext';
 import { Receipt, Tag, ArrowRight } from 'lucide-react';
 import { Button } from '@mui/material';
 

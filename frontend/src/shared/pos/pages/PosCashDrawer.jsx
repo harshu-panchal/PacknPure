@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { usePosSession } from '../../context/PosSessionContext';
-import { posApi } from '../../services/posApi';
+import { usePosSession } from '../context/PosSessionContext';
+import { posApi } from '../services/posApi';
 import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight, Power, X } from 'lucide-react';
 import { Button } from '@mui/material';
 import { toast } from 'sonner';

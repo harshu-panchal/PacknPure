@@ -1,29 +1,44 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
-import { PosSessionProvider, usePosSession } from '../../context/PosSessionContext';
-import { PosCartProvider } from '../../context/PosCartContext';
+import { PosSessionProvider, usePosSession } from '../context/PosSessionContext';
+import { PosCartProvider } from '../context/PosCartContext';
 import { PosErrorBoundary } from './PosErrorBoundary';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@mui/material';
+import { usePosEngine } from '../context/PosEngineContext';
 
 const PosGuards = () => {
     const { user, isAuthenticated } = useAuth();
     const { activeSession, isLoading } = usePosSession();
+    const { role: posRole } = usePosEngine();
     const location = useLocation();
 
     // 1. Authentication Check
     if (!isAuthenticated) {
-        return <Navigate to="/admin/login" replace />;
+        return <Navigate to={`/${posRole}/login`} replace />;
     }
 
-    // 2. RBAC Check (Must be Admin or a specific POS role if created)
-    if (user?.role !== 'admin') {
+    // 2. RBAC Check (Must match the POS engine role)
+    if (user?.role !== posRole) {
         return (
             <div className="flex flex-col items-center justify-center p-8 bg-red-50 rounded-lg m-4">
                 <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
                 <h2 className="text-lg font-bold text-red-700">Access Denied</h2>
                 <p className="text-red-600">You do not have permission to access the POS system.</p>
+            </div>
+        );
+    }
+
+    // 2.5 POS Approval Check for Sellers
+    if (user?.role === 'seller' && !user?.isPosApproved) {
+        return (
+            <div className="flex flex-col items-center justify-center p-8 bg-amber-50 rounded-lg m-4 border border-amber-200">
+                <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
+                <h2 className="text-lg font-bold text-amber-800">POS Not Verified</h2>
+                <p className="text-amber-700 text-center max-w-md">
+                    You are not verified for POS. Please connect to the admin for approval.
+                </p>
             </div>
         );
     }
@@ -34,8 +49,8 @@ const PosGuards = () => {
     }
 
     // If trying to access checkout/cash-drawer without an active session, block them.
-    // (They are allowed to view /admin/pos/sessions and /admin/pos dashboard to open one)
-    const requiresSessionPaths = ['/admin/pos/checkout', '/admin/pos/cash-drawer'];
+    // (They are allowed to view /pos/sessions and /pos dashboard to open one)
+    const requiresSessionPaths = [`/${posRole}/pos/checkout`, `/${posRole}/pos/cash-drawer`];
     const isRestrictedPath = requiresSessionPaths.some(path => location.pathname.includes(path));
 
     if (isRestrictedPath && !activeSession) {
@@ -49,7 +64,7 @@ const PosGuards = () => {
                 <Button 
                     variant="contained" 
                     color="primary" 
-                    onClick={() => window.location.href = '/admin/pos'}
+                    onClick={() => window.location.href = `/${posRole}/pos`}
                 >
                     Go to POS Dashboard
                 </Button>

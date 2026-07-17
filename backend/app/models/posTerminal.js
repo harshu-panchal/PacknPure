@@ -19,6 +19,16 @@ const posTerminalSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    ownerType: {
+      type: String,
+      enum: ["admin", "seller"],
+      default: "admin"
+    },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: "ownerType",
+      required: false,
+    },
   },
   { timestamps: true }
 );

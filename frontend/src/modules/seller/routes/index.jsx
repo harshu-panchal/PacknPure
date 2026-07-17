@@ -13,6 +13,7 @@ import {
   HiOutlineMapPin,
   HiOutlineSquaresPlus,
 } from "react-icons/hi2";
+import { Terminal } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
 const ProductManagement = React.lazy(
@@ -33,7 +34,37 @@ const Profile = React.lazy(() => import("../pages/Profile"));
 const Withdrawals = React.lazy(() => import("../pages/Withdrawals"));
 const Notifications = React.lazy(() => import("../pages/Notifications"));
 
+// POS Components
+const PosDashboard = React.lazy(() => import("@shared/pos/pages/PosDashboard"));
+const PosTerminals = React.lazy(() => import("@shared/pos/pages/PosTerminals"));
+const PosCheckout = React.lazy(() => import("@shared/pos/pages/PosCheckout"));
+const PosReceiptPage = React.lazy(() => import("@shared/pos/pages/PosReceiptPage"));
+const CurrentOrders = React.lazy(() => import("@shared/pos/pages/CurrentOrders"));
+const PosSessions = React.lazy(() => import("@shared/pos/pages/PosSessions"));
+const PosCashDrawer = React.lazy(() => import("@shared/pos/pages/PosCashDrawer"));
+const PosReports = React.lazy(() => import("@shared/pos/pages/PosReports"));
+const PosSettings = React.lazy(() => import("@shared/pos/pages/PosSettings"));
+const PosReturns = React.lazy(() => import("@shared/pos/pages/Returns"));
+import { PosLayout } from "@shared/pos/components/PosLayout";
+import { PosEngineProvider } from "@shared/pos/context/PosEngineContext";
+
 const navItems = [
+  { sectionHeader: "Point of Sale" },
+  {
+    label: "POS System",
+    icon: Terminal,
+    children: [
+      { label: "Dashboard", path: "/seller/pos" },
+      { label: "Terminals", path: "/seller/pos/terminals" },
+      { label: "Quick Order", path: "/seller/pos/checkout" },
+      { label: "Current Orders", path: "/seller/pos/orders" },
+      { label: "Cash Drawer", path: "/seller/pos/cash-drawer" },
+      { label: "Returns", path: "/seller/pos/returns" },
+      { label: "Sessions", path: "/seller/pos/sessions" },
+      { label: "Reports", path: "/seller/pos/reports" },
+      { label: "Settings", path: "/seller/pos/settings" },
+    ],
+  },
   { sectionHeader: "Core Management" },
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
@@ -88,11 +119,27 @@ const SellerRoutes = () => {
         <Route path="/returns" element={<Returns />} />
         <Route path="/tracking" element={<DeliveryTracking />} />
         <Route path="/analytics" element={<Analytics />} />
-        <Route path="/transactions" element={<Transactions />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/earnings" element={<Earnings />} />
         <Route path="/withdrawals" element={<Withdrawals />} />
         <Route path="/profile" element={<Profile />} />
+
+        {/* POS Routes wrapped in PosLayout */}
+        <Route path="/pos" element={
+          <PosEngineProvider role="seller">
+            <PosLayout />
+          </PosEngineProvider>
+        }>
+          <Route index element={<PosDashboard />} />
+          <Route path="terminals" element={<PosTerminals />} />
+          <Route path="checkout" element={<PosCheckout />} />
+          <Route path="receipt/:orderId" element={<PosReceiptPage />} />
+          <Route path="orders" element={<CurrentOrders />} />
+          <Route path="sessions" element={<PosSessions />} />
+          <Route path="cash-drawer" element={<PosCashDrawer />} />
+          <Route path="returns" element={<PosReturns />} />
+          <Route path="reports" element={<PosReports />} />
+          <Route path="settings" element={<PosSettings />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

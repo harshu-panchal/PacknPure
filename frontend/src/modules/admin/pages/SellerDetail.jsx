@@ -24,7 +24,8 @@ import {
     XCircle,
     RotateCw,
     Search,
-    Download
+    Download,
+    Store
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -141,6 +142,38 @@ const SellerDetail = () => {
         await fetchSellerData();
         setIsRefreshing(false);
         showToast('Seller data synchronized', 'success');
+    };
+
+    const handleApprove = async () => {
+        try {
+            await adminApi.approveSeller(seller.id);
+            showToast('Seller approved successfully', 'success');
+            await fetchSellerData();
+        } catch (error) {
+            showToast(error?.response?.data?.message || 'Failed to approve', 'error');
+        }
+    };
+
+    const handleApprovePos = async () => {
+        try {
+            const newStatus = !seller.isPosApproved;
+            await adminApi.approveSellerPos(seller.id, newStatus);
+            showToast(`POS access ${newStatus ? 'approved' : 'revoked'} successfully`, 'success');
+            await fetchSellerData();
+        } catch (error) {
+            showToast(error?.response?.data?.message || 'Failed to update POS access', 'error');
+        }
+    };
+
+    const handleReject = async () => {
+        if (!window.confirm("Reject this seller application?")) return;
+        try {
+            await adminApi.rejectSeller(seller.id);
+            showToast('Seller rejected', 'success');
+            navigate('/admin/suppliers?tab=pending');
+        } catch (error) {
+            showToast(error?.response?.data?.message || 'Failed to reject', 'error');
+        }
     };
 
     if (isLoading) {
@@ -524,6 +557,23 @@ const SellerDetail = () => {
                                             </div>
                                         </div>
 
+                                        <div className="p-6 bg-indigo-50 rounded-xl border border-indigo-100 mb-6">
+                                            <h5 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <Store className="h-4 w-4" />
+                                                POS Access Approval
+                                            </h5>
+                                            <p className="text-[10px] font-bold text-slate-500 leading-relaxed">Approve this seller to use the Point of Sale system.</p>
+                                            <button 
+                                                onClick={handleApprovePos}
+                                                className={cn(
+                                                    "w-full mt-4 py-3 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all",
+                                                    seller.isPosApproved ? "bg-rose-600 shadow-rose-200 hover:bg-rose-700" : "bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700"
+                                                )}
+                                            >
+                                                {seller.isPosApproved ? "REVOKE POS ACCESS" : "APPROVE POS ACCESS"}
+                                            </button>
+                                        </div>
+
                                         <div className="p-6 bg-rose-50 rounded-xl border border-rose-100">
                                             <h5 className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                 <XCircle className="h-4 w-4" />
@@ -534,6 +584,24 @@ const SellerDetail = () => {
                                                 SUSPEND STORE
                                             </button>
                                         </div>
+
+                                        {!seller.isVerified && (
+                                            <div className="p-6 bg-amber-50 rounded-xl border border-amber-100 mt-4">
+                                                <h5 className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                    Pending Verification
+                                                </h5>
+                                                <p className="text-[10px] font-bold text-slate-500 leading-relaxed">This seller is waiting for approval to start selling on the platform.</p>
+                                                <div className="flex gap-2 mt-4">
+                                                    <button onClick={handleApprove} className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all">
+                                                        APPROVE
+                                                    </button>
+                                                    <button onClick={handleReject} className="flex-1 py-3 bg-rose-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all">
+                                                        REJECT
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

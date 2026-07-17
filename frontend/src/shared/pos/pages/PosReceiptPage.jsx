@@ -3,11 +3,13 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@mui/material';
 import { Printer, Download, Share2, ArrowLeft, Plus } from 'lucide-react';
 import jsPDF from 'jspdf';
-import { posApi } from '../../services/posApi';
+import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
-import brandLogo from '../../../../assets/brand_logo.png';
+import brandLogo from '../../../assets/brand_logo.png';
+import { usePosEngine } from '../context/PosEngineContext';
 
 export default function PosReceiptPage() {
+    const { role } = usePosEngine();
     const location = useLocation();
     const navigate = useNavigate();
     const { orderId } = useParams();
@@ -121,11 +123,26 @@ export default function PosReceiptPage() {
             <div className="flex-1 p-6 flex justify-center pb-20 mt-4">
                 <div className="bg-white shadow-xl rounded-2xl w-full max-w-md overflow-hidden flex flex-col h-max">
                     <div className="p-8 text-sm receipt-content flex-1" id="printable-receipt" style={{ fontFamily: 'monospace' }}>
-                        <div className="text-center mb-6">
+                        <div className="text-center mb-6 relative">
+                            {role === 'seller' && (
+                                <img src={brandLogo} alt="PacknPure Watermark" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10 w-48 h-48 object-contain pointer-events-none" />
+                            )}
                             <img src={brandLogo} alt="PacknPure Logo" className="h-12 mx-auto mb-2 object-contain" />
-                            <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Supermarket & Retail</p>
-                            <p className="text-xs text-gray-400 mt-1">{receiptSettings.storeAddress}</p>
-                            <p className="text-xs text-gray-400">GSTIN: {receiptSettings.gstNumber}</p>
+                            {role === 'seller' && orderData.posDetails?.sellerSnapshot ? (
+                                <>
+                                    <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Sold By</p>
+                                    <p className="font-bold text-gray-800">{orderData.posDetails.sellerSnapshot.businessName}</p>
+                                    <p className="text-xs text-gray-400 mt-1">{orderData.posDetails.sellerSnapshot.address}</p>
+                                    <p className="text-xs text-gray-400">Phone: {orderData.posDetails.sellerSnapshot.phone}</p>
+                                    <p className="text-xs text-gray-400">GSTIN: {orderData.posDetails.sellerSnapshot.gstin}</p>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Supermarket & Retail</p>
+                                    <p className="text-xs text-gray-400 mt-1">{receiptSettings.storeAddress}</p>
+                                    <p className="text-xs text-gray-400">GSTIN: {receiptSettings.gstNumber}</p>
+                                </>
+                            )}
                         </div>
 
                         <div className="border-t-2 border-b-2 border-dashed border-gray-300 py-3 mb-4 text-xs">

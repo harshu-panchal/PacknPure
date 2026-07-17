@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, PackageSearch, Store, Boxes, AlertTriangle, Flame, ScanLine } from 'lucide-react';
-import { posApi } from '../../services/posApi';
-import { usePosCart } from '../../context/PosCartContext';
+import { posApi } from '../services/posApi';
+import { usePosCart } from '../context/PosCartContext';
 import { toast } from 'sonner';
 import { CameraScanner } from './CameraScanner';
 

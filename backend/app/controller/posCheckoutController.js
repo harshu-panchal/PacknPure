@@ -12,6 +12,7 @@ import Razorpay from "razorpay";
 import dotenv from "dotenv";
 import PosSession from "../models/posSession.js";
 import Product from "../models/product.js";
+import { getPosProviders } from "../services/posProviders/index.js";
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ export const createPosPaymentOrder = async (req, res) => {
 export const processPosCheckout = async (req, res) => {
   const idempotencyKey = req.headers["x-idempotency-key"];
   const cashierId = req.user.id;
+  const providers = getPosProviders(req.user.role);
   
   if (!idempotencyKey) {
     return handleResponse(res, 400, "Idempotency key is required for POS checkout.");
@@ -101,21 +103,8 @@ export const processPosCheckout = async (req, res) => {
       throw new Error("Invalid or closed POS Session.");
     }
 
-    // Verify Razorpay if online payment
-    if (payment.method === "upi" || payment.method === "card") {
-      if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
-        throw new Error("Razorpay payment details are missing.");
-      }
-      const body = razorpay_order_id + "|" + razorpay_payment_id;
-      const expectedSignature = crypto
-          .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-          .update(body.toString())
-          .digest("hex");
-
-      if (expectedSignature !== razorpay_signature) {
-        throw new Error("Payment verification failed (Invalid signature).");
-      }
-    }
+    // Verify payment method based on role
+    providers.payment.validatePayment(payment, process.env.RAZORPAY_KEY_SECRET);
 
     // Recalculate Pricing natively
     let subtotal = 0;
@@ -183,7 +172,9 @@ export const processPosCheckout = async (req, res) => {
       posDetails: {
         posTerminalId,
         posSessionId,
-        cashierId
+        cashierId,
+        sellerId: req.user.role === 'seller' ? req.user.id : undefined,
+        sellerSnapshot: await providers.receipt.getSnapshot(req.user)
       },
       items: validatedItems,
       payment: {
@@ -208,14 +199,11 @@ export const processPosCheckout = async (req, res) => {
 
     await newOrder.save({ session });
 
-    // 4. Strict Hub Inventory Deduction (POS is offline sales from Hub ONLY)
-    const { deductHubAvailableInventory } = await import("../services/inventoryLifecycleService.js");
-    
-    // First, verify all items have sufficient physical stock and deduct it directly
+    // 4. Dynamic Inventory Deduction (Hub or Seller stock based on Provider)
     for (const item of newOrder.items) {
-      const deductResult = await deductHubAvailableInventory(item.product, item.variantId, item.quantity, session);
+      const deductResult = await providers.inventory.deductStock(item.product, item.variantId, item.quantity, session);
       if (!deductResult) {
-        throw new Error(`Insufficient available stock for product ${item.name}. POS can only sell from physically available Hub stock.`);
+        throw new Error(`Insufficient available stock for product ${item.name}.`);
       }
       
       // Since it's fulfilled from hub strictly
