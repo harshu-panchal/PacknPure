@@ -113,7 +113,9 @@ export const processPosCheckout = async (req, res) => {
 
     for (const item of items) {
       const product = await Product.findById(item.product || item.productId).session(session).lean();
-      if (!product) throw new Error(`Product ${item.product || item.productId} not found`);
+      if (!product || product.status !== 'active') {
+        throw new Error(`Product "${item.name || item.product || item.productId}" is no longer available.`);
+      }
       
       let price = product.salePrice || product.price || 0;
       let variant = null;

@@ -4,8 +4,10 @@ import { Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, 
 import { Monitor, Plus, Store, CreditCard, Activity, Edit, Power, Play, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { usePosEngine } from '../context/PosEngineContext';
 
 export default function PosTerminals() {
+    const { role: posRole } = usePosEngine();
     const navigate = useNavigate();
     const [terminals, setTerminals] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -144,7 +146,7 @@ export default function PosTerminals() {
                                         size="small" 
                                         variant="outlined" 
                                         color="primary" 
-                                        onClick={() => navigate('/admin/pos')}
+                                        onClick={() => navigate(`/${posRole}/pos`)}
                                         startIcon={<Play className="w-4 h-4" />}
                                     >
                                         Open Session

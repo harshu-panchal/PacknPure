@@ -415,12 +415,14 @@ export const calculateCartTotals = async (req, res) => {
     let totalGst = 0;
     let totalVendorCost = 0;
     let totalMargin = 0;
+    const invalidItems = [];
 
     for (const item of items) {
       console.log("Processing item:", JSON.stringify(item));
       const product = await Product.findById(item.product || item.productId).lean();
-      if (!product) {
-        console.log("Product not found for:", item.product || item.productId);
+      if (!product || product.status !== 'active') {
+        console.log("Product not found or inactive for:", item.product || item.productId);
+        invalidItems.push(item.product || item.productId);
         continue;
       }
       
@@ -475,7 +477,8 @@ export const calculateCartTotals = async (req, res) => {
       discount: Number(discountAmount.toFixed(2)),
       total: Number(total.toFixed(2)),
       totalVendorCost: Number(totalVendorCost.toFixed(2)),
-      totalMargin: Number(totalMargin.toFixed(2))
+      totalMargin: Number(totalMargin.toFixed(2)),
+      invalidItems
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

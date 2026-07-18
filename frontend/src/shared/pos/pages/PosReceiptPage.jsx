@@ -34,7 +34,7 @@ export default function PosReceiptPage() {
         if (!orderData) {
             // If no order data in state (e.g. refreshed), redirect back to POS
             toast.error("Receipt data not found. Redirecting to POS.");
-            navigate('/admin/pos/checkout');
+            navigate(`/${role}/pos/checkout`);
         } else {
             // Auto trigger print after a brief delay for rendering
             const timer = setTimeout(() => {
@@ -100,7 +100,7 @@ export default function PosReceiptPage() {
                 <div className="flex items-center gap-4">
                     <Button 
                         startIcon={<ArrowLeft size={16} />} 
-                        onClick={() => navigate('/admin/pos/checkout')}
+                        onClick={() => navigate(`/${role}/pos/checkout`)}
                         color="inherit"
                     >
                         Back to POS
@@ -112,7 +112,7 @@ export default function PosReceiptPage() {
                         variant="contained" 
                         color="primary" 
                         startIcon={<Plus size={16} />}
-                        onClick={() => navigate('/admin/pos/checkout')}
+                        onClick={() => navigate(`/${role}/pos/checkout`)}
                         className="!rounded-xl !font-bold"
                     >
                         New Order

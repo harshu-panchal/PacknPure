@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { usePosSession } from '../context/PosSessionContext';
+import { usePosEngine } from '../context/PosEngineContext';
 import { posApi } from '../services/posApi';
 import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight, Power, X } from 'lucide-react';
 import { Button } from '@mui/material';
 import { toast } from 'sonner';
 
 export default function PosCashDrawer() {
+    const { role } = usePosEngine();
     const { activeSession, fetchCurrentSession, closeSession } = usePosSession();
     const [amount, setAmount] = useState('');
     const [type, setType] = useState('deposit');
@@ -58,7 +60,7 @@ export default function PosCashDrawer() {
         setIsSubmitting(false);
         if (success) {
             setIsClosingModalOpen(false);
-            window.location.href = '/admin/pos';
+            window.location.href = `/${role}/pos`;
         }
     };
 

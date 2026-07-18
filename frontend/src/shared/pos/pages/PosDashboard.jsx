@@ -167,7 +167,7 @@ export default function PosDashboard() {
                     icon={AlertTriangle} 
                     color="red" 
                     subtitle="Requires immediate procurement" 
-                    action={() => navigate('/admin/pos/low-stock')} 
+                    action={() => navigate(`/${posRole}/pos/low-stock`)} 
                 />
             </div>
 
@@ -183,25 +183,25 @@ export default function PosDashboard() {
                             title="Hub Inventory" 
                             desc="View total available stock" 
                             icon={Boxes} 
-                            onClick={() => navigate('/admin/pos/inventory')} 
+                            onClick={() => navigate(`/${posRole}/pos/inventory`)} 
                         />
                         <QuickLink 
                             title="Procurement Status" 
                             desc="Track vendor stock requests" 
                             icon={PackageSearch} 
-                            onClick={() => navigate('/admin/pos/procurement')} 
+                            onClick={() => navigate(`/${posRole}/pos/procurement`)} 
                         />
                         <QuickLink 
                             title="Current POS Orders" 
                             desc="Track active take-aways & deliveries" 
                             icon={ShoppingCart} 
-                            onClick={() => navigate('/admin/pos/orders')} 
+                            onClick={() => navigate(`/${posRole}/pos/orders`)} 
                         />
                         <QuickLink 
                             title="Manage Cash Drawer" 
                             desc="Session cash drops/withdrawals" 
                             icon={Banknote} 
-                            onClick={() => navigate('/admin/pos/cash-drawer')} 
+                            onClick={() => navigate(`/${posRole}/pos/cash-drawer`)} 
                             disabled={!activeSession}
                         />
                     </div>
@@ -230,7 +230,7 @@ export default function PosDashboard() {
                                 </span>
                             </div>
                             <div className="pt-2 text-right">
-                                <Button variant="text" onClick={() => navigate('/admin/pos/cash-drawer')}>
+                                <Button variant="text" onClick={() => navigate(`/${posRole}/pos/cash-drawer`)}>
                                     Close Session <ArrowRight className="w-4 h-4 ml-1"/>
                                 </Button>
                             </div>

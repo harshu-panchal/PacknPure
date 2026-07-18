@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { posApi } from '../services/posApi';
+import { toast } from 'sonner';
 
 const PosCartContext = createContext();
 
@@ -149,6 +150,10 @@ export const PosCartProvider = ({ children }) => {
                 const res = await posApi.calculateCartTotals(payload);
                 if (res.data?.success) {
                     setCartTotals(res.data.result);
+                    if (res.data.result.invalidItems && res.data.result.invalidItems.length > 0) {
+                        setCart(prev => prev.filter(item => !res.data.result.invalidItems.includes(item.product)));
+                        toast.error("Some items were removed from your cart because they are no longer available.");
+                    }
                 }
             } catch (error) {
                 console.error("Failed to calculate totals from backend:", error);

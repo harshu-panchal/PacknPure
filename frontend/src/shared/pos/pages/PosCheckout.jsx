@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePosCart } from '../context/PosCartContext';
+import { usePosEngine } from '../context/PosEngineContext';
 import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 import { 
@@ -13,6 +14,7 @@ import { CameraScanner } from '../components/CameraScanner';
 
 export default function PosCheckout() {
     const navigate = useNavigate();
+    const { role } = usePosEngine();
     const { 
         cart, cartTotals, addToCart, updateQuantity, setExactQuantity, removeItem, clearCart, isCalculating,
         guestCustomer, setGuestCustomer, manualDiscount, setManualDiscount
@@ -48,11 +50,11 @@ export default function PosCheckout() {
                     setCurrentSession(res.data.result);
                 } else {
                     toast.error("No active POS session. Please open a session first.");
-                    navigate('/admin/pos/sessions');
+                    navigate(`/${role}/pos/sessions`);
                 }
             } catch (error) {
                 toast.error("Error fetching active session.");
-                navigate('/admin/pos/sessions');
+                navigate(`/${role}/pos/sessions`);
             } finally {
                 setSessionLoading(false);
             }
@@ -173,7 +175,7 @@ export default function PosCheckout() {
                 clearCart();
                 setCheckoutModalOpen(false);
                 // Navigate to Receipt Page with state
-                navigate(`/admin/pos/receipt/${orderData.orderId}`, { state: { orderData } });
+                navigate(`/${role}/pos/receipt/${orderData.orderId}`, { state: { orderData } });
             }
         } catch (error) {
             toast.error(error.response?.data?.message || "Checkout failed");
