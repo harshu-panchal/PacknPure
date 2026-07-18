@@ -58,7 +58,7 @@ export class SellerReportProvider extends ReportProvider {
         
         // Low stock alerts for seller
         const lowStockCount = await Product.countDocuments({ ownerType: "seller", sellerId: reqUser.id, stock: { $lte: 5 } }); // simplistic reorder logic
-        const activeSessions = await PosSession.countDocuments({ status: "open", sellerId: reqUser.id });
+        const activeSessions = await PosSession.countDocuments({ status: "OPEN", cashierId: reqUser.id });
 
         return {
             sales: { pos: posSales, online: onlineSales, total: posSales + onlineSales },
@@ -73,7 +73,7 @@ export class SellerReportProvider extends ReportProvider {
     }
 
     async getSessions(search, reqUser) {
-        return await PosSession.find({ sellerId: reqUser.id }).populate("cashierId", "name email").populate("terminalId", "name").sort({ createdAt: -1 }).lean();
+        return await PosSession.find({ cashierId: reqUser.id }).populate("cashierId", "name email").populate("terminalId", "name").sort({ createdAt: -1 }).lean();
     }
 
     async getOrders(reqUser) {
