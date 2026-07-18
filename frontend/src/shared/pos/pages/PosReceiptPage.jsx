@@ -16,7 +16,8 @@ export default function PosReceiptPage() {
     const orderData = location.state?.orderData;
     const [receiptSettings, setReceiptSettings] = React.useState({
         storeAddress: '123 Market Street, City',
-        gstNumber: '22AAAAA0000A1Z5'
+        gstNumber: '22AAAAA0000A1Z5',
+        showWatermark: false
     });
 
     useEffect(() => {
@@ -26,6 +27,7 @@ export default function PosReceiptPage() {
                 const parsed = JSON.parse(saved);
                 if (parsed.storeAddress) setReceiptSettings(prev => ({ ...prev, storeAddress: parsed.storeAddress }));
                 if (parsed.gstNumber) setReceiptSettings(prev => ({ ...prev, gstNumber: parsed.gstNumber }));
+                if (parsed.showWatermark !== undefined) setReceiptSettings(prev => ({ ...prev, showWatermark: parsed.showWatermark }));
             }
         } catch (e) {}
     }, []);
@@ -124,10 +126,12 @@ export default function PosReceiptPage() {
                 <div className="bg-white shadow-xl rounded-2xl w-full max-w-md overflow-hidden flex flex-col h-max">
                     <div className="p-8 text-sm receipt-content flex-1" id="printable-receipt" style={{ fontFamily: 'monospace' }}>
                         <div className="text-center mb-6 relative">
-                            {role === 'seller' && (
+                            {role === 'seller' && receiptSettings.showWatermark && (
                                 <img src={brandLogo} alt="PacknPure Watermark" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10 w-48 h-48 object-contain pointer-events-none" />
                             )}
-                            <img src={brandLogo} alt="PacknPure Logo" className="h-12 mx-auto mb-2 object-contain" />
+                            {role !== 'seller' && (
+                                <img src={brandLogo} alt="PacknPure Logo" className="h-12 mx-auto mb-2 object-contain" />
+                            )}
                             {role === 'seller' && orderData.posDetails?.sellerSnapshot ? (
                                 <>
                                     <p className="text-xs text-gray-500 mt-2 uppercase font-bold tracking-widest">Sold By</p>

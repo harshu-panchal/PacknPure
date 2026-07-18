@@ -18,7 +18,8 @@ export default function PosSettings() {
             barcodeMode: 'auto',
             managerOverrideRefunds: true,
             storeAddress: '123 Market Street, City',
-            gstNumber: '22AAAAA0000A1Z5'
+            gstNumber: '22AAAAA0000A1Z5',
+            showWatermark: false
         };
     });
     
@@ -123,6 +124,18 @@ export default function PosSettings() {
                             <Switch 
                                 checked={settings.autoPrintReceipt} 
                                 onChange={(e) => handleChange('autoPrintReceipt', e.target.checked)} 
+                                color="primary" 
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="font-semibold text-gray-700">Show Watermark</div>
+                                <div className="text-sm text-gray-500">Display watermark on printed receipts</div>
+                            </div>
+                            <Switch 
+                                checked={settings.showWatermark || false} 
+                                onChange={(e) => handleChange('showWatermark', e.target.checked)} 
                                 color="primary" 
                             />
                         </div>
