@@ -133,6 +133,13 @@ const orderSchema = new mongoose.Schema(
         enum: ["cash", "online", "wallet", "card", "upi"],
         default: "cash",
       },
+      // POS payment mode summary (Seller POS): CASH or ONLINE, recorded only —
+      // no gateway is triggered or verified for ONLINE.
+      paymentMode: {
+        type: String,
+        enum: ["CASH", "ONLINE"],
+        default: "CASH",
+      },
       status: {
         type: String,
         enum: ["pending", "completed", "failed", "refunded"],

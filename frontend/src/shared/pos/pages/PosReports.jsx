@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Calendar, Banknote, ShoppingBag } from 'lucide-react';
 import { Button } from '@mui/material';
 import { posApi } from '../services/posApi';
+import { usePosEngine } from '../context/PosEngineContext';
 import jsPDF from 'jspdf';
 import brandLogo from '../../../assets/brand_logo.png';
 
 export default function PosReports() {
+    const { role } = usePosEngine();
+    const isSeller = role === 'seller';
     const [dateRange, setDateRange] = useState('today');
     const [reportData, setReportData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -95,9 +98,15 @@ export default function PosReports() {
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(55, 65, 81);
-        doc.text(`Cash: Rs. ${(reportData.paymentMethods?.cash || 0).toLocaleString()}`, 20, y); y += 8;
-        doc.text(`UPI / Razorpay: Rs. ${(reportData.paymentMethods?.upi || 0).toLocaleString()}`, 20, y); y += 8;
-        doc.text(`Card: Rs. ${(reportData.paymentMethods?.card || 0).toLocaleString()}`, 20, y); y += 15;
+        if (isSeller) {
+            // Seller POS reports show only Cash / Online totals (from paymentMode)
+            doc.text(`Cash: Rs. ${(reportData.paymentModes?.cash || 0).toLocaleString()}`, 20, y); y += 8;
+            doc.text(`Online: Rs. ${(reportData.paymentModes?.online || 0).toLocaleString()}`, 20, y); y += 15;
+        } else {
+            doc.text(`Cash: Rs. ${(reportData.paymentMethods?.cash || 0).toLocaleString()}`, 20, y); y += 8;
+            doc.text(`UPI / Razorpay: Rs. ${(reportData.paymentMethods?.upi || 0).toLocaleString()}`, 20, y); y += 8;
+            doc.text(`Card: Rs. ${(reportData.paymentMethods?.card || 0).toLocaleString()}`, 20, y); y += 15;
+        }
 
         // Categories
         doc.setFontSize(14);
@@ -198,18 +207,34 @@ export default function PosReports() {
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                     <h3 className="font-bold text-gray-800 mb-6">Payment Methods</h3>
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <span className="font-semibold text-gray-700">Cash</span>
-                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.cash || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <span className="font-semibold text-gray-700">UPI / Razorpay</span>
-                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.upi || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <span className="font-semibold text-gray-700">Card</span>
-                            <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.card || 0).toLocaleString()}</span>
-                        </div>
+                        {isSeller ? (
+                            /* Seller POS: Cash / Online totals computed from paymentMode */
+                            <>
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="font-semibold text-gray-700">Cash</span>
+                                    <span className="font-bold text-gray-900">₹{(reportData?.paymentModes?.cash || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="font-semibold text-gray-700">Online</span>
+                                    <span className="font-bold text-gray-900">₹{(reportData?.paymentModes?.online || 0).toLocaleString()}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="font-semibold text-gray-700">Cash</span>
+                                    <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.cash || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="font-semibold text-gray-700">UPI / Razorpay</span>
+                                    <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.upi || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="font-semibold text-gray-700">Card</span>
+                                    <span className="font-bold text-gray-900">₹{(reportData?.paymentMethods?.card || 0).toLocaleString()}</span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
 

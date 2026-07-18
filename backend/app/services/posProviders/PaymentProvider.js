@@ -27,8 +27,10 @@ export class AdminPaymentProvider extends PaymentProvider {
 
 export class SellerPaymentProvider extends PaymentProvider {
     validatePayment(paymentData, razorpaySecret) {
-        if (paymentData.method !== "cash") {
-            throw new Error("Seller POS supports only Cash payments.");
+        // Seller POS records Cash or Online only. "online" is record-keeping:
+        // no gateway is triggered and no verification occurs.
+        if (paymentData.method !== "cash" && paymentData.method !== "online") {
+            throw new Error("Seller POS supports only Cash or Online payments.");
         }
         return true;
     }

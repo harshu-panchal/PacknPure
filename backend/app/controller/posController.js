@@ -307,6 +307,9 @@ export const getPosReports = async (req, res) => {
     let totalRefunds = 0;
     const uniqueCustomers = new Set();
     const paymentMethods = { cash: 0, upi: 0, card: 0 };
+    // Cash/Online summary computed strictly from payment.paymentMode.
+    // Legacy orders without the field default to CASH.
+    const paymentModes = { cash: 0, online: 0 };
     const categorySales = {}; // simplified to product names for now
 
     for (const order of posOrders) {
@@ -321,6 +324,12 @@ export const getPosReports = async (req, res) => {
                 } else {
                     paymentMethods[method] = orderTotal;
                 }
+            }
+
+            if (order.payment?.paymentMode === 'ONLINE') {
+                paymentModes.online += orderTotal;
+            } else {
+                paymentModes.cash += orderTotal;
             }
 
             if (order.guestCustomer?.phone) {
@@ -350,6 +359,7 @@ export const getPosReports = async (req, res) => {
         totalRefunds,
         uniqueCustomers: uniqueCustomers.size,
         paymentMethods,
+        paymentModes,
         topCategories
     });
   } catch (error) {

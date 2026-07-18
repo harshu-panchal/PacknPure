@@ -181,6 +181,9 @@ export const processPosCheckout = async (req, res) => {
       items: validatedItems,
       payment: {
         method: payment.method || "cash",
+        // Recorded mode only — cash maps to CASH, everything else to ONLINE.
+        // No gateway is triggered or verified based on this field.
+        paymentMode: (payment.method || "cash") === "cash" ? "CASH" : "ONLINE",
         status: "completed",
         paidAmount: payment.paidAmount || pricing.total,
         remainingAmount: 0,

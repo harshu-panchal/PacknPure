@@ -31,7 +31,8 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
     }, [open, total]);
 
     const changeDue = Math.max(0, paidAmount - total);
-    const isAmountValid = paidAmount >= total;
+    // Tendered amount only applies to cash; non-cash methods always charge the exact total
+    const isAmountValid = paymentMethod !== 'cash' || paidAmount >= total;
 
     const handleQuickAmount = (amount) => {
         setPaidAmount(prev => Number(prev) + amount);
@@ -100,6 +101,13 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                 console.error("Payment initialization failed:", error);
                 toast.error("Failed to initialize payment gateway");
             }
+        } else if (paymentMethod === 'online') {
+            // Seller POS "Online": record the mode only — no gateway, no verification
+            onProcessPayment({
+                method: 'online',
+                paidAmount: Number(total),
+                changeReturned: 0
+            });
         } else {
             onProcessPayment({
                 method: paymentMethod,
@@ -144,7 +152,22 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                     </div>
 
                     {/* Payment Methods */}
-                    {role !== 'seller' && (
+                    {role === 'seller' ? (
+                        /* Seller POS: record Cash or Online only — no gateway involved */
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <MethodBtn 
+                                    id="cash" label="Cash" icon={Banknote} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                                <MethodBtn 
+                                    id="online" label="Online" icon={Smartphone} 
+                                    active={paymentMethod} onClick={setPaymentMethod} 
+                                />
+                            </div>
+                        </div>
+                    ) : (
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
                             <div className="grid grid-cols-4 gap-3">
