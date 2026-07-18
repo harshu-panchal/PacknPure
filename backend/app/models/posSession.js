@@ -47,6 +47,10 @@ const posSessionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    totalOnlineSales: {
+      type: Number,
+      default: 0,
+    },
     totalCardSales: {
       type: Number,
       default: 0,

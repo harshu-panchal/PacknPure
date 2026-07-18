@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { usePosSession } from '../context/PosSessionContext';
 import { usePosEngine } from '../context/PosEngineContext';
 import { posApi } from '../services/posApi';
-import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight, Power, X } from 'lucide-react';
+import { Banknote, ArrowUpRight, ArrowDownRight, History, ArrowRight, Power, X, Smartphone } from 'lucide-react';
 import { Button } from '@mui/material';
 import { toast } from 'sonner';
 
@@ -163,6 +163,32 @@ export default function PosCashDrawer() {
                     </div>
                     <Banknote className="w-16 h-16 opacity-20" />
                 </div>
+
+                {role === 'seller' && (
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between mb-5">
+                            <div>
+                                <h3 className="font-bold text-gray-800">Online Payments</h3>
+                                <p className="text-xs text-gray-500 mt-1">Read-only bookkeeping summary</p>
+                            </div>
+                            <Smartphone className="w-8 h-8 text-blue-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-xs font-medium text-gray-500">Total Online Sales</p>
+                                <p className="text-xl font-bold text-gray-900 mt-1">
+                                    ₹{(activeSession.totalOnlineSales || 0).toFixed(2)}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-xs font-medium text-gray-500">Online Orders</p>
+                                <p className="text-xl font-bold text-gray-900 mt-1">
+                                    {activeSession.onlineOrderCount || 0}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[500px]">
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">

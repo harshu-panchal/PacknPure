@@ -83,7 +83,13 @@ export default function PosReports() {
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(55, 65, 81);
-        doc.text(`Gross Sales: Rs. ${(reportData.grossSales || 0).toLocaleString()}`, 20, y); y += 8;
+        doc.text(
+            `${isSeller ? 'Total POS Sales' : 'Gross Sales'}: Rs. ${(
+                isSeller ? reportData.totalPosSales || 0 : reportData.grossSales || 0
+            ).toLocaleString()}`,
+            20,
+            y
+        ); y += 8;
         doc.text(`Total Orders: ${reportData.totalOrders || 0}`, 20, y); y += 8;
         doc.text(`Total Refunds: Rs. ${(reportData.totalRefunds || 0).toLocaleString()}`, 20, y); y += 8;
         doc.text(`Unique Customers: ${reportData.uniqueCustomers || 0}`, 20, y); y += 15;
@@ -160,10 +166,12 @@ export default function PosReports() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                        <div className="text-gray-500 font-medium">Gross Sales</div>
+                        <div className="text-gray-500 font-medium">{isSeller ? 'Total POS Sales' : 'Gross Sales'}</div>
                         <Banknote className="text-green-500 w-6 h-6" />
                     </div>
-                    <div className="text-3xl font-black text-gray-900 mb-2">₹{reportData?.grossSales?.toLocaleString() || 0}</div>
+                    <div className="text-3xl font-black text-gray-900 mb-2">
+                        ₹{(isSeller ? reportData?.totalPosSales : reportData?.grossSales)?.toLocaleString() || 0}
+                    </div>
                     <div className="text-sm font-medium text-green-600 flex items-center">
                         Based on completed orders
                     </div>

@@ -226,7 +226,10 @@ export default function PosDashboard() {
                             <div className="flex justify-between items-center py-2 border-b border-gray-100">
                                 <span className="text-gray-600">POS Sales Today</span>
                                 <span className="font-semibold text-gray-800">
-                                    ₹{(activeSession.totalCashSales + activeSession.totalCardSales + activeSession.totalUPISales).toFixed(2)}
+                                    ₹{(posRole === 'seller'
+                                        ? (activeSession.totalCashSales || 0) + (activeSession.totalOnlineSales || 0)
+                                        : (activeSession.totalCashSales || 0) + (activeSession.totalCardSales || 0) + (activeSession.totalUPISales || 0)
+                                    ).toFixed(2)}
                                 </span>
                             </div>
                             <div className="pt-2 text-right">

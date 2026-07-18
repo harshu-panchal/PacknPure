@@ -112,9 +112,16 @@ export const getCurrentSession = async (req, res) => {
       type: { $in: ["DEPOSIT", "WITHDRAWAL"] }
     }).sort({ createdAt: -1 }).lean();
 
+    const onlineOrderCount = await Order.countDocuments({
+      orderSource: "POS",
+      "posDetails.posSessionId": session._id,
+      "payment.paymentMode": "ONLINE"
+    });
+
     return handleResponse(res, 200, "Active session fetched", {
       ...session.toObject(),
-      transactions
+      transactions,
+      onlineOrderCount
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);
@@ -308,7 +315,6 @@ export const getPosReports = async (req, res) => {
     const uniqueCustomers = new Set();
     const paymentMethods = { cash: 0, upi: 0, card: 0 };
     // Cash/Online summary computed strictly from payment.paymentMode.
-    // Legacy orders without the field default to CASH.
     const paymentModes = { cash: 0, online: 0 };
     const categorySales = {}; // simplified to product names for now
 
@@ -328,7 +334,7 @@ export const getPosReports = async (req, res) => {
 
             if (order.payment?.paymentMode === 'ONLINE') {
                 paymentModes.online += orderTotal;
-            } else {
+            } else if (order.payment?.paymentMode === 'CASH') {
                 paymentModes.cash += orderTotal;
             }
 
@@ -355,6 +361,7 @@ export const getPosReports = async (req, res) => {
 
     return handleResponse(res, 200, "Reports fetched", {
         grossSales,
+        totalPosSales: paymentModes.cash + paymentModes.online,
         totalOrders: posOrders.length,
         totalRefunds,
         uniqueCustomers: uniqueCustomers.size,

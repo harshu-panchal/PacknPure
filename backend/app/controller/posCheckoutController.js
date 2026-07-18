@@ -230,8 +230,9 @@ export const processPosCheckout = async (req, res) => {
     
     await newOrder.save({ session });
 
-    // 5. Log POS Cash Transaction if cash
-    if (newOrder.payment.method === "cash" && posSessionId) {
+    // 5. Update session totals. Online is bookkeeping only and never
+    // affects the physical cash drawer or creates a cash movement.
+    if (newOrder.payment.paymentMode === "CASH" && posSessionId) {
       await recordCashMovement(
         posSessionId,
         cashierId,
@@ -241,6 +242,14 @@ export const processPosCheckout = async (req, res) => {
         newOrder.orderId,
         session
       );
+    } else if (
+      req.user.role === "seller" &&
+      newOrder.payment.paymentMode === "ONLINE" &&
+      posSessionId
+    ) {
+      activeSession.totalOnlineSales =
+        (activeSession.totalOnlineSales || 0) + newOrder.pricing.total;
+      await activeSession.save({ session });
     }
 
     // Commit Transaction

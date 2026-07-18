@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { History, Search, Terminal } from 'lucide-react';
 import { posApi } from '../services/posApi';
+import { usePosEngine } from '../context/PosEngineContext';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function PosSessions() {
+    const { role } = usePosEngine();
+    const isSeller = role === 'seller';
     const [sessions, setSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,6 +83,8 @@ export default function PosSessions() {
                                     <th className="p-4 font-semibold">Status</th>
                                     <th className="p-4 font-semibold">Opened</th>
                                     <th className="p-4 font-semibold">Closed</th>
+                                    {isSeller && <th className="p-4 font-semibold text-right">Cash Sales</th>}
+                                    {isSeller && <th className="p-4 font-semibold text-right">Online Sales</th>}
                                     <th className="p-4 font-semibold text-right">POS Sales</th>
                                     <th className="p-4 font-semibold text-right">Expected</th>
                                     <th className="p-4 font-semibold text-right">Actual</th>
@@ -111,8 +116,21 @@ export default function PosSessions() {
                                         <td className="p-4 text-sm text-gray-600">
                                             {session.closedAt ? format(new Date(session.closedAt), 'dd MMM yyyy, hh:mm a') : '-'}
                                         </td>
+                                        {isSeller && (
+                                            <td className="p-4 text-right font-semibold text-gray-800">
+                                                ₹{(session.totalCashSales || 0).toFixed(2)}
+                                            </td>
+                                        )}
+                                        {isSeller && (
+                                            <td className="p-4 text-right font-semibold text-gray-800">
+                                                ₹{(session.totalOnlineSales || 0).toFixed(2)}
+                                            </td>
+                                        )}
                                         <td className="p-4 text-right font-semibold text-gray-800">
-                                            ₹{(session.totalCashSales + session.totalCardSales + session.totalUPISales).toFixed(2)}
+                                            ₹{(isSeller
+                                                ? (session.totalCashSales || 0) + (session.totalOnlineSales || 0)
+                                                : (session.totalCashSales || 0) + (session.totalCardSales || 0) + (session.totalUPISales || 0)
+                                            ).toFixed(2)}
                                         </td>
                                         <td className="p-4 text-right text-gray-600">
                                             ₹{session.expectedCash?.toFixed(2) || '0.00'}
