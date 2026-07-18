@@ -112,6 +112,14 @@ export const PosCartProvider = ({ children }) => {
         });
     };
 
+    const updateItemPrice = (index, price) => {
+        setCart(prev => {
+            const newCart = [...prev];
+            newCart[index].price = Number(price) >= 0 ? Number(price) : 0;
+            return newCart;
+        });
+    };
+
     const removeItem = (index) => {
         setCart(prev => {
             const newCart = [...prev];
@@ -143,7 +151,8 @@ export const PosCartProvider = ({ children }) => {
                     items: cart.map(item => ({ 
                         product: item.product, 
                         variantId: item.variantId, 
-                        quantity: item.quantity 
+                        quantity: item.quantity,
+                        price: item.price // Pass manual price to backend
                     })),
                     manualDiscount
                 };
@@ -180,6 +189,7 @@ export const PosCartProvider = ({ children }) => {
             addToCart,
             updateQuantity,
             setExactQuantity,
+            updateItemPrice,
             removeItem,
             clearCart: () => {
                 setCart([]);

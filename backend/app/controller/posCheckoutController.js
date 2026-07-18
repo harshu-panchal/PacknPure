@@ -117,7 +117,7 @@ export const processPosCheckout = async (req, res) => {
         throw new Error(`Product "${item.name || item.product || item.productId}" is no longer available.`);
       }
       
-      let price = product.salePrice || product.price || 0;
+      let price = item.price !== undefined ? Number(item.price) : (product.salePrice || product.basePrice || product.price || product.purchasePrice || 0);
       let variant = null;
       let gstRate = product.gstRate || 0;
       let gstEnabled = product.gstEnabled || false;
@@ -125,7 +125,7 @@ export const processPosCheckout = async (req, res) => {
       if (item.variantId && product.variants) {
         variant = product.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId));
         if (variant) {
-          price = variant.salePrice || variant.price || price;
+          price = item.price !== undefined ? Number(item.price) : (variant.salePrice || variant.price || variant.purchasePrice || price);
           if (variant.gstEnabled !== undefined) gstEnabled = variant.gstEnabled;
           if (gstEnabled) gstRate = variant.gstRate || gstRate;
         }

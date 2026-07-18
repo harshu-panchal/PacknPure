@@ -16,7 +16,7 @@ export default function PosCheckout() {
     const navigate = useNavigate();
     const { role } = usePosEngine();
     const { 
-        cart, cartTotals, addToCart, updateQuantity, setExactQuantity, removeItem, clearCart, isCalculating,
+        cart, cartTotals, addToCart, updateQuantity, setExactQuantity, updateItemPrice, removeItem, clearCart, isCalculating,
         guestCustomer, setGuestCustomer, manualDiscount, setManualDiscount
     } = usePosCart();
 
@@ -298,7 +298,17 @@ export default function PosCheckout() {
                                 <h4 className="font-semibold text-sm text-gray-800 line-clamp-2">{item.name}</h4>
                                 {item.variantName && item.variantName !== item.name && <p className="text-xs text-gray-500">{item.variantName}</p>}
                                 {item.productData?.description && <p className="text-xs text-gray-400 line-clamp-1 mt-1">{item.productData.description}</p>}
-                                <div className="font-bold text-blue-600 mt-1">₹{item.price}</div>
+                                <div className="mt-2 flex items-center">
+                                    <span className="text-gray-500 font-bold mr-1">₹</span>
+                                    <input 
+                                        type="number" 
+                                        className="w-20 border-b-2 border-blue-200 focus:border-blue-500 bg-blue-50 p-1 text-sm font-bold text-blue-700 focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none rounded"
+                                        value={item.price}
+                                        onChange={(e) => updateItemPrice(index, e.target.value)}
+                                        min="0"
+                                        step="0.01"
+                                    />
+                                </div>
                             </div>
                             <div className="flex flex-col items-end justify-between">
                                 <button onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600 p-1">
