@@ -64,6 +64,11 @@ const paymentIntentSchema = new mongoose.Schema(
       date: String,
       time: String,
     },
+
+    // === Delivery Mode feature (Express / Slot) — additive only ===
+    deliveryMode: { type: String, enum: ["EXPRESS", "SLOT"], default: "EXPRESS" },
+    selectedSlot: { type: String, default: null }, // e.g. "09:00-12:00"
+    selectedDate: { type: String, default: null }, // e.g. "2026-07-20"
     
     // === Wallet ===
     walletBalance: Number,

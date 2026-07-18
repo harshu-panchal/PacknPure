@@ -30,6 +30,10 @@ export const executeCoreOrderFulfillment = async ({
   payment,
   pricing,
   timeSlot,
+  // Delivery Mode feature (optional, additive): "EXPRESS" | "SLOT" + slot details
+  deliveryMode,
+  selectedSlot,
+  selectedDate,
   promotionId,
   session = null
 }) => {
@@ -224,6 +228,10 @@ export const executeCoreOrderFulfillment = async ({
       payment,
       pricing: validatedPricing,
       timeSlot: timeSlot || "now",
+      // Delivery Mode feature: default EXPRESS keeps legacy behavior unchanged
+      deliveryMode: deliveryMode === "SLOT" ? "SLOT" : "EXPRESS",
+      selectedSlot: deliveryMode === "SLOT" ? (selectedSlot || null) : null,
+      selectedDate: deliveryMode === "SLOT" ? (selectedDate || null) : null,
       status: "pending",
       workflowVersion: 2,
       workflowStatus: WORKFLOW_STATUS.CREATED,

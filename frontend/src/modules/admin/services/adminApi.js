@@ -189,4 +189,14 @@ export const adminApi = {
     // Product Requests
     getProductRequests: (params) => axiosInstance.get('/product-requests', { params }),
     updateProductRequestStatus: (id, status) => axiosInstance.put(`/product-requests/${id}/status`, { status }),
+
+    // Delivery Mode Management (Express / Slot delivery feature)
+    getDeliverySettings: () => axiosInstance.get('/delivery-mode/admin/settings'),
+    updateDeliverySettings: (data) => axiosInstance.put('/delivery-mode/admin/settings', data),
+    getDeliverySlots: () => axiosInstance.get('/delivery-mode/admin/slots'),
+    createDeliverySlot: (data) => axiosInstance.post('/delivery-mode/admin/slots', data),
+    updateDeliverySlot: (id, data) => axiosInstance.put(`/delivery-mode/admin/slots/${id}`, data),
+    deleteDeliverySlot: (id) => axiosInstance.delete(`/delivery-mode/admin/slots/${id}`),
+    toggleDeliverySlot: (id, enabled) => axiosInstance.patch(`/delivery-mode/admin/slots/${id}/toggle`, { enabled }),
+    reorderDeliverySlots: (orderedIds) => axiosInstance.put('/delivery-mode/admin/slots/reorder', { orderedIds }),
 };

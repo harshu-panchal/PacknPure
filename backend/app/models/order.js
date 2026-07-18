@@ -278,6 +278,24 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: "now",
     },
+    // === Delivery Mode feature (Express / Slot) — additive only ===
+    // EXPRESS = deliver ASAP within the configured ETA window.
+    // SLOT    = customer picked a specific date + time slot at checkout.
+    deliveryMode: {
+      type: String,
+      enum: ["EXPRESS", "SLOT"],
+      default: "EXPRESS",
+    },
+    // Chosen slot window, e.g. "09:00-12:00" (only set when deliveryMode = SLOT)
+    selectedSlot: {
+      type: String,
+      default: null,
+    },
+    // Chosen delivery date in "YYYY-MM-DD" (only set when deliveryMode = SLOT)
+    selectedDate: {
+      type: String,
+      default: null,
+    },
     deliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Delivery",

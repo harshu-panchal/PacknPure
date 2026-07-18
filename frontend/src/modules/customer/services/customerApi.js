@@ -71,6 +71,10 @@ export const customerApi = {
     ),
   getDeliveryFee: (lat, lng) =>
     axiosInstance.get("/orders/calculate-delivery-fee", { params: { lat, lng } }),
+  // Delivery Mode feature: available modes + enabled slots for the cart page.
+  // Short TTL so admin panel changes reflect in the app almost immediately.
+  getDeliveryModes: () =>
+    getWithDedupe("/delivery-mode/options", {}, { ttl: 15 * 1000 }),
   getOrderRoute: (orderId, params) =>
     axiosInstance.get(`/orders/workflow/${orderId}/route`, { params }),
   cancelOrder: (orderId, data) =>

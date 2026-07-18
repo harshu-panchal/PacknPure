@@ -27,6 +27,7 @@ import uploadRoute from "./uploadRoutes.js";
 import productRequestRoute from "./productRequestRoutes.js";
 import dynamicPageRoute from "./dynamicPageRoutes.js";
 import posRoute from "./posRoutes.js";
+import deliveryModeRoute from "./deliveryModeRoutes.js";
 
 import express from "express";
 
@@ -43,6 +44,7 @@ const setupRoutes = (app) => {
     // Legacy alias — same seller procurement handlers; prefer /api/seller
     router.use("/vendor", vendorRoute);
     router.use("/settings", settingsRoute);
+    router.use("/delivery-mode", deliveryModeRoute);
     router.use("/admin/hub-inventory", hubInventoryRoute);
     router.use("/admin/purchase-requests", purchaseRequestRoute);
     router.use("/admin/pickup-partners", pickupPartnerRoute);

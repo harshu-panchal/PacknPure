@@ -41,6 +41,7 @@ import {
 } from "@/core/services/orderSocket";
 import CheckoutCollapsible from "../components/checkout/CheckoutCollapsible";
 import CheckoutCartItemRow from "../components/checkout/CheckoutCartItemRow";
+import { useDeliveryMode } from "../hooks/useDeliveryMode";
 import { BRAND_COLOR } from "../constants/brandTheme";
 import { cartKey } from "@/shared/utils/variantHelpers";
 import {
@@ -74,6 +75,9 @@ const CheckoutPage = () => {
     useAppLocation();
   const navigate = useNavigate();
   const routeLocation = useRouteLocation();
+
+  // Delivery Mode feature: selection made on the cart page (persisted in localStorage)
+  const { selection: deliverySelection } = useDeliveryMode();
 
   // State management
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");
@@ -482,12 +486,23 @@ const CheckoutPage = () => {
       const rawLoc = addressForOrder.location || (currentLocation?.latitude ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null);
       const deliveryLoc = rawLoc ? { lat: Number(rawLoc.lat), lng: Number(rawLoc.lng) } : null;
 
+      // Delivery Mode feature: fields resolved from the cart-page selection.
+      // Defaults to EXPRESS so legacy behavior is unchanged when nothing was picked.
+      const deliveryModeFields = {
+        deliveryMode: deliverySelection?.mode === "SLOT" ? "SLOT" : "EXPRESS",
+        selectedSlot:
+          deliverySelection?.mode === "SLOT" ? deliverySelection.selectedSlot : null,
+        selectedDate:
+          deliverySelection?.mode === "SLOT" ? deliverySelection.selectedDate : null,
+      };
+
       const checkoutPayload = {
         address: addressForOrder,
         deliveryCoords: deliveryLoc,
         couponCode: selectedCoupon ? selectedCoupon.code : null,
         walletToUse: 0, // Wallet integration is not fully active in online yet or handles its own
         deliverySlot: selectedTimeSlot,
+        ...deliveryModeFields,
         pricing: {
           subtotal: cartTotal,
           deliveryFee,
@@ -590,6 +605,10 @@ const CheckoutPage = () => {
           pricing: checkoutPayload.pricing,
           promotionId: checkoutPayload.promotionId,
           timeSlot: checkoutPayload.timeSlot,
+          // Delivery Mode feature fields (additive)
+          deliveryMode: deliveryModeFields.deliveryMode,
+          selectedSlot: deliveryModeFields.selectedSlot,
+          selectedDate: deliveryModeFields.selectedDate,
           items: checkoutPayload.items,
         };
 
@@ -632,6 +651,7 @@ const CheckoutPage = () => {
     discountAmount,
     totalAmount,
     selectedTimeSlot,
+    deliverySelection,
     cart,
     clearCart,
     showToast,

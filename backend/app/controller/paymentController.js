@@ -79,6 +79,11 @@ export const createRazorpayOrder = async (req, res) => {
                 full: address?.full || null,
             },
             deliverySlot: checkout.deliverySlot || null,
+            // Delivery Mode feature: snapshot so the order created after
+            // payment verification carries the customer's selection
+            deliveryMode: checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS",
+            selectedSlot: checkout.selectedSlot || null,
+            selectedDate: checkout.selectedDate || null,
             walletBalance: user.walletBalance,
             walletUsed: pricing.walletUsed,
             
@@ -258,6 +263,9 @@ export const verifyPayment = async (req, res) => {
             },
             pricing: intent.pricingBreakdown,
             timeSlot: intent.deliverySlot,
+            deliveryMode: intent.deliveryMode,
+            selectedSlot: intent.selectedSlot,
+            selectedDate: intent.selectedDate,
             promotionId: checkout.promotionId || null,
             session
         });

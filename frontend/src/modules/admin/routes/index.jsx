@@ -24,6 +24,7 @@ import {
   User,
   MapPin,
   PackageSearch,
+  Timer,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -102,6 +103,9 @@ const AdminSettings = React.lazy(() => import("../pages/AdminSettings"));
 
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const HubSettings = React.lazy(() => import("../pages/HubSettings"));
+const DeliveryManagement = React.lazy(
+  () => import("../pages/DeliveryManagement"),
+);
 const Reports = React.lazy(() => import("../pages/Reports"));
 const ProductRequestsList = React.lazy(() => import("../pages/ProductRequestsList"));
 
@@ -212,6 +216,12 @@ const navItems = [
   },
 
   { sectionHeader: "Delivery & Logistics" },
+  {
+    label: "Delivery Management",
+    path: "/admin/delivery-management",
+    icon: Timer,
+    color: "indigo",
+  },
   {
     label: "Pickup Partners",
     path: "/admin/pickup-partners",
@@ -350,6 +360,7 @@ const AdminRoutes = () => {
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/hub-settings" element={<HubSettings />} />
+        <Route path="/delivery-management" element={<DeliveryManagement />} />
 
         {/* POS Routes wrapped in PosLayout */}
         <Route path="/pos" element={

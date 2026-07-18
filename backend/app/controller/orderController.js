@@ -73,7 +73,7 @@ export const getDeliveryFee = async (req, res) => {
 export const placeOrder = async (req, res) => {
   try {
     const customerId = req.user.id;
-    const { address, payment, pricing, timeSlot, items, promotionId } = req.body;
+    const { address, payment, pricing, timeSlot, items, promotionId, deliveryMode, selectedSlot, selectedDate } = req.body;
     const paymentMethod = normalizePaymentMethod(payment?.method);
     const customer = await User.findById(customerId).select(
       "walletBalance codBlocked codCancelCount",
@@ -109,6 +109,9 @@ export const placeOrder = async (req, res) => {
       },
       pricing,
       timeSlot,
+      deliveryMode,
+      selectedSlot,
+      selectedDate,
       promotionId
     });
 
@@ -130,7 +133,7 @@ export const getMyOrders = async (req, res) => {
     const customerId = req.user.id;
     const orders = await Order.find({ customer: customerId })
       .select(
-        "orderId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot createdAt",
+        "orderId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate createdAt",
       )
       .sort({ createdAt: -1 })
       .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)

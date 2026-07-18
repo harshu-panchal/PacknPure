@@ -6,6 +6,8 @@ import { useCart } from "../context/CartContext";
 import { cartKey } from "@/shared/utils/variantHelpers";
 import { BRAND_COLOR } from "../constants/brandTheme";
 import CheckoutCartItemRow from "../components/checkout/CheckoutCartItemRow";
+import DeliveryModeSelector from "../components/checkout/DeliveryModeSelector";
+import { useDeliveryMode } from "../hooks/useDeliveryMode";
 import emptyBoxAnimation from "../../../assets/lottie/Empty box.json";
 
 function formatInr(value) {
@@ -15,6 +17,13 @@ function formatInr(value) {
 export default function CartPage() {
   const navigate = useNavigate();
   const { cart, cartCount, updateQuantity, removeFromCart } = useCart();
+  // Delivery Mode feature: admin-controlled Express/Slot options + persisted selection
+  const {
+    options: deliveryModeOptions,
+    selection: deliverySelection,
+    selectExpress,
+    selectSlot,
+  } = useDeliveryMode();
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -65,24 +74,34 @@ export default function CartPage() {
 
       <div className="mx-auto max-w-5xl px-4 py-4">
         <div className="grid items-start gap-4 lg:grid-cols-5 lg:gap-6">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-3">
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">Your items</h3>
-            <div className="space-y-4">
-              {cart.map((item) => {
-                const productId = item.productId || item.id || item._id;
-                const variantId = item.variantId || item.selectedVariantId || null;
-                const lineKey = cartKey(productId, variantId);
-                return (
-                  <CheckoutCartItemRow
-                    key={lineKey}
-                    item={item}
-                    onUpdateQuantity={updateQuantity}
-                    onRemove={removeFromCart}
-                  />
-                );
-              })}
-            </div>
-          </section>
+          <div className="space-y-4 lg:col-span-3">
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="mb-3 text-sm font-semibold text-slate-900">Your items</h3>
+              <div className="space-y-4">
+                {cart.map((item) => {
+                  const productId = item.productId || item.id || item._id;
+                  const variantId = item.variantId || item.selectedVariantId || null;
+                  const lineKey = cartKey(productId, variantId);
+                  return (
+                    <CheckoutCartItemRow
+                      key={lineKey}
+                      item={item}
+                      onUpdateQuantity={updateQuantity}
+                      onRemove={removeFromCart}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Delivery Mode feature: Express / Slot selector (admin controlled) */}
+            <DeliveryModeSelector
+              options={deliveryModeOptions}
+              selection={deliverySelection}
+              onSelectExpress={selectExpress}
+              onSelectSlot={selectSlot}
+            />
+          </div>
 
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-20">
