@@ -290,9 +290,9 @@ export const getPosReports = async (req, res) => {
     const { range = 'today' } = req.query;
     
     let startDate = new Date();
-    if (range === 'today') {
-        startDate.setHours(0, 0, 0, 0);
-    } else if (range === 'week') {
+    startDate.setHours(0, 0, 0, 0);
+
+    if (range === 'week') {
         startDate.setDate(startDate.getDate() - 7);
     } else if (range === 'month') {
         startDate.setMonth(startDate.getMonth() - 1);
