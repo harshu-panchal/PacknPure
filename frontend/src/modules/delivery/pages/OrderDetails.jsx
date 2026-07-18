@@ -12,6 +12,8 @@ import {
   User,
   AlertTriangle,
   ShieldCheck,
+  Zap,
+  CalendarClock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -27,6 +29,11 @@ import {
   getCurrentPositionWithCache,
 } from "../utils/deliveryLastLocation";
 import { resolveOrderItemVariantLabel } from "@/shared/utils/orderItemDisplay";
+import {
+  getOrderDeliverySnapshot,
+  getDeliverySubline,
+  formatSlotDateFull,
+} from "@/shared/utils/deliverySnapshot";
 
 const getPublicStatusStage = (internalStep) => {
   if (internalStep >= 4) return 3;
@@ -202,6 +209,11 @@ const OrderDetails = () => {
   const publicStatusStage = getPublicStatusStage(step);
   const cachedRiderLocation = getCachedDeliveryPartnerLocation(30 * 60 * 1000);
   const destinationLocation = order?.address?.location;
+  const deliverySnapshot = useMemo(
+    () => getOrderDeliverySnapshot(order),
+    [order],
+  );
+  const isSlotOrder = deliverySnapshot?.deliveryMode === "SLOT";
   const summary = useMemo(() => {
     if (!order) {
       return {
@@ -216,6 +228,20 @@ const OrderDetails = () => {
         arrivalTimeText: "Arrived",
         arrivingInText: "Delivered",
         totalDistanceText: "0 km",
+      };
+    }
+
+    // Slot: show scheduled snapshot — never invent "Arriving in 8 mins"
+    if (deliverySnapshot?.deliveryMode === "SLOT") {
+      return {
+        arrivalTimeText:
+          deliverySnapshot.slotDisplayText ||
+          getDeliverySubline(deliverySnapshot) ||
+          "Scheduled",
+        arrivingInText: "Scheduled",
+        scheduledDateText: formatSlotDateFull(deliverySnapshot.slotDate),
+        totalDistanceText: "—",
+        isSlot: true,
       };
     }
 
@@ -240,14 +266,29 @@ const OrderDetails = () => {
         estimateMinutesFromDistance(distanceMeters(riderLocation, targetLocation));
     }
 
+    // Fallback to immutable snapshot ETA — never hardcode 8/10 mins
     if (!Number.isFinite(minutes) || minutes <= 0) {
-      minutes = step <= 2 ? 10 : 8;
+      const snapMin = Number(deliverySnapshot?.estimatedMin);
+      const snapMax = Number(deliverySnapshot?.estimatedMax);
+      if (Number.isFinite(snapMin) && Number.isFinite(snapMax)) {
+        minutes = (snapMin + snapMax) / 2;
+      } else if (Number.isFinite(snapMin)) {
+        minutes = snapMin;
+      }
     }
 
-    const arrivalMs = clockTick + minutes * 60 * 1000;
     const totalDistanceMeters =
       routeDistanceMeters || distanceMeters(riderLocation, targetLocation);
 
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return {
+        arrivalTimeText: deliverySnapshot?.estimatedText || "Express",
+        arrivingInText: deliverySnapshot?.estimatedText || "Express",
+        totalDistanceText: formatDistance(totalDistanceMeters),
+      };
+    }
+
+    const arrivalMs = clockTick + minutes * 60 * 1000;
     return {
       arrivalTimeText: formatArrivalTime(arrivalMs),
       arrivingInText: formatArrivingIn(minutes),
@@ -261,6 +302,7 @@ const OrderDetails = () => {
     publicStatusStage,
     routeStats,
     step,
+    deliverySnapshot,
   ]);
 
   const handleNextStep = async () => {
@@ -426,7 +468,19 @@ const OrderDetails = () => {
           >
             <ChevronDown className="rotate-90 text-slate-800" size={24} />
           </Button>
-          <h1 className="text-base font-bold text-slate-800">Order #{orderShortId}</h1>
+          <div>
+            <h1 className="text-base font-bold text-slate-800">Order #{orderShortId}</h1>
+            <span
+              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                isSlotOrder
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {isSlotOrder ? <CalendarClock size={10} /> : <Zap size={10} />}
+              {isSlotOrder ? "Slot Delivery" : "Express"}
+            </span>
+          </div>
         </div>
         <div className="flex flex-col items-end">
           <span
@@ -477,33 +531,63 @@ const OrderDetails = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-[#FFF8E8] rounded-3xl p-4 shadow-sm border border-[#F4D98B] flex items-center justify-between gap-4"
+        className={`rounded-3xl p-4 shadow-sm border flex items-center justify-between gap-4 ${
+          summary.isSlot
+            ? "bg-indigo-50 border-indigo-100"
+            : "bg-[#FFF8E8] border-[#F4D98B]"
+        }`}
       >
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 bg-[#F6E7BF] rounded-xl flex items-center justify-center text-[#C87400]">
-              <Navigation size={20} />
+            <div
+              className={`h-11 w-11 rounded-xl flex items-center justify-center ${
+                summary.isSlot
+                  ? "bg-indigo-100 text-indigo-700"
+                  : "bg-[#F6E7BF] text-[#C87400]"
+              }`}
+            >
+              {summary.isSlot ? <CalendarClock size={20} /> : <Navigation size={20} />}
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
-                Estimated Time
+              <p
+                className={`text-[11px] font-bold uppercase tracking-wider ${
+                  summary.isSlot ? "text-indigo-700" : "text-[#C85D00]"
+                }`}
+              >
+                {summary.isSlot ? "Scheduled delivery" : "Estimated Time"}
               </p>
-              <p className="text-xl font-black text-[#8B3F00] leading-none">
-                {summary.arrivalTimeText}
+              <p
+                className={`text-xl font-black leading-none ${
+                  summary.isSlot ? "text-indigo-900" : "text-[#8B3F00]"
+                }`}
+              >
+                {summary.isSlot
+                  ? summary.scheduledDateText || summary.arrivalTimeText
+                  : summary.arrivalTimeText}
               </p>
             </div>
           </div>
           <div className="text-right flex flex-col items-end gap-2">
             <div>
-              <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
-                Arriving in
+              <p
+                className={`text-[11px] font-bold uppercase tracking-wider ${
+                  summary.isSlot ? "text-indigo-700" : "text-[#C85D00]"
+                }`}
+              >
+                {summary.isSlot ? "Slot" : "Arriving in"}
               </p>
-              <p className="text-xl font-black text-[#8B3F00] leading-none">
-                {summary.arrivingInText}
+              <p
+                className={`text-xl font-black leading-none ${
+                  summary.isSlot ? "text-indigo-900" : "text-[#8B3F00]"
+                }`}
+              >
+                {summary.isSlot ? summary.arrivalTimeText : summary.arrivingInText}
               </p>
             </div>
-            <div className="inline-flex items-center rounded-full bg-white dark:bg-gray-800/80 px-3 py-1.5 text-[11px] font-bold text-[#C87400] ring-1 ring-[#F4D98B]">
-              Total distance: {summary.totalDistanceText}
-            </div>
+            {!summary.isSlot && summary.totalDistanceText && summary.totalDistanceText !== "—" && (
+              <div className="inline-flex items-center rounded-full bg-white dark:bg-gray-800/80 px-3 py-1.5 text-[11px] font-bold text-[#C87400] ring-1 ring-[#F4D98B]">
+                Total distance: {summary.totalDistanceText}
+              </div>
+            )}
           </div>
       </motion.div>
 

@@ -9,9 +9,16 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Zap,
+  CalendarClock,
 } from 'lucide-react';
 import { customerApi } from '../services/customerApi';
 import { getLegacyStatusFromOrder, getOrderStatusLabel } from '@/shared/utils/orderStatus';
+import {
+  getOrderDeliverySnapshot,
+  getDeliveryModeBadge,
+  getDeliverySubline,
+} from '@/shared/utils/deliverySnapshot';
 import { cn } from '@/lib/utils';
 
 const ACCENT = '#E23744';
@@ -128,6 +135,9 @@ function OrderCard({ order }) {
     names.length > 1
       ? `${names[0]} +${names.length - 1} more`
       : names[0] || 'Order items';
+  const deliverySnapshot = getOrderDeliverySnapshot(order);
+  const deliveryBadge = getDeliveryModeBadge(deliverySnapshot);
+  const deliverySubline = getDeliverySubline(deliverySnapshot);
 
   const created = new Date(order.createdAt);
   const dateStr = created.toLocaleDateString('en-IN', {
@@ -183,6 +193,30 @@ function OrderCard({ order }) {
           </div>
 
           <p className="mt-2 line-clamp-1 text-xs text-slate-600">{summary}</p>
+
+          {/* Delivery mode badge from immutable snapshot */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                deliveryBadge.mode === 'SLOT'
+                  ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100'
+                  : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100',
+              )}
+            >
+              {deliveryBadge.mode === 'SLOT' ? (
+                <CalendarClock size={10} />
+              ) : (
+                <Zap size={10} />
+              )}
+              {deliveryBadge.label}
+            </span>
+            {deliverySubline ? (
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                {deliverySubline}
+              </span>
+            ) : null}
+          </div>
 
           <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-[11px] font-medium text-slate-500">

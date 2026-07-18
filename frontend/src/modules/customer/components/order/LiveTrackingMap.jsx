@@ -50,8 +50,11 @@ function hasValidLatLng(location) {
 
 const LiveTrackingMap = memo(({
   status = "out for delivery",
-  eta = "8 mins",
-  riderName = "Ramesh Kumar",
+  eta = null,
+  deliveryMode = "EXPRESS",
+  scheduledSlotText = null,
+  scheduledDateText = null,
+  riderName = "Delivery Partner",
   riderLocation,
   sellerLocation,
   destinationLocation,
@@ -62,6 +65,7 @@ const LiveTrackingMap = memo(({
   const mapRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
   const isSearching = SEARCHING_STATUSES.includes(status?.toLowerCase());
+  const isSlot = deliveryMode === "SLOT";
   const [progress, setProgress] = useState(0);
   const [dots, setDots] = useState("");
 
@@ -262,6 +266,36 @@ const LiveTrackingMap = memo(({
 
   // ─── SEARCHING STATE ───────────────────────────────────────────────────
   if (isSearching) {
+    // Slot orders: scheduled waiting UI (no "Arriving in X mins" / finding-rider express copy)
+    if (isSlot) {
+      return (
+        <div className="relative w-full h-[320px] bg-gradient-to-br from-indigo-50 to-slate-100 overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-4">
+          <motion.div
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="relative z-10 h-16 w-16 bg-indigo-600 rounded-full flex items-center justify-center shadow-xl shadow-indigo-200"
+          >
+            <Clock size={28} className="text-white" />
+          </motion.div>
+          <div className="relative z-10 text-center px-6">
+            <h3 className="text-lg font-black text-gray-800">
+              Waiting for scheduled delivery
+            </h3>
+            <p className="text-sm text-gray-500 mt-1 font-medium">
+              {scheduledDateText || "Your order is scheduled"}
+              {scheduledSlotText ? ` · ${scheduledSlotText}` : ""}
+            </p>
+          </div>
+          <div className="relative z-10 bg-white px-4 py-2 rounded-full shadow-md border border-indigo-100 flex items-center gap-2">
+            <div className="h-2 w-2 bg-indigo-500 rounded-full" />
+            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+              Scheduled slot
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="relative w-full h-[320px] bg-gradient-to-br from-[#f0faf4] to-[#e8f5e9] overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-4">
         {/* Animated radar rings */}
@@ -425,11 +459,16 @@ const LiveTrackingMap = memo(({
           </div>
           <div>
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-              Arriving in
+              {isSlot ? "Scheduled slot" : "Arriving in"}
             </p>
             <h2 className="text-xl font-black text-gray-900 leading-none">
-              {eta}
+              {isSlot
+                ? (scheduledSlotText || eta || "Scheduled")
+                : (eta || "—")}
             </h2>
+            {isSlot && scheduledDateText ? (
+              <p className="text-[10px] font-semibold text-gray-500 mt-0.5">{scheduledDateText}</p>
+            ) : null}
           </div>
         </motion.div>
         <button

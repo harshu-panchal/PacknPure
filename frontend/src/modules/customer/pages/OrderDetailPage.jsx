@@ -19,6 +19,8 @@ import {
   Loader2,
   Store,
   Navigation2,
+  Zap,
+  CalendarClock,
 } from "lucide-react";
 import { customerApi } from "../services/customerApi";
 import { toast } from "sonner";
@@ -32,6 +34,13 @@ import {
 } from "@/core/services/orderSocket";
 import { getLegacyStatusFromOrder, getOrderStatusLabel } from "@/shared/utils/orderStatus";
 import { resolveOrderItemVariantLabel } from "@/shared/utils/orderItemDisplay";
+import {
+  getOrderDeliverySnapshot,
+  isSlotDelivery,
+  getDeliveryHeadline,
+  getDeliverySubline,
+  formatSlotDateFull,
+} from "@/shared/utils/deliverySnapshot";
 import { cn } from "@/lib/utils";
 
 const ACCENT = "#E23744";
@@ -315,6 +324,11 @@ const OrderDetailPage = () => {
   };
 
   const status = order ? getLegacyStatusFromOrder(order) : null;
+  const deliverySnapshot = useMemo(
+    () => getOrderDeliverySnapshot(order),
+    [order],
+  );
+  const orderIsSlot = isSlotDelivery(deliverySnapshot);
   const sellerLocation = coordsToLatLng(order?.seller?.location?.coordinates);
   const routePhase = getTrackingRoutePhase(order);
   const routeMatchesPhase =
@@ -329,6 +343,8 @@ const OrderDetailPage = () => {
       return {
         arrivalTimeText: "--",
         arrivingInText: "--",
+        totalDistanceText: "—",
+        mode: "EXPRESS",
       };
     }
 
@@ -336,6 +352,23 @@ const OrderDetailPage = () => {
       return {
         arrivalTimeText: "Arrived",
         arrivingInText: "Delivered",
+        totalDistanceText: "—",
+        mode: deliverySnapshot?.deliveryMode || "EXPRESS",
+      };
+    }
+
+    // Slot orders: never invent live "Arriving in X mins" — use immutable snapshot
+    if (deliverySnapshot?.deliveryMode === "SLOT") {
+      return {
+        arrivalTimeText:
+          deliverySnapshot.slotDisplayText ||
+          getDeliverySubline(deliverySnapshot) ||
+          "Scheduled",
+        arrivingInText: "Scheduled",
+        scheduledDateText: formatSlotDateFull(deliverySnapshot.slotDate),
+        scheduledSlotText: deliverySnapshot.slotDisplayText || getDeliverySubline(deliverySnapshot),
+        totalDistanceText: "—",
+        mode: "SLOT",
       };
     }
 
@@ -353,14 +386,33 @@ const OrderDetailPage = () => {
         estimateMinutesFromDistance(distanceMeters(liveLocation, targetLocation));
     }
 
+    // Fallback to immutable snapshot ETA — never hardcode 8/12 mins
     if (!Number.isFinite(minutes) || minutes <= 0) {
-      minutes = status === "confirmed" ? 12 : 8;
+      const snapMin = Number(deliverySnapshot?.estimatedMin);
+      const snapMax = Number(deliverySnapshot?.estimatedMax);
+      if (Number.isFinite(snapMin) && Number.isFinite(snapMax)) {
+        minutes = (snapMin + snapMax) / 2;
+      } else if (Number.isFinite(snapMin)) {
+        minutes = snapMin;
+      }
     }
 
-    const arrivalMs = clockTick + minutes * 60 * 1000;
     const routeDistanceMeters = Number(
       activeRoutePolyline?.distanceMeters ?? activeRoutePolyline?.distance,
     );
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return {
+        arrivalTimeText: deliverySnapshot?.estimatedText || "Express",
+        arrivingInText: deliverySnapshot?.estimatedText || "Express delivery",
+        totalDistanceText: formatDistance(
+          routeDistanceMeters || distanceMeters(liveLocation, targetLocation),
+        ),
+        mode: "EXPRESS",
+      };
+    }
+
+    const arrivalMs = clockTick + minutes * 60 * 1000;
     return {
       arrivalTimeText: formatArrivalTime(arrivalMs),
       arrivingInText: formatArrivingIn(minutes),
@@ -368,6 +420,7 @@ const OrderDetailPage = () => {
         routeDistanceMeters ||
           distanceMeters(liveLocation, targetLocation),
       ),
+      mode: "EXPRESS",
     };
   }, [
     activeRoutePolyline?.distanceMeters,
@@ -378,6 +431,7 @@ const OrderDetailPage = () => {
     sellerLocation,
     status,
     clockTick,
+    deliverySnapshot,
   ]);
 
   useEffect(() => {
@@ -585,19 +639,45 @@ const OrderDetailPage = () => {
               </p>
             </div>
           </div>
-          {isActive && (
+          {isActive && orderIsSlot && (
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-indigo-600 px-3 py-2.5 text-white">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/80">
+                  Scheduled delivery
+                </p>
+                <p className="text-sm font-black">
+                  {estimatedArrival.scheduledDateText || getDeliverySubline(deliverySnapshot)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-semibold text-white/80">Slot</p>
+                <p className="text-sm font-bold">
+                  {estimatedArrival.scheduledSlotText || deliverySnapshot?.slotDisplayText || "—"}
+                </p>
+              </div>
+            </div>
+          )}
+          {isActive && !orderIsSlot && (
             <div
               className="mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 text-white"
               style={{ backgroundColor: ACCENT }}
             >
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-white/80">
-                  Arriving in
+                  {Number.isFinite(Number(String(estimatedArrival.arrivingInText).replace(/\D/g, ""))) &&
+                  !String(estimatedArrival.arrivingInText).includes("-")
+                    ? "Arriving in"
+                    : "Estimated delivery"}
                 </p>
                 <p className="text-xl font-black">{estimatedArrival.arrivingInText}</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-semibold text-white/80">ETA</p>
+                <p className="text-[10px] font-semibold text-white/80">
+                  {deliverySnapshot?.estimatedText &&
+                  String(estimatedArrival.arrivingInText).includes("-")
+                    ? "Window"
+                    : "ETA"}
+                </p>
                 <p className="text-sm font-bold">{estimatedArrival.arrivalTimeText}</p>
               </div>
             </div>
@@ -619,6 +699,9 @@ const OrderDetailPage = () => {
             <LiveTrackingMap
               status={order.workflowStatus || order.status}
               eta={estimatedArrival.arrivingInText}
+              deliveryMode={deliverySnapshot?.deliveryMode || "EXPRESS"}
+              scheduledSlotText={estimatedArrival.scheduledSlotText}
+              scheduledDateText={estimatedArrival.scheduledDateText}
               riderName={order.deliveryBoy?.name || "Delivery Partner"}
               riderLocation={liveLocation}
               sellerLocation={sellerLocation}
@@ -632,10 +715,64 @@ const OrderDetailPage = () => {
 
         <OrderProgressTracker
           order={order}
+          deliverySnapshot={deliverySnapshot}
           estimatedArrivalText={estimatedArrival.arrivalTimeText}
           arrivingInText={estimatedArrival.arrivingInText}
           totalDistanceText={estimatedArrival.totalDistanceText}
         />
+
+        {/* Delivery Information — always from immutable snapshot */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            {orderIsSlot ? (
+              <CalendarClock size={18} className="text-indigo-600" />
+            ) : (
+              <Zap size={18} className="text-amber-600" />
+            )}
+            <h3 className="text-sm font-bold text-slate-900">Delivery information</h3>
+          </div>
+          <div className="space-y-2.5 text-sm">
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Delivery mode</span>
+              <span className="font-semibold text-slate-900 text-right">
+                {getDeliveryHeadline(deliverySnapshot)}
+              </span>
+            </div>
+            {orderIsSlot ? (
+              <>
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Scheduled date</span>
+                  <span className="font-semibold text-slate-900 text-right">
+                    {formatSlotDateFull(deliverySnapshot?.slotDate) || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Selected slot</span>
+                  <span className="font-semibold text-slate-900 text-right">
+                    {deliverySnapshot?.slotDisplayText || getDeliverySubline(deliverySnapshot) || "—"}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Estimated delivery</span>
+                <span className="font-semibold text-slate-900 text-right">
+                  {deliverySnapshot?.estimatedText || getDeliverySubline(deliverySnapshot) || "—"}
+                </span>
+              </div>
+            )}
+            {deliverySnapshot?.deliveryCharges != null && (
+              <div className="flex justify-between gap-3 border-t border-slate-100 pt-2.5">
+                <span className="text-slate-500">Delivery charges</span>
+                <span className="font-semibold text-slate-900">
+                  {Number(deliverySnapshot.deliveryCharges) === 0
+                    ? "FREE"
+                    : `₹${Number(deliverySnapshot.deliveryCharges).toLocaleString("en-IN")}`}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
 
         <DeliveryOtpDisplay orderId={orderId} />
 

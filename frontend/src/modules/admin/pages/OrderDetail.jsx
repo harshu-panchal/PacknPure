@@ -24,11 +24,19 @@ import {
     Navigation,
     Store,
     Info,
-    MapPin
+    MapPin,
+    Zap,
+    CalendarClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
 import { resolveOrderItemVariantLabel } from '@/shared/utils/orderItemDisplay';
+import {
+    getOrderDeliverySnapshot,
+    getDeliveryHeadline,
+    getDeliverySubline,
+    formatSlotDateFull,
+} from '@/shared/utils/deliverySnapshot';
 
 const OrderDetail = () => {
     const { orderId } = useParams();
@@ -404,6 +412,75 @@ const OrderDetail = () => {
                         </div>
                     </Card>
 
+                    {/* Delivery Information — immutable snapshot */}
+                    <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl p-6 text-left">
+                        {(() => {
+                            const snap = getOrderDeliverySnapshot(order);
+                            const isSlot = snap?.deliveryMode === "SLOT";
+                            return (
+                                <div className="flex flex-col gap-4">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                            {isSlot ? (
+                                                <CalendarClock className="h-3.5 w-3.5 text-indigo-500" />
+                                            ) : (
+                                                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                            )}
+                                            Delivery Information
+                                        </h4>
+                                        <Badge
+                                            className={cn(
+                                                "text-[8px] font-black uppercase tracking-widest border-none",
+                                                isSlot ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700",
+                                            )}
+                                        >
+                                            {isSlot ? "SLOT" : "EXPRESS"}
+                                        </Badge>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between gap-3">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mode</span>
+                                            <span className="text-xs font-black text-slate-900 text-right">
+                                                {getDeliveryHeadline(snap)}
+                                            </span>
+                                        </div>
+                                        {isSlot ? (
+                                            <>
+                                                <div className="flex justify-between gap-3">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date</span>
+                                                    <span className="text-xs font-black text-slate-900 text-right">
+                                                        {formatSlotDateFull(snap?.slotDate) || "—"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between gap-3">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Slot</span>
+                                                    <span className="text-xs font-black text-slate-900 text-right">
+                                                        {snap?.slotDisplayText || getDeliverySubline(snap) || "—"}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between gap-3">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ETA Snapshot</span>
+                                                <span className="text-xs font-black text-slate-900 text-right">
+                                                    {snap?.estimatedText || getDeliverySubline(snap) || "—"}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between gap-3 border-t border-slate-50 pt-3">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Charges</span>
+                                            <span className="text-xs font-black text-slate-900">
+                                                {Number(snap?.deliveryCharges || 0) === 0
+                                                    ? "FREE"
+                                                    : `₹${Number(snap?.deliveryCharges || 0).toLocaleString("en-IN")}`}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </Card>
+
                     {/* Rider Section */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl p-6 text-left">
                         <div className="flex flex-col gap-4">
@@ -467,7 +544,15 @@ const OrderDetail = () => {
                             Intelligence Notes
                         </h4>
                         <p className="text-xs font-bold text-amber-800 leading-relaxed italic">
-                            "{order.cancelReason ? `Cancellation Payload: ${order.cancelReason}` : `Delivery window scheduled for ${order.timeSlot}. Instructions: Follow local logistical protocols.`}"
+                            "{order.cancelReason
+                                ? `Cancellation Payload: ${order.cancelReason}`
+                                : (() => {
+                                    const snap = getOrderDeliverySnapshot(order);
+                                    if (snap?.deliveryMode === "SLOT") {
+                                        return `Slot delivery scheduled for ${formatSlotDateFull(snap.slotDate) || snap.slotDate || "N/A"} · ${snap.slotDisplayText || getDeliverySubline(snap) || "—"}.`;
+                                    }
+                                    return `Express delivery promised as ${snap?.estimatedText || getDeliverySubline(snap) || "express"}.`;
+                                })()}"
                         </p>
                     </Card>
                 </div>

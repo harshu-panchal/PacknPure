@@ -69,6 +69,8 @@ const paymentIntentSchema = new mongoose.Schema(
     deliveryMode: { type: String, enum: ["EXPRESS", "SLOT"], default: "EXPRESS" },
     selectedSlot: { type: String, default: null }, // e.g. "09:00-12:00"
     selectedDate: { type: String, default: null }, // e.g. "2026-07-20"
+    // Frozen at payment-intent creation so verify uses the same promise
+    deliverySnapshot: { type: Object, default: null },
     
     // === Wallet ===
     walletBalance: Number,

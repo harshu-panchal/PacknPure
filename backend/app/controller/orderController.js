@@ -133,7 +133,7 @@ export const getMyOrders = async (req, res) => {
     const customerId = req.user.id;
     const orders = await Order.find({ customer: customerId })
       .select(
-        "orderId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate createdAt",
+        "orderId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate deliverySnapshot createdAt",
       )
       .sort({ createdAt: -1 })
       .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)

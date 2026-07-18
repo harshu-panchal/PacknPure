@@ -7,7 +7,6 @@ import { customerApi } from "../services/customerApi";
 import { useLocation as useAppLocation } from "../context/LocationContext";
 import {
   MapPin,
-  Clock,
   CreditCard,
   Banknote,
   ChevronRight,
@@ -25,6 +24,8 @@ import {
   Contact2,
   CheckCircle2,
   Smartphone,
+  Zap,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,10 @@ import {
 import CheckoutCollapsible from "../components/checkout/CheckoutCollapsible";
 import CheckoutCartItemRow from "../components/checkout/CheckoutCartItemRow";
 import { useDeliveryMode } from "../hooks/useDeliveryMode";
+import {
+  getDeliveryHeadline,
+  getDeliverySubline,
+} from "@/shared/utils/deliverySnapshot";
 import { BRAND_COLOR } from "../constants/brandTheme";
 import { cartKey } from "@/shared/utils/variantHelpers";
 import {
@@ -77,7 +82,38 @@ const CheckoutPage = () => {
   const routeLocation = useRouteLocation();
 
   // Delivery Mode feature: selection made on the cart page (persisted in localStorage)
-  const { selection: deliverySelection } = useDeliveryMode();
+  const { selection: deliverySelection, options: deliveryModeOptions } = useDeliveryMode();
+
+  // Preview of what will be snapshotted onto the order (from cart selection + live options)
+  const checkoutDeliveryPreview = useMemo(() => {
+    const mode = deliverySelection?.mode === "SLOT" ? "SLOT" : "EXPRESS";
+    if (mode === "SLOT") {
+      return {
+        deliveryMode: "SLOT",
+        deliveryTitle: deliveryModeOptions?.slotTitle || "Scheduled Delivery",
+        slotDate: deliverySelection?.selectedDate || null,
+        slotDisplayText: deliverySelection?.selectedSlot
+          ? String(deliverySelection.selectedSlot).includes("AM")
+            ? deliverySelection.selectedSlot
+            : null
+          : null,
+        slotStartTime: deliverySelection?.selectedSlot?.split("-")?.[0] || null,
+        slotEndTime: deliverySelection?.selectedSlot?.split("-")?.[1] || null,
+        estimatedText: null,
+      };
+    }
+    return {
+      deliveryMode: "EXPRESS",
+      deliveryTitle: deliveryModeOptions?.expressTitle || "Express Delivery",
+      estimatedText: deliveryModeOptions?.expressETA || null,
+      estimatedMin: deliveryModeOptions?.expressMinTime ?? null,
+      estimatedMax: deliveryModeOptions?.expressMaxTime ?? null,
+    };
+  }, [deliverySelection, deliveryModeOptions]);
+
+  const checkoutDeliveryHeadline = getDeliveryHeadline(checkoutDeliveryPreview);
+  const checkoutDeliverySubline = getDeliverySubline(checkoutDeliveryPreview);
+  const isCheckoutSlot = checkoutDeliveryPreview.deliveryMode === "SLOT";
 
   // State management
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");
@@ -109,10 +145,6 @@ const CheckoutPage = () => {
   const [gstPercentage, setGstPercentage] = useState(5);
   const [isOutOfRange, setIsOutOfRange] = useState(false);
   const [isCalculatingFee, setIsCalculatingFee] = useState(false);
-
-  // Dynamic delivery time calculation: 8m base + 3m per KM
-  const deliveryTimeBase = 8 + Math.round(distanceKm * 3);
-  const deliveryTimeRange = `${deliveryTimeBase}-${deliveryTimeBase + 5}`;
 
   const fetchDeliveryFee = async (location) => {
     if (!location?.lat || !location?.lng) return;
@@ -789,14 +821,16 @@ const CheckoutPage = () => {
             <section className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-                  <Clock size={20} />
+                  {isCheckoutSlot ? <CalendarClock size={20} /> : <Zap size={20} />}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">
-                    Delivery in {deliveryTimeRange} min
+                    {checkoutDeliveryHeadline}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {cartCount} items in this order
+                    {checkoutDeliverySubline ||
+                      (isCheckoutSlot ? "Choose a slot on the cart page" : "Express delivery")}
+                    {cartCount ? ` · ${cartCount} item${cartCount === 1 ? "" : "s"}` : ""}
                   </p>
                 </div>
               </div>

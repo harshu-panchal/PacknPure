@@ -15,6 +15,7 @@ import {
   formatOrderVariantSlot, 
   resolveOrderItemPrice 
 } from "../utils/orderItemHelpers.js";
+import { buildDeliverySnapshot } from "./deliverySnapshotService.js";
 
 const ORDER_CART_POPULATE = "name mainImage price salePrice gstRate gstEnabled variants purchasePrice";
 
@@ -34,6 +35,8 @@ export const executeCoreOrderFulfillment = async ({
   deliveryMode,
   selectedSlot,
   selectedDate,
+  // Optional pre-built snapshot (e.g. frozen on PaymentIntent at create time)
+  deliverySnapshot: existingDeliverySnapshot = null,
   promotionId,
   session = null
 }) => {
@@ -218,7 +221,19 @@ export const executeCoreOrderFulfillment = async ({
 
     const hubStatus = hubPlan.fullyAvailable ? "inventory_reserved" : "procurement_required";
 
-    // 7. Create Order Document
+    // 7. Delivery Mode snapshot — frozen at order creation (never rewrite later)
+    const resolvedMode = deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
+    const deliverySnapshot =
+      existingDeliverySnapshot && existingDeliverySnapshot.deliveryMode
+        ? existingDeliverySnapshot
+        : await buildDeliverySnapshot({
+            deliveryMode: resolvedMode,
+            selectedSlot: resolvedMode === "SLOT" ? selectedSlot : null,
+            selectedDate: resolvedMode === "SLOT" ? selectedDate : null,
+            deliveryCharges: validatedPricing?.deliveryFee ?? pricing?.deliveryFee ?? 0,
+          });
+
+    // 8. Create Order Document
     const newOrder = new Order({
       orderId,
       customer: customerId,
@@ -229,9 +244,10 @@ export const executeCoreOrderFulfillment = async ({
       pricing: validatedPricing,
       timeSlot: timeSlot || "now",
       // Delivery Mode feature: default EXPRESS keeps legacy behavior unchanged
-      deliveryMode: deliveryMode === "SLOT" ? "SLOT" : "EXPRESS",
-      selectedSlot: deliveryMode === "SLOT" ? (selectedSlot || null) : null,
-      selectedDate: deliveryMode === "SLOT" ? (selectedDate || null) : null,
+      deliveryMode: resolvedMode,
+      selectedSlot: resolvedMode === "SLOT" ? (selectedSlot || null) : null,
+      selectedDate: resolvedMode === "SLOT" ? (selectedDate || null) : null,
+      deliverySnapshot,
       status: "pending",
       workflowVersion: 2,
       workflowStatus: WORKFLOW_STATUS.CREATED,

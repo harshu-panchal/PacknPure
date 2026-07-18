@@ -55,8 +55,17 @@ export function enrichOrderItems(items) {
   return items.map(enrichOrderItem);
 }
 
+import { legacyDeliverySnapshotFromOrder } from "../services/deliverySnapshotService.js";
+
 export function enrichOrderDoc(order) {
   if (!order || typeof order !== "object") return order;
-  if (!Array.isArray(order.items)) return order;
-  return { ...order, items: enrichOrderItems(order.items) };
+  const next = { ...order };
+  if (Array.isArray(order.items)) {
+    next.items = enrichOrderItems(order.items);
+  }
+  // Ensure every order response exposes a deliverySnapshot (legacy-safe)
+  if (!next.deliverySnapshot?.deliveryMode) {
+    next.deliverySnapshot = legacyDeliverySnapshotFromOrder(next);
+  }
+  return next;
 }

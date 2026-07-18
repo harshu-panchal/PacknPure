@@ -296,6 +296,25 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    /**
+     * Immutable delivery promise captured at order creation.
+     * Admin ETA / slot config changes must NEVER overwrite this —
+     * historical orders always display what was promised at checkout.
+     */
+    deliverySnapshot: {
+      deliveryMode: { type: String, enum: ["EXPRESS", "SLOT"] },
+      deliveryTitle: { type: String },
+      estimatedMin: { type: Number, default: null },
+      estimatedMax: { type: Number, default: null },
+      estimatedText: { type: String, default: null }, // e.g. "30-60 mins"
+      slotId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliverySlot", default: null },
+      slotDate: { type: String, default: null }, // YYYY-MM-DD
+      slotDay: { type: String, default: null },
+      slotStartTime: { type: String, default: null },
+      slotEndTime: { type: String, default: null },
+      slotDisplayText: { type: String, default: null }, // e.g. "9:00 AM - 1:00 PM"
+      deliveryCharges: { type: Number, default: 0 },
+    },
     deliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Delivery",

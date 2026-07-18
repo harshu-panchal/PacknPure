@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { calculateAndValidatePricing, validatePricingConsistency } from "../services/pricingCalculationService.js";
 import { executeCoreOrderFulfillment } from "../services/coreOrderService.js";
+import { buildDeliverySnapshot } from "../services/deliverySnapshotService.js";
 dotenv.config();
 
 // Initialize Razorpay (reuse keys from env)
@@ -54,6 +55,15 @@ export const createRazorpayOrder = async (req, res) => {
 
         const amount = Math.round(pricing.total * 100); // paise
 
+        // Freeze delivery promise at payment-intent time (immutable for this checkout)
+        const resolvedMode = checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
+        const deliverySnapshot = await buildDeliverySnapshot({
+            deliveryMode: resolvedMode,
+            selectedSlot: checkout.selectedSlot || null,
+            selectedDate: checkout.selectedDate || null,
+            deliveryCharges: pricing.deliveryFee ?? 0,
+        });
+
         // === CREATE PAYMENT INTENT with server-side snapshot ===
         const intent = await PaymentIntent.create({
             user: userId,
@@ -81,9 +91,10 @@ export const createRazorpayOrder = async (req, res) => {
             deliverySlot: checkout.deliverySlot || null,
             // Delivery Mode feature: snapshot so the order created after
             // payment verification carries the customer's selection
-            deliveryMode: checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS",
+            deliveryMode: resolvedMode,
             selectedSlot: checkout.selectedSlot || null,
             selectedDate: checkout.selectedDate || null,
+            deliverySnapshot,
             walletBalance: user.walletBalance,
             walletUsed: pricing.walletUsed,
             
@@ -266,6 +277,7 @@ export const verifyPayment = async (req, res) => {
             deliveryMode: intent.deliveryMode,
             selectedSlot: intent.selectedSlot,
             selectedDate: intent.selectedDate,
+            deliverySnapshot: intent.deliverySnapshot || null,
             promotionId: checkout.promotionId || null,
             session
         });

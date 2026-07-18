@@ -58,7 +58,7 @@ export default function DeliveryModeSelector({
             className={cn(
               "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
               isExpress
-                ? "border-brand-600 bg-brand-50/60"
+                ? "border-[#E23744] bg-rose-50/60"
                 : "border-slate-200 hover:border-slate-300",
             )}
           >
@@ -80,16 +80,16 @@ export default function DeliveryModeSelector({
                 {options.expressTitle || "Express Delivery"}
               </span>
               <span className="block text-xs text-slate-500">
-                Delivery within {options.expressETA}
+                Delivery within {options.expressETA || `${options.expressMinTime}-${options.expressMaxTime} mins`}
               </span>
             </span>
             <span
               className={cn(
                 "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-                isExpress ? "border-brand-600" : "border-slate-300",
+                isExpress ? "border-[#E23744]" : "border-slate-300",
               )}
             >
-              {isExpress && <span className="h-2 w-2 rounded-full bg-brand-600" />}
+              {isExpress && <span className="h-2 w-2 rounded-full bg-[#E23744]" />}
             </span>
           </button>
         )}
@@ -101,7 +101,7 @@ export default function DeliveryModeSelector({
             className={cn(
               "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
               isSlot
-                ? "border-brand-600 bg-brand-50/60"
+                ? "border-[#E23744] bg-rose-50/60"
                 : "border-slate-200 hover:border-slate-300",
             )}
           >
@@ -129,8 +129,8 @@ export default function DeliveryModeSelector({
               </span>
             </span>
             {isSlot ? (
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-brand-600">
-                <span className="h-2 w-2 rounded-full bg-brand-600" />
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-[#E23744]">
+                <span className="h-2 w-2 rounded-full bg-[#E23744]" />
               </span>
             ) : (
               <ChevronRight size={16} className="shrink-0 text-slate-400" />

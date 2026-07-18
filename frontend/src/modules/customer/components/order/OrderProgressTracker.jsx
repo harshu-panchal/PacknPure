@@ -1,24 +1,23 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { CheckCircle, Circle, Clock, Truck, Home } from "lucide-react";
+import { CheckCircle, Circle, Clock, Truck, Home, CalendarClock } from "lucide-react";
 import { getLegacyStatusFromOrder } from "@/shared/utils/orderStatus";
-
-const STATUS_TO_STAGE = {
-  pending: "confirmed",
-  confirmed: "confirmed",
-  packed: "confirmed",
-  out_for_delivery: "out_for_delivery",
-  delivered: "delivered",
-};
+import {
+  getOrderDeliverySnapshot,
+  getDeliverySubline,
+  formatSlotDateFull,
+} from "@/shared/utils/deliverySnapshot";
 
 const OrderProgressTracker = ({
   order,
-  estimatedArrivalText = "12:45 PM",
-  arrivingInText = "8 mins",
+  deliverySnapshot: snapshotProp = null,
+  estimatedArrivalText = null,
+  arrivingInText = null,
   totalDistanceText = "—",
 }) => {
   const status = getLegacyStatusFromOrder(order);
-  const currentStage = STATUS_TO_STAGE[status] || "confirmed";
+  const deliverySnapshot = snapshotProp || getOrderDeliverySnapshot(order);
+  const isSlot = deliverySnapshot?.deliveryMode === "SLOT";
 
   const steps = [
     {
@@ -83,12 +82,10 @@ const OrderProgressTracker = ({
           const Icon = step.icon;
           const isCompleted = stepStatus === "completed";
           const isActive = stepStatus === "active";
-          const isPending = stepStatus === "pending";
 
           return (
             <div key={step.id} className="relative">
               <div className="flex items-center gap-4">
-                {/* Icon Circle */}
                 <motion.div
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -115,7 +112,6 @@ const OrderProgressTracker = ({
                   )}
                 </motion.div>
 
-                {/* Label */}
                 <div className="flex-1">
                   <p
                     className={`text-sm font-bold ${
@@ -135,7 +131,6 @@ const OrderProgressTracker = ({
                   )}
                 </div>
 
-                {/* Status Indicator */}
                 {isCompleted && (
                   <motion.div
                     initial={{ scale: 0 }}
@@ -147,7 +142,6 @@ const OrderProgressTracker = ({
                 )}
               </div>
 
-              {/* Connecting Line */}
               {index < steps.length - 1 && (
                 <div className="absolute left-6 top-12 bottom-0 w-0.5 -mb-4">
                   <div
@@ -162,31 +156,70 @@ const OrderProgressTracker = ({
         })}
       </div>
 
-      {/* ETA Display */}
+      {/* Delivery timing — from immutable snapshot (slot) or live/snapshot ETA (express) */}
       {status !== "delivered" && (
         <div className="mt-6 pt-5 border-t border-slate-100">
-          <div className="flex items-center justify-between bg-amber-50 rounded-2xl p-4 gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                <Clock size={20} className="text-amber-600" />
+          {isSlot ? (
+            <div className="flex items-center justify-between bg-indigo-50 rounded-2xl p-4 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <CalendarClock size={20} className="text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
+                    Scheduled delivery
+                  </p>
+                  <p className="text-sm font-black text-indigo-900">
+                    {formatSlotDateFull(deliverySnapshot?.slotDate) || "Scheduled"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                  Estimated Time
+              <div className="text-right">
+                <p className="text-xs text-indigo-600 font-semibold">Slot</p>
+                <p className="text-base font-black text-indigo-900">
+                  {deliverySnapshot?.slotDisplayText ||
+                    getDeliverySubline(deliverySnapshot) ||
+                    estimatedArrivalText ||
+                    "—"}
                 </p>
-                <p className="text-lg font-black text-amber-900">{estimatedArrivalText}</p>
               </div>
             </div>
-            <div className="text-right flex flex-col items-end gap-1">
-              <div>
-                <p className="text-xs text-amber-600 font-semibold">Arriving in</p>
-                <p className="text-2xl font-black text-amber-900">{arrivingInText}</p>
+          ) : (
+            <div className="flex items-center justify-between bg-amber-50 rounded-2xl p-4 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                  <Clock size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                    Estimated Time
+                  </p>
+                  <p className="text-lg font-black text-amber-900">
+                    {estimatedArrivalText ||
+                      deliverySnapshot?.estimatedText ||
+                      "—"}
+                  </p>
+                </div>
               </div>
-              <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
-                Total distance: {totalDistanceText}
+              <div className="text-right flex flex-col items-end gap-1">
+                <div>
+                  <p className="text-xs text-amber-600 font-semibold">
+                    {arrivingInText && String(arrivingInText).includes("-")
+                      ? "Delivery window"
+                      : "Arriving in"}
+                  </p>
+                  <p className="text-2xl font-black text-amber-900">
+                    {arrivingInText || deliverySnapshot?.estimatedText || "—"}
+                  </p>
+                </div>
+                {totalDistanceText && totalDistanceText !== "—" && (
+                  <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
+                    Total distance: {totalDistanceText}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

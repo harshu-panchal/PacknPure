@@ -7,12 +7,18 @@ import {
   MapPin,
   Clock,
   ChevronRight,
+  Zap,
+  CalendarClock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import { deliveryApi } from "../services/deliveryApi";
 import { toast } from "sonner";
+import {
+  getOrderDeliverySnapshot,
+  getDeliverySubline,
+} from "@/shared/utils/deliverySnapshot";
 
 const displayOrderStatus = (order) => {
   if (order?.workflowStatus === "DELIVERED" || order?.status === "delivered")
@@ -242,11 +248,34 @@ const OrderHistory = () => {
                               }`}>
                             {displayOrderStatus(order)}
                           </span>
+                          {(() => {
+                            const snap = getOrderDeliverySnapshot(order);
+                            const isSlot = snap?.deliveryMode === "SLOT";
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                  isSlot
+                                    ? "bg-indigo-100 text-indigo-700"
+                                    : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {isSlot ? <CalendarClock size={9} /> : <Zap size={9} />}
+                                {isSlot ? "SLOT" : "EXPRESS"}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center text-gray-400 text-xs">
                           <Calendar size={12} className="mr-1" />
                           {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
+                        {(() => {
+                          const snap = getOrderDeliverySnapshot(order);
+                          const line = getDeliverySubline(snap);
+                          return line ? (
+                            <p className="mt-1 text-[11px] font-medium text-slate-500">{line}</p>
+                          ) : null;
+                        })()}
                       </div>
                       <div className="text-right">
                         <span className="block font-bold text-lg text-green-600">
