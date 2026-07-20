@@ -1,19 +1,40 @@
 import ProcurementSession from "../models/procurementSession.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 
-const ACTIVE_PR_STATUSES = [
-  "created",
-  "seller_confirmed",
-  "pickup_assigned",
-  "picked",
-  "hub_delivered",
-  "received_at_hub",
-];
-
 export const buildItemKey = (productId, variantId = null) =>
   `${String(productId)}::${variantId ? String(variantId) : "root"}`;
 
 const toInt = (v) => Math.max(0, Number(v || 0));
+
+/** Vendors that already received an allocation (one PR chance per seller per session item). */
+export const getAttemptedVendorIds = (session, itemKey) => {
+  const attempted = new Set();
+  for (const alloc of session?.allocations || []) {
+    if (alloc.itemKey === itemKey && alloc.vendorId) {
+      attempted.add(String(alloc.vendorId));
+    }
+  }
+  return attempted;
+};
+
+/** Next eligible sellers: ranked list minus anyone already attempted in this session. */
+export const getEligibleFallbackSellers = (session, itemKey, pr) => {
+  const attempted = getAttemptedVendorIds(session, itemKey);
+
+  let candidates = (pr?.rankedSellers || []).map((id) => String(id));
+
+  if (candidates.length === 0 && session?.allocations?.length) {
+    const itemAllocations = session.allocations
+      .filter((a) => a.itemKey === itemKey)
+      .sort((a, b) => toInt(a.retryNumber) - toInt(b.retryNumber));
+    const latest = itemAllocations[itemAllocations.length - 1];
+    if (latest?.rankedSellers?.length) {
+      candidates = latest.rankedSellers.map((id) => String(id));
+    }
+  }
+
+  return candidates.filter((id) => id && !attempted.has(String(id)));
+};
 
 const recomputeSessionStatus = (sessionDoc) => {
   const items = Array.isArray(sessionDoc.items) ? sessionDoc.items : [];
@@ -87,32 +108,45 @@ export const reserveAllocation = async ({
 
   if (eventKey) {
     const duplicateEvent = (session.allocations || []).find((a) => a.eventKey === eventKey);
-    if (duplicateEvent) return { allocation: duplicateEvent, duplicate: true };
+    if (duplicateEvent) {
+      let existingPurchaseRequest = null;
+      if (duplicateEvent.purchaseRequestId) {
+        existingPurchaseRequest = await PurchaseRequest.findById(duplicateEvent.purchaseRequestId)
+          .select("_id requestId allocationId retryNumber")
+          .lean();
+      }
+      return { allocation: duplicateEvent, duplicate: true, existingPurchaseRequest };
+    }
   }
 
   const requested = toInt(quantity);
   const allocQty = Math.min(requested, toInt(item.remainingQty));
   if (allocQty <= 0) return null;
 
-  const existing = await PurchaseRequest.findOne({
+  const vendorAlreadyAttempted = (session.allocations || []).some(
+    (a) => a.itemKey === itemKey && String(a.vendorId) === String(vendorId),
+  );
+  if (vendorAlreadyAttempted) {
+    return { duplicate: true, reason: "vendor_already_attempted", allocation: null };
+  }
+
+  const existingVendorPr = await PurchaseRequest.findOne({
     procurementSessionId: session._id,
     vendorId,
-    status: { $in: ACTIVE_PR_STATUSES },
     "items.productId": productId,
-    "items.variantId": variantId || null,
-    "items.shortageQty": allocQty,
   })
     .select("_id requestId allocationId retryNumber")
     .lean();
 
-  if (existing) {
+  if (existingVendorPr) {
     return {
       duplicate: true,
-      existingPurchaseRequest: existing,
+      reason: "existing_pr_for_vendor",
+      existingPurchaseRequest: existingVendorPr,
       allocation: {
-        allocationId: existing.allocationId || null,
+        allocationId: existingVendorPr.allocationId || null,
         quantity: allocQty,
-        retryNumber: Number(existing.retryNumber || retryNumber || 0),
+        retryNumber: Number(existingVendorPr.retryNumber || retryNumber || 0),
       },
     };
   }

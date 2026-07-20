@@ -35,8 +35,12 @@ const processExpirations = async () => {
     if (!expiredPRs.length) return;
 
     for (const pr of expiredPRs) {
-      // Mark as expired and fallback
-      await PurchaseRequest.updateOne({ _id: pr._id }, { $set: { status: "expired" } });
+      const updateResult = await PurchaseRequest.updateOne(
+        { _id: pr._id, status: "created" },
+        { $set: { status: "expired" } },
+      );
+      if (updateResult.modifiedCount !== 1) continue;
+
       const fullPr = await PurchaseRequest.findById(pr._id);
       if (fullPr?.procurementSessionId && fullPr?.allocationId) {
         await markAllocationTimeout({
