@@ -125,6 +125,9 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
     const requiredQty = Number(item.quantity || 0);
     const variantId = item.variantId || null;
     const baseProduct = productMap.get(productId) || null;
+    if (Array.isArray(baseProduct?.variants) && baseProduct.variants.length > 0 && !variantId) {
+      throw new Error(`Variant ID is required for product ${baseProduct?.name || productId}`);
+    }
     
     const hubProductQty = Math.max(0, Number(invMap.get(productId) || 0));
     

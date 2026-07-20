@@ -674,6 +674,9 @@ export const createManualPurchaseRequest = async (req, res) => {
       variantId && variantRows.length
         ? variantRows.find((v) => String(v._id) === String(variantId))
         : null;
+    if (variantRows.length > 0 && !targetVariant) {
+      return handleResponse(res, 400, "variantId is required for variant-based products");
+    }
 
     const sellerStock = (() => {
       if (targetVariant) {

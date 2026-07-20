@@ -1,5 +1,8 @@
 import HubInventory from "../models/hubInventory.js";
+import HubInward from "../models/hubInward.js";
+import PurchaseRequest from "../models/purchaseRequest.js";
 import Product from "../models/product.js";
+import Order from "../models/order.js";
 import handleResponse from "../utils/helper.js";
 import {
   addHubAvailableStock,
@@ -50,9 +53,18 @@ const statusLabel = (status) => {
   return "Healthy";
 };
 
+const toQty = (value) => Math.max(0, Number(value || 0));
+const keyOf = (productId, variantId) => `${String(productId)}::${String(variantId || "root")}`;
+const ACTIVE_TRANSIT_PR_STATUSES = ["picked", "hub_delivered", "received_at_hub"];
+
 export const getHubInventory = async (req, res) => {
   try {
     const hubId = String(req.query.hubId || DEFAULT_HUB_ID);
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const sellerIdFilter = String(req.query.sellerId || "").trim();
+    const productIdFilter = String(req.query.productId || "").trim();
+    const variantIdFilter = String(req.query.variantId || "").trim();
+    const filterType = String(req.query.filter || "").trim().toLowerCase();
     const rows = await HubInventory.find({ hubId }).sort({ updatedAt: -1 }).lean();
 
     const productIds = rows.map((r) => r.productId).filter(Boolean);
@@ -62,12 +74,177 @@ export const getHubInventory = async (req, res) => {
       .populate("sellerId", "shopName name")
       .lean();
     const productMap = new Map(products.map((p) => [String(p._id), p]));
+    const productIdStrs = products.map((p) => String(p._id));
 
-    const items = rows.map((row) => {
+    const sellerListings = await Product.find({
+      ownerType: "seller",
+      status: "active",
+      masterProductId: { $in: productIds },
+    })
+      .select("_id sellerId masterProductId variants")
+      .populate("sellerId", "shopName name")
+      .lean();
+
+    const productToSellerListings = new Map();
+    for (const listing of sellerListings) {
+      const k = String(listing.masterProductId || "");
+      if (!productToSellerListings.has(k)) productToSellerListings.set(k, []);
+      productToSellerListings.get(k).push(listing);
+    }
+
+    const [prs, inwards, orders] = await Promise.all([
+      PurchaseRequest.find({
+        hubId,
+        status: { $in: ACTIVE_TRANSIT_PR_STATUSES },
+        "items.productId": { $in: productIds },
+      })
+        .select("status items receivedAtHubAt")
+        .lean(),
+      HubInward.find({ hubId })
+        .select("purchaseRequestId verificationStatus receivedItems")
+        .lean(),
+      Order.find({
+        hubId,
+        "items.product": { $in: productIds },
+        status: { $nin: ["cancelled", "voided"] },
+      })
+        .select("items status workflowStatus")
+        .lean(),
+    ]);
+
+    const inwardByPrId = new Map(inwards.map((row) => [String(row.purchaseRequestId), row]));
+
+    const orderVariantMetrics = new Map();
+    for (const ord of orders) {
+      for (const line of ord.items || []) {
+        if (!line?.variantId) continue;
+        const k = keyOf(line.product, line.variantId);
+        const prev = orderVariantMetrics.get(k) || {
+          hr: 0,
+          qaAccepted: 0,
+          qaRejected: 0,
+          delivered: 0,
+          returned: 0,
+        };
+        prev.hr += toQty(line.hubReservedQty);
+        prev.qaAccepted += toQty(line.qaAcceptedQty);
+        prev.qaRejected += toQty(line.qaRejectedQty);
+        prev.delivered += toQty(line.deliveredQty);
+        prev.returned += toQty(line.returnedQty);
+        orderVariantMetrics.set(k, prev);
+      }
+    }
+
+    const prTransitByVariant = new Map();
+    for (const pr of prs) {
+      for (const line of pr.items || []) {
+        if (!line?.variantId) continue;
+        const k = keyOf(line.productId, line.variantId);
+        const prev = prTransitByVariant.get(k) || {
+          transit: 0,
+          qaPending: 0,
+        };
+        const transitQty =
+          toQty(line.actualPickedQty) ||
+          toQty(line.committedQty) ||
+          toQty(line.shortageQty);
+        if (pr.status === "picked" || pr.status === "hub_delivered") {
+          prev.transit += transitQty;
+        }
+        if (pr.status === "received_at_hub") {
+          const inward = inwardByPrId.get(String(pr._id));
+          if (inward?.verificationStatus === "pending") {
+            const pendingQty = (inward.receivedItems || [])
+              .filter((it) => String(it.productId) === String(line.productId))
+              .reduce((sum, it) => sum + toQty(it.acceptedQty), 0);
+            prev.qaPending += pendingQty;
+          }
+        }
+        prTransitByVariant.set(k, prev);
+      }
+    }
+
+    const mappedRows = rows.map((row) => {
       const product = productMap.get(String(row.productId));
       const availableQty = Number(row.availableQty || 0);
       const reorderLevel = Number(row.reorderLevel || 0);
       const computed = normalizeStatus(availableQty, reorderLevel);
+      const variants = listVariantsForStockPicker(product || { variants: [] });
+      const sellerRows = productToSellerListings.get(String(row.productId)) || [];
+
+      const variantInventory = variants.map((v) => {
+        const metricKey = keyOf(row.productId, v.variantId);
+        const orderMetric = orderVariantMetrics.get(metricKey) || {};
+        const transitMetric = prTransitByVariant.get(metricKey) || {};
+
+        let sa = 0;
+        let sc = 0;
+        for (const sellerListing of sellerRows) {
+          const sellerVar = (sellerListing.variants || []).find(
+            (sv) =>
+              String(sv._id || "") === String(v.variantId || "") ||
+              String(sv.name || "").trim().toLowerCase() === String(v.name || "").trim().toLowerCase(),
+          );
+          if (sellerVar) {
+            sa += toQty(sellerVar.stock);
+            sc += toQty(sellerVar.committedStock);
+          }
+        }
+
+        const ha = toQty(v.stock);
+        const hr = toQty(orderMetric.hr);
+        const qaPending = toQty(transitMetric.qaPending);
+        const qaAccepted = toQty(orderMetric.qaAccepted);
+        const qaRejected = toQty(orderMetric.qaRejected);
+        const delivered = toQty(orderMetric.delivered);
+        const returned = toQty(orderMetric.returned);
+        const transit = toQty(transitMetric.transit);
+
+        return {
+          variantId: v.variantId,
+          index: v.index,
+          name: v.name,
+          unit: v.unit,
+          ha,
+          hr,
+          sa,
+          sc,
+          transit,
+          qaPending,
+          qaAccepted,
+          qaRejected,
+          delivered,
+          returned,
+        };
+      });
+
+      const variantTotals = variantInventory.reduce(
+        (acc, v) => ({
+          ha: acc.ha + v.ha,
+          hr: acc.hr + v.hr,
+          sa: acc.sa + v.sa,
+          sc: acc.sc + v.sc,
+          transit: acc.transit + v.transit,
+          qaPending: acc.qaPending + v.qaPending,
+          qaAccepted: acc.qaAccepted + v.qaAccepted,
+          qaRejected: acc.qaRejected + v.qaRejected,
+          delivered: acc.delivered + v.delivered,
+          returned: acc.returned + v.returned,
+        }),
+        {
+          ha: 0,
+          hr: 0,
+          sa: 0,
+          sc: 0,
+          transit: 0,
+          qaPending: 0,
+          qaAccepted: 0,
+          qaRejected: 0,
+          delivered: 0,
+          returned: 0,
+        },
+      );
+
       return {
         _id: row._id,
         hubId: row.hubId,
@@ -91,12 +268,57 @@ export const getHubInventory = async (req, res) => {
         statusLabel: statusLabel(computed),
         updatedAt: row.updatedAt,
         hasVariants: Array.isArray(product?.variants) && product.variants.length > 0,
-        variants: listVariantsForStockPicker(product || { variants: [] }),
+        variants,
+        variantInventory,
+        variantTotals,
         variantCount: product?.variants?.length || 0,
       };
     });
 
-    return handleResponse(res, 200, "Hub inventory fetched", { items });
+    const filtered = mappedRows.filter((row) => {
+      if (productIdFilter && String(row.productId) !== productIdFilter) return false;
+      if (sellerIdFilter && String(row.sellerId || "") !== sellerIdFilter) return false;
+      if (search) {
+        const productText = String(row.productName || "").toLowerCase();
+        const sellerText = String(row.sellerName || "").toLowerCase();
+        const variantText = (row.variantInventory || [])
+          .map((v) => String(v.name || "").toLowerCase())
+          .join(" ");
+        if (!productText.includes(search) && !sellerText.includes(search) && !variantText.includes(search)) {
+          return false;
+        }
+      }
+
+      if (variantIdFilter) {
+        const found = (row.variantInventory || []).some((v) => String(v.variantId || "") === variantIdFilter);
+        if (!found) return false;
+      }
+
+      if (filterType === "low_stock") return String(row.status) === "low_stock" || String(row.status) === "out_of_stock";
+      if (filterType === "reserved") return toQty(row.variantTotals?.hr) > 0;
+      if (filterType === "committed") return toQty(row.variantTotals?.sc) > 0;
+      if (filterType === "transit") return toQty(row.variantTotals?.transit) > 0;
+      if (filterType === "qa_pending") return toQty(row.variantTotals?.qaPending) > 0;
+
+      return true;
+    });
+
+    const totals = filtered.reduce(
+      (acc, row) => ({
+        totalHubAvailable: acc.totalHubAvailable + toQty(row.variantTotals?.ha),
+        totalHubReserved: acc.totalHubReserved + toQty(row.variantTotals?.hr),
+        totalSellerAvailable: acc.totalSellerAvailable + toQty(row.variantTotals?.sa),
+        totalSellerCommitted: acc.totalSellerCommitted + toQty(row.variantTotals?.sc),
+      }),
+      {
+        totalHubAvailable: 0,
+        totalHubReserved: 0,
+        totalSellerAvailable: 0,
+        totalSellerCommitted: 0,
+      },
+    );
+
+    return handleResponse(res, 200, "Hub inventory fetched", { items: filtered, totals });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -177,7 +399,7 @@ export const upsertHubInventory = async (req, res) => {
             ? product.salePrice
             : product?.price || 0,
       );
-      const initialHubQty = Math.max(0, Number(catalogProduct?.stock || 0)) + qty;
+      const initialHubQty = Math.max(0, Number(totalVariantStock(catalogProduct?.variants || []) || 0)) + qty;
 
       row = new HubInventory({
         hubId: finalHubId,
@@ -256,7 +478,7 @@ export const upsertHubInventory = async (req, res) => {
 
     const responsePayload = {
       ...row.toObject(),
-      catalogStock: updatedProduct ? updatedProduct.stock : 0,
+      catalogStock: totalVariantStock(updatedProduct?.variants || []),
       variants: catalogProduct ? listVariantsForStockPicker(catalogProduct) : [],
     };
 
@@ -325,7 +547,7 @@ export const adjustHubInventoryStock = async (req, res) => {
       const updatedProduct = await Product.findById(product._id);
       return handleResponse(res, 200, "Variant hub stock updated", {
         ...updatedRow.toObject(),
-        catalogStock: updatedProduct ? updatedProduct.stock : 0,
+        catalogStock: totalVariantStock(updatedProduct?.variants || []),
         variant: {
           variantId: resolvedVariantId,
           index: idx,
@@ -348,7 +570,7 @@ export const adjustHubInventoryStock = async (req, res) => {
     const updatedProduct = await Product.findById(product._id);
     return handleResponse(res, 200, "Hub stock updated", {
       ...updatedRow.toObject(),
-      catalogStock: updatedProduct ? updatedProduct.stock : updatedRow.availableQty,
+      catalogStock: totalVariantStock(updatedProduct?.variants || []),
       variants: [],
     });
   } catch (error) {

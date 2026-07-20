@@ -40,8 +40,16 @@ function variantOptionsFromRow(row) {
 
 const HubInventoryPage = () => {
   const [rows, setRows] = useState([]);
+  const [inventoryTotals, setInventoryTotals] = useState({
+    totalHubAvailable: 0,
+    totalHubReserved: 0,
+    totalSellerAvailable: 0,
+    totalSellerCommitted: 0,
+  });
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
+  const [inventoryFilter, setInventoryFilter] = useState("all");
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -73,22 +81,41 @@ const HubInventoryPage = () => {
     sellPrice: "0",
   });
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (params = {}) => {
     try {
       setLoading(true);
-      const res = await adminApi.getHubInventory();
+      const res = await adminApi.getHubInventory(params);
       let payload = res.data?.result || res.data?.results || {};
 
       let items = [];
+      let totals = {
+        totalHubAvailable: 0,
+        totalHubReserved: 0,
+        totalSellerAvailable: 0,
+        totalSellerCommitted: 0,
+      };
       if (Array.isArray(payload)) {
         items = payload;
       } else if (payload && Array.isArray(payload.items)) {
         items = payload.items;
+        totals = payload.totals || totals;
       }
 
       setRows(items);
+      setInventoryTotals({
+        totalHubAvailable: Number(totals.totalHubAvailable || 0),
+        totalHubReserved: Number(totals.totalHubReserved || 0),
+        totalSellerAvailable: Number(totals.totalSellerAvailable || 0),
+        totalSellerCommitted: Number(totals.totalSellerCommitted || 0),
+      });
     } catch {
       setRows([]);
+      setInventoryTotals({
+        totalHubAvailable: 0,
+        totalHubReserved: 0,
+        totalSellerAvailable: 0,
+        totalSellerCommitted: 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -121,6 +148,16 @@ const HubInventoryPage = () => {
     fetchInventory();
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchInventory({
+        ...(searchText ? { search: searchText } : {}),
+        ...(inventoryFilter !== "all" ? { filter: inventoryFilter } : {}),
+      });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [searchText, inventoryFilter]);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p._id === addForm.productId) || null,
@@ -321,10 +358,11 @@ const HubInventoryPage = () => {
         ...item,
         productNameText: item.productName,
         status: item.statusLabel || statusText(item.status),
+        reservedQty: Number(item.variantTotals?.hr ?? item.reservedQty ?? 0),
         hubStockQuantity:
           item.hasVariants && item.variantCount > 0
-            ? `${item.hubStockQuantity} (${item.variantCount} variants)`
-            : item.hubStockQuantity,
+            ? `${Number(item.variantTotals?.ha ?? item.hubStockQuantity ?? 0)} (${item.variantCount} variants)`
+            : Number(item.variantTotals?.ha ?? item.hubStockQuantity ?? 0),
         productName: (
           <div className="flex items-center gap-3">
             {item.imageUrl ? (
@@ -354,51 +392,60 @@ const HubInventoryPage = () => {
 
   const stats = useMemo(() => {
     const lowStock = rows.filter((item) => statusText(item.status) === "Low Stock").length;
-    const totalStock = rows.reduce((sum, item) => sum + Number(item.hubStockQuantity || 0), 0);
-    const totalReservedStock = rows.reduce((sum, item) => sum + Number(item.reservedQty || 0), 0);
     return [
       { label: "Total SKUs", value: String(rows.length) },
       { label: "Low Stock Alerts", value: String(lowStock) },
-      { label: "Total Units", value: String(totalStock) },
-      { label: "Reserved Units", value: String(totalReservedStock) },
+      { label: "Total Hub Available", value: String(inventoryTotals.totalHubAvailable || 0) },
+      { label: "Total Hub Reserved", value: String(inventoryTotals.totalHubReserved || 0) },
+      { label: "Total Seller Available", value: String(inventoryTotals.totalSellerAvailable || 0) },
+      { label: "Total Seller Committed", value: String(inventoryTotals.totalSellerCommitted || 0) },
       {
         label: "Health Score",
         value: rows.length ? `${Math.round(((rows.length - lowStock) / rows.length) * 100)}%` : "0%",
       },
     ];
-  }, [rows]);
-
-  const stockModalFields = useMemo(() => {
-    const fields = [];
-    if (stockHasVariants) {
-      fields.push({
-        key: "variantId",
-        label: "Which variant?",
-        type: "select",
-        options: stockVariants.map((v) => ({
-          value: v.variantId,
-          label: `${v.name} — ${v.stock} ${v.unit} in hub`,
-        })),
-      });
-    }
-    fields.push({ key: "stockDelta", label: "Stock Delta (+/-)", type: "number" });
-    fields.push(
-      { key: "price", label: "MRP (optional)", type: "number" },
-      { key: "salePrice", label: "Sale price (optional)", type: "number" },
-      { key: "purchasePrice", label: "Purchase price (optional)", type: "number" },
-    );
-    return fields;
-  }, [stockHasVariants, stockVariants]);
+  }, [rows, inventoryTotals]);
 
   return (
     <>
+      <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <input
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Search product / variant / seller..."
+          className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+        />
+        <select
+          value={inventoryFilter}
+          onChange={(e) => setInventoryFilter(e.target.value)}
+          className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+        >
+          <option value="all">All</option>
+          <option value="low_stock">Low Stock</option>
+          <option value="reserved">Reserved</option>
+          <option value="committed">Committed</option>
+          <option value="transit">Transit</option>
+          <option value="qa_pending">QA Pending</option>
+        </select>
+        <div className="flex items-center text-xs text-slate-500">
+          Variant inventory values are backend-computed.
+        </div>
+      </div>
+
       <SupplyModuleTable
         title="Hub Inventory"
         subtitle="SOP mode: link hub stock to catalog products. Multi-variant products: pick a variant when adding stock."
         icon={Boxes}
         topActions={[
           { label: "Add Stock", onClick: openAddModal },
-          { label: loading ? "Refreshing..." : "Refresh", onClick: fetchInventory },
+          {
+            label: loading ? "Refreshing..." : "Refresh",
+            onClick: () =>
+              fetchInventory({
+                ...(searchText ? { search: searchText } : {}),
+                ...(inventoryFilter !== "all" ? { filter: inventoryFilter } : {}),
+              }),
+          },
         ]}
         stats={stats}
         columns={[
@@ -419,7 +466,7 @@ const HubInventoryPage = () => {
               type="button"
               onClick={() => openStockModal(row)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              Add Stock
+              Stock
             </button>
             <button
               type="button"
@@ -561,28 +608,125 @@ const HubInventoryPage = () => {
         </div>
       </Modal>
 
-      <SupplyFormModal
+      <Modal
         isOpen={stockOpen}
         onClose={() => setStockOpen(false)}
-        title={`Add Stock${stockRow ? ` - ${stockRow.productNameText || ""}` : ""}`}
-        submitLabel="Update"
-        fields={stockModalFields}
-        values={{
-          stockDelta,
-          variantId: stockVariantId,
-          price: stockPricing.price,
-          salePrice: stockPricing.salePrice,
-          purchasePrice: stockPricing.purchasePrice,
-        }}
-        onChange={(key, value) => {
-          if (key === "stockDelta") setStockDelta(value);
-          if (key === "variantId") setStockVariantId(value);
-          if (key === "price" || key === "salePrice" || key === "purchasePrice") {
-            setStockPricing((prev) => ({ ...prev, [key]: value }));
-          }
-        }}
-        onSubmit={submitStock}
-      />
+        title={`Stock${stockRow ? ` - ${stockRow.productNameText || ""}` : ""}`}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setStockOpen(false)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={submitStock}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-slate-800"
+            >
+              Update Stock
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 p-2"><span className="font-semibold">Hub Available:</span> {stockRow?.variantTotals?.ha ?? 0}</div>
+            <div className="rounded-lg bg-slate-50 p-2"><span className="font-semibold">Hub Reserved:</span> {stockRow?.variantTotals?.hr ?? 0}</div>
+            <div className="rounded-lg bg-slate-50 p-2"><span className="font-semibold">Seller Available:</span> {stockRow?.variantTotals?.sa ?? 0}</div>
+            <div className="rounded-lg bg-slate-50 p-2"><span className="font-semibold">Seller Committed:</span> {stockRow?.variantTotals?.sc ?? 0}</div>
+          </div>
+
+          <div className="overflow-auto rounded-lg border border-slate-200">
+            <table className="min-w-full text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-2 py-2 text-left">Variant</th>
+                  <th className="px-2 py-2 text-left">HA</th>
+                  <th className="px-2 py-2 text-left">HR</th>
+                  <th className="px-2 py-2 text-left">SA</th>
+                  <th className="px-2 py-2 text-left">SC</th>
+                  <th className="px-2 py-2 text-left">Transit</th>
+                  <th className="px-2 py-2 text-left">QA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(stockRow?.variantInventory || []).map((v) => (
+                  <tr key={v.variantId || v.index} className="border-t border-slate-100">
+                    <td className="px-2 py-2 font-medium">{v.name}</td>
+                    <td className="px-2 py-2">{v.ha}</td>
+                    <td className="px-2 py-2">{v.hr}</td>
+                    <td className="px-2 py-2">{v.sa}</td>
+                    <td className="px-2 py-2">{v.sc}</td>
+                    <td className="px-2 py-2">{v.transit}</td>
+                    <td className="px-2 py-2">{v.qaPending}/{v.qaAccepted}/{v.qaRejected}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {stockHasVariants ? (
+            <label className="grid gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">
+                Variant
+              </span>
+              <select
+                value={stockVariantId}
+                onChange={(e) => setStockVariantId(e.target.value)}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+              >
+                {stockVariants.map((v) => (
+                  <option key={v.variantId} value={v.variantId}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">Stock Delta (+/-)</span>
+              <input
+                type="number"
+                value={stockDelta}
+                onChange={(e) => setStockDelta(e.target.value)}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">MRP (optional)</span>
+              <input
+                type="number"
+                value={stockPricing.price}
+                onChange={(e) => setStockPricing((prev) => ({ ...prev, price: e.target.value }))}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">Sale Price (optional)</span>
+              <input
+                type="number"
+                value={stockPricing.salePrice}
+                onChange={(e) => setStockPricing((prev) => ({ ...prev, salePrice: e.target.value }))}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">Purchase Price (optional)</span>
+              <input
+                type="number"
+                value={stockPricing.purchasePrice}
+                onChange={(e) => setStockPricing((prev) => ({ ...prev, purchasePrice: e.target.value }))}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+              />
+            </label>
+          </div>
+        </div>
+      </Modal>
 
       <SupplyFormModal
         isOpen={minOpen}
