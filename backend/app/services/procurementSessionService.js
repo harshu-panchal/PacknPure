@@ -21,19 +21,55 @@ export const getAttemptedVendorIds = (session, itemKey) => {
 export const getEligibleFallbackSellers = (session, itemKey, pr) => {
   const attempted = getAttemptedVendorIds(session, itemKey);
 
-  let candidates = (pr?.rankedSellers || []).map((id) => String(id));
+  const itemAllocations = (session?.allocations || [])
+    .filter((a) => a.itemKey === itemKey)
+    .sort((a, b) => toInt(a.retryNumber) - toInt(b.retryNumber));
 
-  if (candidates.length === 0 && session?.allocations?.length) {
-    const itemAllocations = session.allocations
-      .filter((a) => a.itemKey === itemKey)
-      .sort((a, b) => toInt(a.retryNumber) - toInt(b.retryNumber));
-    const latest = itemAllocations[itemAllocations.length - 1];
-    if (latest?.rankedSellers?.length) {
-      candidates = latest.rankedSellers.map((id) => String(id));
+  const orderedCandidates = [];
+
+  if (itemAllocations.length > 0) {
+    const first = itemAllocations[0];
+    orderedCandidates.push(String(first.vendorId));
+    for (const id of first.rankedSellers || []) {
+      orderedCandidates.push(String(id));
     }
   }
 
-  return candidates.filter((id) => id && !attempted.has(String(id)));
+  for (const id of pr?.rankedSellers || []) {
+    orderedCandidates.push(String(id));
+  }
+
+  const metaRank = session?.metadata?.rankedSellerIdsByItem?.[itemKey];
+  if (Array.isArray(metaRank)) {
+    for (const id of metaRank) {
+      orderedCandidates.push(String(id));
+    }
+  }
+
+  const seen = new Set();
+  const eligible = [];
+  for (const id of orderedCandidates) {
+    const sid = String(id || "").trim();
+    if (!sid || sid === "undefined" || sid === "null") continue;
+    if (attempted.has(sid) || seen.has(sid)) continue;
+    seen.add(sid);
+    eligible.push(sid);
+  }
+
+  return eligible;
+};
+
+export const persistRankedSellersForItem = async (procurementSessionId, itemKey, vendorIds = []) => {
+  if (!procurementSessionId || !itemKey || !Array.isArray(vendorIds) || vendorIds.length === 0) {
+    return null;
+  }
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return null;
+  session.metadata = session.metadata || {};
+  session.metadata.rankedSellerIdsByItem = session.metadata.rankedSellerIdsByItem || {};
+  session.metadata.rankedSellerIdsByItem[itemKey] = vendorIds.map(String);
+  await session.save();
+  return session;
 };
 
 const recomputeSessionStatus = (sessionDoc) => {

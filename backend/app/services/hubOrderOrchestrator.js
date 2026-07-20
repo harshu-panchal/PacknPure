@@ -16,6 +16,7 @@ import {
   markAllocationTimeout,
   buildItemKey,
   getEligibleFallbackSellers,
+  persistRankedSellersForItem,
 } from "./procurementSessionService.js";
 import { rankSellerAllocations } from "./allocationEngine.js";
 
@@ -501,6 +502,15 @@ export const createAutoPurchaseRequests = async ({
       continue;
     }
 
+    if (procurementSession && reserved?.allocation) {
+      const rankKey = buildItemKey(item.productId, item.variantId);
+      const fullRank = [
+        String(item.vendorId),
+        ...(item.rankedSellers || []).map(String),
+      ];
+      await persistRankedSellersForItem(procurementSession._id, rankKey, fullRank);
+    }
+
     const docPayload = {
       requestId: buildRequestId(),
       orderId: order._id,
@@ -657,10 +667,25 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const variantId = productLine.variantId || null;
   const itemKey = buildItemKey(productId, variantId);
 
+  const ProcurementSession = (await import("../models/procurementSession.js")).default;
+  let session = pr.procurementSessionId
+    ? await ProcurementSession.findById(pr.procurementSessionId)
+    : null;
+
   const qtyToProcure =
     remainingQty !== null
       ? remainingQty
-      : productLine.remainingQty || productLine.requestedQty || productLine.shortageQty || 0;
+      : (() => {
+          const sessionItem = session?.items?.find((row) => row.itemKey === itemKey);
+          const fromSession = Math.max(0, Number(sessionItem?.remainingQty || 0));
+          if (fromSession > 0) return fromSession;
+          return (
+            productLine.remainingQty ||
+            productLine.requestedQty ||
+            productLine.shortageQty ||
+            0
+          );
+        })();
 
   if (qtyToProcure <= 0) return null;
 
@@ -671,14 +696,13 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const Product = (await import("../models/product.js")).default;
   const masterProduct = await Product.findById(productId).select("variants").lean();
 
-  const ProcurementSession = (await import("../models/procurementSession.js")).default;
   const maxAttempts = Math.max(1, (pr.rankedSellers?.length || 0) + 10);
   let attemptGuard = 0;
 
   while (attemptGuard++ < maxAttempts) {
-    let session = pr.procurementSessionId
-      ? await ProcurementSession.findById(pr.procurementSessionId)
-      : null;
+    if (pr.procurementSessionId) {
+      session = await ProcurementSession.findById(pr.procurementSessionId);
+    }
 
     const eligibleSellers = session
       ? getEligibleFallbackSellers(session, itemKey, pr)

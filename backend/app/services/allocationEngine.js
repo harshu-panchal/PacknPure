@@ -143,9 +143,25 @@ export const rankSellerAllocations = async ({
 
   const allocations = [];
   let remainingShortage = Number(shortageQty || 0);
+  let primaryFilled = false;
+
   for (const vendor of scored) {
     const vendorStock = sellerAvailableForMasterVariant(vendor, variantId, baseProduct);
-    const allocatedQty = remainingShortage > 0 ? Math.min(vendorStock, remainingShortage) : 0;
+    let allocatedQty = 0;
+
+    if (enableMultiSellerAllocation) {
+      if (remainingShortage > 0) {
+        allocatedQty = Math.min(vendorStock, remainingShortage);
+        remainingShortage -= allocatedQty;
+      }
+    } else if (!primaryFilled && remainingShortage > 0) {
+      allocatedQty = Math.min(vendorStock, remainingShortage);
+      if (allocatedQty > 0) {
+        remainingShortage -= allocatedQty;
+        primaryFilled = true;
+      }
+    }
+
     allocations.push({
       vendorId: vendor.sellerIdStr,
       selectedSellerProductId: vendor._id ? String(vendor._id) : null,
@@ -156,8 +172,6 @@ export const rankSellerAllocations = async ({
       gstRate: Number(vendor.gstRate) || 0,
       allocatedQty,
     });
-    remainingShortage -= allocatedQty;
-    if (!enableMultiSellerAllocation && allocatedQty > 0) break;
   }
 
   return allocations;
