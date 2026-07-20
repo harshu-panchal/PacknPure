@@ -1214,18 +1214,26 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
 
           if (qtyToDeduct > 0) {
             const { completeHubDelivery } = await import("./inventoryLifecycleService.js");
-            const hubStock = await completeHubDelivery(productId, qtyToDeduct);
-            
+            const deliveryResult = await completeHubDelivery({
+              productId,
+              quantity: qtyToDeduct,
+              hubId,
+              orderId: updated._id,
+              reason: "order_delivery_complete",
+            });
+            const hubStock = deliveryResult?.hubInventory;
+
             if (hubStock) {
-              // Auto-update status based on remaining stock
               let newStatus = "healthy";
               if (hubStock.availableQty <= 0) newStatus = "out_of_stock";
               else if (hubStock.availableQty <= (hubStock.reorderLevel || 10)) newStatus = "low_stock";
-              
+
               if (hubStock.status !== newStatus) {
                 await HubInventory.findByIdAndUpdate(hubStock._id, { $set: { status: newStatus } });
               }
-              console.log(`[InventorySync] Deducted ${qtyToDeduct}. New Qty: ${hubStock.availableQty}, Status: ${newStatus}`);
+              console.log(
+                `[InventorySync] Deducted ${qtyToDeduct}. New Qty: ${hubStock.availableQty}, Status: ${newStatus}`,
+              );
             }
           }
         }

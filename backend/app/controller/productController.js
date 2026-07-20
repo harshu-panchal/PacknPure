@@ -60,6 +60,7 @@ import {
   parseCustomerCoordinates,
   getNearbySellerIdsForCustomer,
 } from "../services/customerVisibilityService.js";
+import { adjustSellerStock, setAdminHubStock } from "../services/inventory/inventoryEngine.js";
 
 function isCustomerVisibilityRequest(req) {
   // If explicitly searching master catalog, it's not a location-bound customer request
@@ -211,27 +212,14 @@ function hubInventoryStatus(availableQty, reorderLevel = 10) {
 
 /** Admin master: variant stock in the form is hub warehouse qty. */
 async function syncAdminHubStock(productId, quantity, opts = {}) {
-  const qty = Math.max(0, Number(quantity) || 0);
-  const reorderLevel = Math.max(0, Number(opts.reorderLevel ?? 10));
-  const sellPrice = Number(opts.sellPrice ?? 0);
-  const setFields = {
-    availableQty: qty,
-    status: hubInventoryStatus(qty, reorderLevel),
-    reorderLevel,
-  };
-  if (sellPrice > 0) {
-    setFields.sellPrice = sellPrice;
-    setFields.priceUpdatedAt = new Date();
-  }
-
-  await HubInventory.findOneAndUpdate(
-    { hubId: DEFAULT_HUB_ID, productId },
-    {
-      $set: setFields,
-      $setOnInsert: { reservedQty: 0 },
-    },
-    { upsert: true, new: true },
-  );
+  await setAdminHubStock({
+    productId,
+    quantity,
+    hubId: DEFAULT_HUB_ID,
+    reorderLevel: Math.max(0, Number(opts.reorderLevel ?? 10)),
+    sellPrice: Number(opts.sellPrice ?? 0),
+    reason: "admin_catalog_sync",
+  });
 }
 
 function applyVariantsToProductData(productData, ownerType = "admin") {
@@ -1962,8 +1950,17 @@ export const updateVariantStock = async (req, res) => {
 
       const productBefore = product.toObject();
 
-      product.stock = nextStock;
-      await product.save();
+      await adjustSellerStock({
+        productId: product._id,
+        absoluteStock: nextStock,
+        reason: "admin_variant_stock_update",
+      });
+
+      product = await Product.findOne(query);
+      if (role === "admin") {
+        applyAdminPricingFromStockPayload(product, { price, salePrice, purchasePrice, mrp });
+        await product.save();
+      }
 
       if (role !== "admin" && product.ownerType === "seller") {
         try {
@@ -2021,14 +2018,18 @@ export const updateVariantStock = async (req, res) => {
       nextVariantStock = Math.max(0, currentVariantStock + numericDelta);
     }
 
-    const updatedVariants = setVariantStockAtIndex(product.variants, idx, nextVariantStock);
-    const catalogStock = totalVariantStock(updatedVariants);
-    const targetVariant = updatedVariants[idx];
+    const targetVariant = product.variants[idx];
 
     const productBefore = product.toObject();
 
-    product.variants = updatedVariants;
-    product.stock = catalogStock;
+    await adjustSellerStock({
+      productId: product._id,
+      variantId: targetVariant?._id || null,
+      absoluteStock: nextVariantStock,
+      reason: "variant_stock_update",
+    });
+
+    product = await Product.findOne(query);
     product.markModified("variants");
 
     if (role === "admin") {
@@ -2040,6 +2041,9 @@ export const updateVariantStock = async (req, res) => {
     }
 
     await product.save();
+
+    const catalogStock = product.stock;
+    const updatedVariants = product.variants;
 
     if (role !== "admin" && product.ownerType === "seller") {
       try {

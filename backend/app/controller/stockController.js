@@ -4,11 +4,11 @@ import handleResponse from "../utils/helper.js";
 import {
   listVariantsForStockPicker,
   resolveVariantIndex,
-  setVariantStockAtIndex,
   totalVariantStock,
   variantStockRequiresSelection,
 } from "../utils/productHelpers.js";
 import { handleSellerListingChangeReview } from "../services/sellerProductReviewService.js";
+import { adjustSellerStock, InventoryError } from "../services/inventory/inventoryEngine.js";
 
 /* ===============================
    ADJUST STOCK MANUALLY
@@ -49,19 +49,29 @@ export const adjustStock = async (req, res) => {
       }
 
       const productBefore = product.toObject();
-
-      const current = Math.max(0, Number(product.variants[idx]?.stock) || 0);
-      const nextVariantStock = Math.max(0, current + signedDelta);
-      const updatedVariants = setVariantStockAtIndex(product.variants, idx, nextVariantStock);
-      const catalogStock = totalVariantStock(updatedVariants);
-
-      product.variants = updatedVariants;
-      product.stock = catalogStock;
-      product.markModified("variants");
-      await product.save();
+      const resolvedVariantId = product.variants[idx]?._id || null;
 
       try {
-        await handleSellerListingChangeReview(productBefore, product);
+        await adjustSellerStock({
+          productId,
+          variantId: resolvedVariantId,
+          delta: signedDelta,
+          sellerId,
+          reason: `manual_${type?.toLowerCase() || "adjustment"}`,
+        });
+      } catch (error) {
+        if (error instanceof InventoryError && error.code === "INSUFFICIENT_SELLER_STOCK") {
+          return handleResponse(res, 400, "Stock cannot be negative");
+        }
+        throw error;
+      }
+
+      const updatedProduct = await Product.findById(productId);
+      const nextVariantStock = Math.max(0, Number(updatedProduct?.variants?.[idx]?.stock) || 0);
+      const catalogStock = updatedProduct ? updatedProduct.stock : totalVariantStock(updatedProduct?.variants || []);
+
+      try {
+        await handleSellerListingChangeReview(productBefore, updatedProduct);
       } catch (reviewErr) {
         console.warn("[adjustStock] seller review failed:", reviewErr.message);
       }
@@ -71,43 +81,49 @@ export const adjustStock = async (req, res) => {
         seller: sellerId,
         type: isRestock ? "Restock" : "Correction",
         quantity: signedDelta,
-        variantId: updatedVariants[idx]?._id || undefined,
+        variantId: resolvedVariantId || undefined,
         note:
           note ||
-          `Manual ${type} on ${updatedVariants[idx]?.name || `variant ${idx + 1}`}`,
+          `Manual ${type} on ${updatedProduct?.variants?.[idx]?.name || `variant ${idx + 1}`}`,
       });
       await historyEntry.save();
 
       return handleResponse(res, 200, "Variant stock adjusted successfully", {
         newStock: catalogStock,
         variant: {
-          variantId: updatedVariants[idx]?._id
-            ? String(updatedVariants[idx]._id)
-            : null,
+          variantId: resolvedVariantId ? String(resolvedVariantId) : null,
           index: idx,
-          name: updatedVariants[idx]?.name,
+          name: updatedProduct?.variants?.[idx]?.name,
           stock: nextVariantStock,
         },
         variants: listVariantsForStockPicker({
-          variants: updatedVariants,
-          unit: product.unit,
+          variants: updatedProduct?.variants || [],
+          unit: updatedProduct?.unit,
         }),
         historyEntry,
       });
     }
 
-    let finalStock = Math.max(0, Number(product.stock) || 0) + signedDelta;
-    if (finalStock < 0) {
-      return handleResponse(res, 400, "Stock cannot be negative");
-    }
-
     const productBefore = product.toObject();
 
-    product.stock = finalStock;
-    await product.save();
+    try {
+      await adjustSellerStock({
+        productId,
+        delta: signedDelta,
+        sellerId,
+        reason: `manual_${type?.toLowerCase() || "adjustment"}`,
+      });
+    } catch (error) {
+      if (error instanceof InventoryError && error.code === "INSUFFICIENT_SELLER_STOCK") {
+        return handleResponse(res, 400, "Stock cannot be negative");
+      }
+      throw error;
+    }
+
+    const updatedProduct = await Product.findById(productId);
 
     try {
-      await handleSellerListingChangeReview(productBefore, product);
+      await handleSellerListingChangeReview(productBefore, updatedProduct);
     } catch (reviewErr) {
       console.warn("[adjustStock] seller review failed:", reviewErr.message);
     }
@@ -123,7 +139,7 @@ export const adjustStock = async (req, res) => {
     await historyEntry.save();
 
     return handleResponse(res, 200, "Stock adjusted successfully", {
-      newStock: product.stock,
+      newStock: updatedProduct.stock,
       historyEntry,
     });
   } catch (error) {

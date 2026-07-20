@@ -18,6 +18,10 @@ import {
   mapPrKeyDates,
   buildPrTimeline,
 } from "../utils/purchaseRequestHelpers.js";
+import {
+  acceptQAInventory,
+  receiveInventoryAtHub,
+} from "../services/inventory/inventoryEngine.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 
@@ -1084,24 +1088,33 @@ export const verifyInward = async (req, res) => {
         }
 
         if (acceptedQty > 0) {
-          const hubRow = await HubInventory.findOne({
-            hubId: pr.hubId || DEFAULT_HUB_ID,
-            productId
-          });
+          const hubId = pr.hubId || DEFAULT_HUB_ID;
 
+          if (pr.orderId) {
+            await acceptQAInventory({
+              productId,
+              quantity: acceptedQty,
+              hubId,
+              orderId: pr.orderId,
+              reason: "verify_inward_order_linked",
+            });
+          } else {
+            await receiveInventoryAtHub({
+              productId,
+              quantity: acceptedQty,
+              hubId,
+              reason: "verify_inward_standalone",
+            });
+          }
+
+          const hubRow = await HubInventory.findOne({ hubId, productId });
           if (hubRow) {
-            if (pr.orderId) {
-              hubRow.reservedQty = (Number(hubRow.reservedQty) || 0) + acceptedQty;
-            } else {
-              hubRow.availableQty = (Number(hubRow.availableQty) || 0) + acceptedQty;
-            }
             // Re-sync price with Master Catalog just in case
             const masterProduct = await Product.findById(productId);
             if (masterProduct) {
               hubRow.sellPrice = masterProduct.price || masterProduct.salePrice || hubRow.sellPrice;
-              
+
               // Propagation: Sync Master Price to all linked seller products (Downward Sync)
-              // This ensures if Admin changed master price during inwarding, it propagates.
               const { propagatePriceUpdates } = await import('./productController.js');
               if (propagatePriceUpdates) {
                  await propagatePriceUpdates(masterProduct);
@@ -1116,69 +1129,50 @@ export const verifyInward = async (req, res) => {
               );
             }
 
-            // Update status based on new available quantity
-            if (hubRow.availableQty <= 0) hubRow.status = "out_of_stock";
-            else if (hubRow.availableQty <= Number(hubRow.reorderLevel || 0)) hubRow.status = "low_stock";
-            else hubRow.status = "healthy";
-
-            await hubRow.save();
             console.log(`[Inward] Verified stock for ${productId}: Moved ${acceptedQty} to ${ pr.orderId ? 'ReservedQty' : 'AvailableQty' }. New total: ${hubRow.availableQty}`);
+          }
 
-            // Call Centralized Sync Service
-            if (!pr.orderId && acceptedQty > 0) {
-              try {
-                const { syncProductStock } = await import('../services/inventorySyncService.js');
-                const prLine = pr.items?.find((line) => {
-                  const lineProductId = String(line.productId?._id || line.productId);
-                  return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
-                });
-                await syncProductStock(productId, prLine?.variantId || null, acceptedQty);
-              } catch (err) {
-                console.error("[verifyInward] Failed to sync product stock:", err);
-              }
-            }
+          // Release Seller Committed Stock (SC) now that goods are physically at the hub.
+          try {
+            const { moveSellerCommitToTransit } = await import("../services/inventory/inventoryEngine.js");
+            const prLine = pr.items?.find((line) => {
+              const lineProductId = String(line.productId?._id || line.productId);
+              return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
+            });
+            const sellerProductId = prLine?.selectedSellerProductId
+              ? String(prLine.selectedSellerProductId)
+              : String(item.sellerProductId || productId);
+            if (sellerProductId && prLine) {
+              let sellerVariantId = prLine.variantId || null;
 
-            // Release Seller Committed Stock (SC) now that goods are physically at the hub.
-            // freezeSellerInventory (called at order time) deducted stock and incremented committedStock.
-            // deductSellerInventoryAfterPickup decrements ONLY committedStock (stock was already deducted).
-            // This must run at QA verification, NOT at pickup, because the pickup OTP flow may not
-            // always be used (direct delivery). We resolve the seller product from the PR line.
-            try {
-              const { deductSellerInventoryAfterPickup } = await import('../services/inventoryLifecycleService.js');
-              const prLine = pr.items?.find((line) => {
-                const lineProductId = String(line.productId?._id || line.productId);
-                // Match on either the resolved master productId or the original seller productId
-                return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
-              });
-              const sellerProductId = prLine?.selectedSellerProductId
-                ? String(prLine.selectedSellerProductId)
-                : String(item.sellerProductId || productId);
-              if (sellerProductId && prLine) {
-                let sellerVariantId = prLine.variantId || null;
-                
-                // Map Master Variant ID to Seller Variant ID using name normalization
-                if (sellerVariantId) {
-                  const ProductModel = (await import("../models/product.js")).default;
-                  const { normalizeVariantMatchKey } = await import("../utils/productHelpers.js");
-                  const masterProduct = await ProductModel.findById(prLine.productId);
-                  const sellerProduct = await ProductModel.findById(sellerProductId);
-                  
-                  if (masterProduct && sellerProduct) {
-                    const masterVar = masterProduct.variants?.find(v => String(v._id) === String(sellerVariantId));
-                    if (masterVar) {
-                      const masterKey = normalizeVariantMatchKey(masterVar.name);
-                      const sellerVar = sellerProduct.variants?.find(v => normalizeVariantMatchKey(v.name) === masterKey);
-                      if (sellerVar) sellerVariantId = sellerVar._id;
-                    }
+              if (sellerVariantId) {
+                const ProductModel = (await import("../models/product.js")).default;
+                const { normalizeVariantMatchKey } = await import("../utils/productHelpers.js");
+                const masterProduct = await ProductModel.findById(prLine.productId);
+                const sellerProduct = await ProductModel.findById(sellerProductId);
+
+                if (masterProduct && sellerProduct) {
+                  const masterVar = masterProduct.variants?.find(v => String(v._id) === String(sellerVariantId));
+                  if (masterVar) {
+                    const masterKey = normalizeVariantMatchKey(masterVar.name);
+                    const sellerVar = sellerProduct.variants?.find(v => normalizeVariantMatchKey(v.name) === masterKey);
+                    if (sellerVar) sellerVariantId = sellerVar._id;
                   }
                 }
-
-                await deductSellerInventoryAfterPickup(sellerProductId, sellerVariantId, acceptedQty);
-                console.log(`[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`);
               }
-            } catch (scErr) {
-              console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);
+
+              await moveSellerCommitToTransit({
+                productId: sellerProductId,
+                variantId: sellerVariantId,
+                quantity: acceptedQty,
+                sellerId: pr.vendorId,
+                orderId: pr.orderId,
+                reason: "verify_inward_pickup_commit_release",
+              });
+              console.log(`[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`);
             }
+          } catch (scErr) {
+            console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);
           }
         }
       }

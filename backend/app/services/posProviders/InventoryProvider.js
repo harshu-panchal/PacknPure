@@ -1,7 +1,11 @@
 import Product from "../../models/product.js";
 import HubInventory from "../../models/hubInventory.js";
-import { deductHubAvailableInventory, restoreHubAvailableInventory, restoreSellerInventory } from "../inventoryLifecycleService.js";
-import { syncProductStock } from "../inventorySyncService.js";
+import {
+  deductHubInventory,
+  restoreHubAvailableInventory,
+  restoreSellerInventory,
+  deductSellerInventory,
+} from "../inventory/inventoryEngine.js";
 
 // Base Interface Pattern
 class InventoryProvider {
@@ -65,11 +69,13 @@ export class AdminInventoryProvider extends InventoryProvider {
     }
 
     async deductStock(productId, variantId, quantity, session) {
-        return await deductHubAvailableInventory(productId, variantId, quantity, session);
+        const result = await deductHubInventory({ productId, variantId, quantity, session, reason: "pos_sale" });
+        return result.applied ? result.hubInventory : null;
     }
 
     async restoreStock(productId, variantId, quantity, session) {
-        return await restoreHubAvailableInventory(productId, variantId, quantity, session);
+        const result = await restoreHubAvailableInventory({ productId, variantId, quantity, session, reason: "pos_return" });
+        return result.hubInventory;
     }
 }
 
@@ -131,13 +137,25 @@ export class SellerInventoryProvider extends InventoryProvider {
     }
 
     async deductStock(productId, variantId, quantity, session) {
-        // Direct syncProductStock with minus quantity. No hub involvement.
-        // It returns updated document or similar in your syncProductStock
-        await syncProductStock(productId, variantId, -quantity, false, session);
-        return true; // Simple success boolean
+        const result = await deductSellerInventory({
+            productId,
+            variantId,
+            quantity,
+            session,
+            sellerId: this.sellerId,
+            reason: "pos_sale",
+        });
+        return result.success;
     }
 
     async restoreStock(productId, variantId, quantity, session) {
-        return await restoreSellerInventory(productId, variantId, quantity, session);
+        return await restoreSellerInventory({
+            productId,
+            variantId,
+            quantity,
+            session,
+            sellerId: this.sellerId,
+            reason: "pos_return",
+        });
     }
 }
