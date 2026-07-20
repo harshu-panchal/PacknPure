@@ -10,6 +10,7 @@ import { startHubDeliverySearchAtomic } from "./orderWorkflowService.js";
 import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "./hubOrderOrchestrator.js";
 import ProcurementSession from "../models/procurementSession.js";
 import { ensureProcurementSession } from "./procurementSessionService.js";
+import { executeRollbackEvent } from "./transactionEngine.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "./orderSocketEmitter.js";
 import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
 import { 
@@ -295,12 +296,13 @@ export const executeCoreOrderFulfillment = async ({
           })
         : [];
     } catch (procurementErr) {
-      if (reserveResult.ok && Array.isArray(reserveResult.reservedRows)) {
-        const { releaseHubReservation } = await import("./inventoryLifecycleService.js");
-        for (const applied of reserveResult.reservedRows) {
-          await releaseHubReservation(applied.productId, applied.variantId, applied.reserveQty);
-        }
-      }
+      await executeRollbackEvent({
+        eventType: "SYSTEM_COMPENSATION",
+        transactionId: `procurement_create_failed:${String(newOrder._id)}`,
+        orderId: newOrder._id,
+        reason: "procurement_creation_failed_after_reserve",
+        actor: { type: "system" },
+      });
       if (session) await session.abortTransaction();
       throw new Error(procurementErr.message || "Unable to procure items for this order.");
     }

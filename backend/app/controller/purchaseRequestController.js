@@ -26,6 +26,7 @@ import {
   markAllocationFromSellerResponse,
   markAllocationCompletedFromInward,
 } from "../services/procurementSessionService.js";
+import { executeRollbackEvent } from "../services/transactionEngine.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 
@@ -1379,8 +1380,16 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
       // Trigger auto-fallback to next seller and release commitments
       try {
-        const { fallbackPurchaseRequest, releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
-        await releasePurchaseRequestCommitments(pr);
+        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+        await executeRollbackEvent({
+          eventType: "SELLER_REJECTED",
+          transactionId: `seller_reject:${String(pr._id)}`,
+          orderId: pr.orderId || null,
+          purchaseRequestId: pr._id,
+          allocationId: pr.allocationId || null,
+          reason: "seller_rejected",
+          actor: { id: sellerId, type: "seller" },
+        });
         await fallbackPurchaseRequest(pr._id);
       } catch (err) {
         console.warn("[Auto Fallback] Failed to trigger fallback on rejection:", err.message);
@@ -1441,8 +1450,16 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
     if (responseStatus === "rejected") {
       try {
-        const { fallbackPurchaseRequest, releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
-        await releasePurchaseRequestCommitments(pr);
+        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+        await executeRollbackEvent({
+          eventType: "SELLER_REJECTED",
+          transactionId: `seller_reject:${String(pr._id)}`,
+          orderId: pr.orderId || null,
+          purchaseRequestId: pr._id,
+          allocationId: pr.allocationId || null,
+          reason: "seller_rejected_zero_commit",
+          actor: { id: sellerId, type: "seller" },
+        });
         await fallbackPurchaseRequest(pr._id);
       } catch (err) {}
     } else if (responseStatus === "partial") {
@@ -1454,6 +1471,16 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       if (remainingToRetry > 0) {
         try {
           const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+          await executeRollbackEvent({
+            eventType: "SELLER_REJECTED",
+            transactionId: `seller_partial:${String(pr._id)}:${remainingToRetry}`,
+            orderId: pr.orderId || null,
+            purchaseRequestId: pr._id,
+            allocationId: pr.allocationId || null,
+            quantity: remainingToRetry,
+            reason: "seller_partial_uncommitted_release",
+            actor: { id: sellerId, type: "seller" },
+          });
           await fallbackPurchaseRequest(pr._id, remainingToRetry);
         } catch (err) {
           console.warn("[Auto Fallback] Failed to trigger fallback on partial response:", err.message);

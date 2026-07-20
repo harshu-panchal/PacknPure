@@ -1,8 +1,9 @@
 import PurchaseRequest from "../models/purchaseRequest.js";
 import Admin from "../models/admin.js";
-import { fallbackPurchaseRequest, releasePurchaseRequestCommitments } from "../services/hubOrderOrchestrator.js";
+import { fallbackPurchaseRequest } from "../services/hubOrderOrchestrator.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 import { markAllocationTimeout } from "../services/procurementSessionService.js";
+import { executeRollbackEvent } from "../services/transactionEngine.js";
 
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 
@@ -43,7 +44,15 @@ const processExpirations = async () => {
           allocationId: fullPr.allocationId,
         });
       }
-      await releasePurchaseRequestCommitments(fullPr);
+      await executeRollbackEvent({
+        eventType: "SELLER_TIMEOUT",
+        transactionId: `seller_timeout:${String(fullPr?._id || pr._id)}`,
+        orderId: fullPr?.orderId || null,
+        purchaseRequestId: fullPr?._id || null,
+        allocationId: fullPr?.allocationId || null,
+        reason: "procurement_request_expired",
+        actor: { type: "system" },
+      });
       await fallbackPurchaseRequest(pr._id);
       console.log(`[ProcurementMonitor] PR ${pr.requestId} expired. Triggered fallback and released commitments.`);
     }

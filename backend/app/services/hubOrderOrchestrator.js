@@ -574,13 +574,15 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       
       if (order) {
         if (settings?.procurementFailureAction === "auto_cancel") {
-          const { compensateOrderCancellation } = await import("./orderCompensation.js");
+          const { executeRollbackEvent } = await import("./transactionEngine.js");
           const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
-          order.status = "cancelled";
-          order.workflowStatus = "CANCELLED";
-          order.cancellationReason = "Procurement failed: Items out of stock at all vendors";
-          await order.save();
-          await compensateOrderCancellation(order, order.orderId);
+          await executeRollbackEvent({
+            eventType: "PROCUREMENT_FAILED",
+            transactionId: `procurement_failed:${String(order._id)}`,
+            orderId: order._id,
+            reason: "all_sellers_exhausted_auto_cancel",
+            actor: { type: "system" },
+          });
           emitOrderStatusUpdate(order.orderId, { workflowStatus: "CANCELLED", status: "cancelled" });
         } else {
           if (pr.procurementSessionId) {
@@ -729,37 +731,19 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
  * Release committed stock for a Purchase Request (called on rejection, expiry, or cancellation)
  */
 export const releasePurchaseRequestCommitments = async (pr) => {
-  if (!pr || !pr.items) return;
-  const Product = (await import("../models/product.js")).default;
-  const { releaseSellerReservation } = await import("./inventoryLifecycleService.js");
-  for (const item of pr.items) {
-    if (!item.selectedSellerProductId) continue;
-    try {
-      const releaseQty = Number(item.shortageQty) || 0;
-      if (releaseQty <= 0) continue;
-      
-      if (item.variantId) {
-        const masterProduct = await Product.findById(item.productId).select("variants").lean();
-        const masterVar = Array.isArray(masterProduct?.variants) ? masterProduct.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId)) : null;
-        if (masterVar) {
-          const sellerProduct = await Product.findById(item.selectedSellerProductId);
-          if (sellerProduct && Array.isArray(sellerProduct.variants)) {
-            const masterKey = normalizeVariantMatchKey(masterVar.name);
-            const sellerVar = sellerProduct.variants.find(
-              (v) => normalizeVariantMatchKey(v.name) === masterKey,
-            );
-            if (sellerVar) {
-              await releaseSellerReservation(item.selectedSellerProductId, sellerVar._id, releaseQty);
-            } else {
-              await releaseSellerReservation(item.selectedSellerProductId, null, releaseQty);
-            }
-          }
-        }
-      } else {
-        await releaseSellerReservation(item.selectedSellerProductId, null, releaseQty);
-      }
-    } catch (err) {
-      console.warn(`[releasePurchaseRequestCommitments] Failed to release PR ${pr.requestId} commitments:`, err.message);
-    }
+  if (!pr) return;
+  try {
+    const { executeRollbackEvent } = await import("./transactionEngine.js");
+    await executeRollbackEvent({
+      eventType: "SYSTEM_COMPENSATION",
+      transactionId: `pr_release:${String(pr._id)}`,
+      orderId: pr.orderId || null,
+      purchaseRequestId: pr._id,
+      allocationId: pr.allocationId || null,
+      reason: "legacy_release_purchase_request_commitments",
+      actor: { type: "system" },
+    });
+  } catch (err) {
+    console.warn(`[releasePurchaseRequestCommitments] Failed to release PR ${pr.requestId} commitments:`, err.message);
   }
 };
