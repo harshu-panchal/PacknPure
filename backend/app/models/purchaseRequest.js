@@ -83,6 +83,21 @@ const purchaseRequestSchema = new mongoose.Schema(
       ref: "Order",
       index: true,
     },
+    procurementSessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProcurementSession",
+      index: true,
+    },
+    allocationId: {
+      type: String,
+      index: true,
+    },
+    retryNumber: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
     hubId: {
       type: String,
       default: "MAIN_HUB",
@@ -217,5 +232,6 @@ const purchaseRequestSchema = new mongoose.Schema(
 
 purchaseRequestSchema.index({ orderId: 1, vendorId: 1, createdAt: -1 });
 purchaseRequestSchema.index({ status: 1, expiresAt: 1 });
+purchaseRequestSchema.index({ procurementSessionId: 1, allocationId: 1 }, { unique: true, sparse: true });
 
 export default mongoose.model("PurchaseRequest", purchaseRequestSchema);

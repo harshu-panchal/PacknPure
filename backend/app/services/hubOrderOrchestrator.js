@@ -4,6 +4,13 @@ import PurchaseRequest from "../models/purchaseRequest.js";
 import Seller from "../models/seller.js";
 import { effectiveProductStock, normalizeVariantMatchKey } from "../utils/productHelpers.js";
 import { distanceMeters } from "../utils/geoUtils.js";
+import {
+  ensureProcurementSession,
+  reserveAllocation,
+  attachPurchaseRequestAllocation,
+  markAllocationTimeout,
+} from "./procurementSessionService.js";
+import { rankSellerAllocations } from "./allocationEngine.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const DEFAULT_PROCUREMENT_MARGIN_TYPE = String(
@@ -263,90 +270,14 @@ export const createAutoPurchaseRequests = async ({
     hubLng,
     variantId = null,
   ) => {
-    if (!baseProduct) return [];
-    const matchOr = [{ masterProductId: baseProduct._id }];
-    if (String(baseProduct.name || "").trim()) {
-      matchOr.push({ name: String(baseProduct.name).trim() });
-    }
-    if (baseProduct.categoryId && baseProduct.subcategoryId) {
-      matchOr.push({
-        categoryId: baseProduct.categoryId,
-        subcategoryId: baseProduct.subcategoryId,
-      });
-    }
-
-    const candidates = await Product.find({
-      ownerType: "seller",
-      status: "active",
-      sellerId: { $ne: null },
-      $or: matchOr,
-    })
-      .select("_id sellerId stock name categoryId subcategoryId price salePrice purchasePrice variants gstRate gstEnabled")
-      .populate("sellerId", "location rating createdAt")
-      .lean();
-
-    const inStock = candidates.filter(
-      (row) => sellerAvailableForMasterVariant(row, variantId, baseProduct) > 0,
-    );
-    if (!inStock.length) return [];
-
-    const scored = inStock.map((row) => {
-      const unitCost = normalizeMoney(effectiveCatalogPrice(row, variantId, baseProduct));
-      const seller = row.sellerId || {};
-      
-      // Calculate distance to Hub
-      let distance = Infinity;
-      if (hubLat !== undefined && hubLng !== undefined && seller.location?.coordinates?.length === 2) {
-        const [slng, slat] = seller.location.coordinates;
-        distance = distanceMeters(hubLat, hubLng, slat, slng);
-      }
-
-      const rating = Number(seller.rating || 0);
-      const createdAt = seller.createdAt ? new Date(seller.createdAt).getTime() : Date.now();
-
-      return {
-        ...row,
-        unitCost,
-        distance,
-        rating,
-        createdAt,
-        sellerIdStr: seller._id ? String(seller._id) : null
-      };
+    return rankSellerAllocations({
+      baseProduct,
+      shortageQty,
+      variantId,
+      hubLat,
+      hubLng,
+      enableMultiSellerAllocation: Boolean(settings?.enableMultiSellerAllocation),
     });
-
-    // Ranking Logic: Lowest Price -> Nearest Seller -> Highest Rating -> Oldest Seller
-    scored.sort((a, b) => {
-      if (a.unitCost !== b.unitCost) return a.unitCost - b.unitCost;
-      if (a.distance !== b.distance) return a.distance - b.distance;
-      if (a.rating !== b.rating) return b.rating - a.rating; // Descending
-      return a.createdAt - b.createdAt; // Ascending
-    });
-
-    const allocations = [];
-    let remainingShortage = shortageQty;
-    
-    for (const vendor of scored) {
-      const vendorStock = sellerAvailableForMasterVariant(
-        vendor,
-        variantId,
-        baseProduct,
-      );
-      const allocateQty = remainingShortage > 0 ? Math.min(vendorStock, remainingShortage) : 0;
-      
-      allocations.push({
-        vendorId: vendor.sellerIdStr,
-        selectedSellerProductId: vendor._id ? String(vendor._id) : null,
-        vendorUnitCost: vendor.unitCost,
-        vendorQuotedPrice: vendor.unitCost,
-        pricingStrategy: "ranked_cheapest_nearest",
-        gstEnabled: Boolean(vendor.gstEnabled),
-        gstRate: Number(vendor.gstRate) || 0,
-        allocatedQty: allocateQty,
-      });
-      remainingShortage -= allocateQty;
-    }
-
-    return allocations;
   };
 
   const shortageProductIds = shortages
@@ -496,12 +427,39 @@ export const createAutoPurchaseRequests = async ({
     );
   }
 
+  const procurementSession = await ensureProcurementSession({ order, shortages, hubId });
   const docs = [];
+  const docToShortage = new Map();
   for (const item of enrichedShortages) {
     if (!item.vendorId) continue; // Unassigned skipped or handled
-    docs.push({
+    const reserved = procurementSession
+      ? await reserveAllocation({
+          procurementSessionId: procurementSession._id,
+          productId: item.productId,
+          variantId: item.variantId || null,
+          quantity: item.shortageQty,
+          vendorId: item.vendorId,
+          selectedSellerProductId: item.selectedSellerProductId || null,
+          rankedSellers: item.rankedSellers || [],
+          retryNumber: 0,
+          reason: "initial_allocation",
+          eventKey: `initial:${String(order._id)}:${String(item.productId)}:${String(item.variantId || "root")}:${String(item.vendorId)}:${Number(item.shortageQty || 0)}`,
+        })
+      : null;
+
+    if (reserved?.duplicate && reserved.existingPurchaseRequest) {
+      continue;
+    }
+    if (procurementSession && !reserved?.allocation) {
+      continue;
+    }
+
+    const docPayload = {
       requestId: buildRequestId(),
       orderId: order._id,
+      procurementSessionId: procurementSession?._id || undefined,
+      allocationId: reserved?.allocation?.allocationId || undefined,
+      retryNumber: Number(reserved?.allocation?.retryNumber || 0),
       hubId,
       vendorId: item.vendorId,
       rankedSellers: item.rankedSellers || [],
@@ -527,15 +485,29 @@ export const createAutoPurchaseRequests = async ({
         totalProcurementCost: item.totalProcurementCost || 0,
       }],
       notes: `Auto-generated from order ${order.orderId}`,
-    });
+    };
+    docs.push(docPayload);
+    docToShortage.set(docPayload.requestId, item);
   }
 
   if (!docs.length) return [];
   const insertedDocs = await PurchaseRequest.insertMany(docs);
+  if (procurementSession) {
+    for (const doc of insertedDocs) {
+      if (doc.allocationId) {
+        await attachPurchaseRequestAllocation({
+          procurementSessionId: procurementSession._id,
+          allocationId: doc.allocationId,
+          purchaseRequestId: doc._id,
+        });
+      }
+    }
+  }
 
   const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
-  // Immediately reserve seller quantity by creating a commitment
-  for (const item of enrichedShortages) {
+  // Immediately reserve seller quantity by creating a commitment.
+  for (const doc of insertedDocs) {
+    const item = docToShortage.get(doc.requestId);
     if (!item.vendorId || !item.selectedSellerProductId) continue;
     try {
       if (item.variantId) {
@@ -575,10 +547,23 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const pr = await PurchaseRequest.findById(prId);
   if (!pr) return null;
 
+  if (pr.procurementSessionId && pr.allocationId && String(pr.status) === "expired") {
+    await markAllocationTimeout({
+      procurementSessionId: pr.procurementSessionId,
+      allocationId: pr.allocationId,
+    });
+  }
+
   if (!pr.rankedSellers || pr.rankedSellers.length === 0) {
     pr.status = "procurement_failed";
     pr.exceptionReason = "All eligible sellers exhausted.";
     await pr.save();
+    if (pr.procurementSessionId) {
+      const ProcurementSession = (await import("../models/procurementSession.js")).default;
+      await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
+        $set: { status: "failed" },
+      });
+    }
     console.warn(`[Procurement Failed] Order ${pr.orderId} PR ${pr.requestId} has no more fallback sellers.`);
     
     try {
@@ -598,6 +583,12 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
           await compensateOrderCancellation(order, order.orderId);
           emitOrderStatusUpdate(order.orderId, { workflowStatus: "CANCELLED", status: "cancelled" });
         } else {
+          if (pr.procurementSessionId) {
+            const ProcurementSession = (await import("../models/procurementSession.js")).default;
+            await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
+              $set: { status: "on_hold" },
+            });
+          }
           order.hubStatus = "on_hold";
           await order.save();
           const { createNotification } = await import("./notificationService.js");
@@ -639,9 +630,35 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     selectedSellerProductId = nextVendorProduct._id;
   }
 
+  const retryNumber = Number(pr.retryNumber || 0) + 1;
+  let allocationRecord = null;
+  if (pr.procurementSessionId) {
+    const reserved = await reserveAllocation({
+      procurementSessionId: pr.procurementSessionId,
+      productId: pr.items[0].productId,
+      variantId: pr.items[0].variantId || null,
+      quantity: qtyToProcure,
+      vendorId: nextVendorId,
+      selectedSellerProductId: selectedSellerProductId || null,
+      rankedSellers: pr.rankedSellers,
+      retryNumber,
+      sourceAllocationId: pr.allocationId || null,
+      reason: "fallback_reassignment",
+      eventKey: `fallback:${String(pr._id)}:${String(nextVendorId)}:${Number(qtyToProcure)}`,
+    });
+    if (reserved?.duplicate && reserved.existingPurchaseRequest?._id) {
+      return PurchaseRequest.findById(reserved.existingPurchaseRequest._id);
+    }
+    allocationRecord = reserved?.allocation || null;
+    if (!allocationRecord) return null;
+  }
+
   const newPr = await PurchaseRequest.create({
     requestId: buildRequestId(),
     orderId: pr.orderId,
+    procurementSessionId: pr.procurementSessionId || undefined,
+    allocationId: allocationRecord?.allocationId || undefined,
+    retryNumber: allocationRecord?.retryNumber ?? retryNumber,
     hubId: pr.hubId,
     vendorId: nextVendorId,
     rankedSellers: pr.rankedSellers,
@@ -671,6 +688,13 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   // Save the modified original PR (shifted rankedSellers array)
   await pr.save();
+  if (pr.procurementSessionId && allocationRecord?.allocationId) {
+    await attachPurchaseRequestAllocation({
+      procurementSessionId: pr.procurementSessionId,
+      allocationId: allocationRecord.allocationId,
+      purchaseRequestId: newPr._id,
+    });
+  }
 
   // Commit stock for the new seller
   const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");

@@ -22,6 +22,10 @@ import {
   acceptQAInventory,
   receiveInventoryAtHub,
 } from "../services/inventory/inventoryEngine.js";
+import {
+  markAllocationFromSellerResponse,
+  markAllocationCompletedFromInward,
+} from "../services/procurementSessionService.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 
@@ -1174,6 +1178,14 @@ export const verifyInward = async (req, res) => {
           } catch (scErr) {
             console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);
           }
+
+          if (pr.procurementSessionId && pr.allocationId) {
+            await markAllocationCompletedFromInward({
+              procurementSessionId: pr.procurementSessionId,
+              allocationId: pr.allocationId,
+              completedQty: acceptedQty,
+            });
+          }
         }
       }
     }
@@ -1229,9 +1241,16 @@ export const verifyInward = async (req, res) => {
       PurchaseRequest.find({ orderId: pr.orderId }).select("status").lean(),
     ]);
     if (parentOrder) {
-      const allDone =
+      let allDone =
         siblingRequests.length > 0 &&
         siblingRequests.every((row) => PR_DONE_STATUSES.has(String(row.status)));
+      if (parentOrder.procurementSessionId) {
+        const ProcurementSession = (await import("../models/procurementSession.js")).default;
+        const ps = await ProcurementSession.findById(parentOrder.procurementSessionId).select("status").lean();
+        if (ps?.status) {
+          allDone = String(ps.status) === "completed";
+        }
+      }
       if (allDone) {
         parentOrder.hubStatus = "ready_for_packing";
         parentOrder.procurementRequired = false;
@@ -1349,6 +1368,14 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       pr.status = "seller_rejected";
       pr.exceptionReason = String(rejectionReason || "Rejected by seller");
       await pr.save();
+      if (pr.procurementSessionId && pr.allocationId) {
+        await markAllocationFromSellerResponse({
+          procurementSessionId: pr.procurementSessionId,
+          allocationId: pr.allocationId,
+          responseStatus: "rejected",
+          committedQty: 0,
+        });
+      }
 
       // Trigger auto-fallback to next seller and release commitments
       try {
@@ -1389,6 +1416,10 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       : anyCommitted
         ? "partial"
         : "rejected";
+    const committedQtyTotal = (pr.items || []).reduce(
+      (sum, line) => sum + Math.max(0, Number(line.committedQty || 0)),
+      0,
+    );
 
     pr.vendorResponse = {
       status: responseStatus,
@@ -1399,6 +1430,14 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     pr.status = responseStatus === "rejected" ? "seller_rejected" : "seller_confirmed";
     pr.exceptionReason = "";
     await pr.save();
+    if (pr.procurementSessionId && pr.allocationId) {
+      await markAllocationFromSellerResponse({
+        procurementSessionId: pr.procurementSessionId,
+        allocationId: pr.allocationId,
+        responseStatus,
+        committedQty: committedQtyTotal,
+      });
+    }
 
     if (responseStatus === "rejected") {
       try {
@@ -1406,6 +1445,20 @@ export const respondSellerPurchaseRequest = async (req, res) => {
         await releasePurchaseRequestCommitments(pr);
         await fallbackPurchaseRequest(pr._id);
       } catch (err) {}
+    } else if (responseStatus === "partial") {
+      const requestedQty = (pr.items || []).reduce(
+        (sum, line) => sum + Math.max(0, Number(line.shortageQty || line.requestedQty || 0)),
+        0,
+      );
+      const remainingToRetry = Math.max(0, requestedQty - committedQtyTotal);
+      if (remainingToRetry > 0) {
+        try {
+          const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+          await fallbackPurchaseRequest(pr._id, remainingToRetry);
+        } catch (err) {
+          console.warn("[Auto Fallback] Failed to trigger fallback on partial response:", err.message);
+        }
+      }
     }
 
     // --- STEP 10: AUTOMATIC PICKUP ASSIGNMENT ---

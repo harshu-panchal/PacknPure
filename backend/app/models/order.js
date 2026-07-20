@@ -269,6 +269,12 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    procurementSessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProcurementSession",
+      index: true,
+      default: null,
+    },
     slaDeadlineAt: {
       type: Date,
       index: true,

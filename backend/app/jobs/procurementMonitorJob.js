@@ -2,6 +2,7 @@ import PurchaseRequest from "../models/purchaseRequest.js";
 import Admin from "../models/admin.js";
 import { fallbackPurchaseRequest, releasePurchaseRequestCommitments } from "../services/hubOrderOrchestrator.js";
 import { createNotificationBatch } from "../services/notificationService.js";
+import { markAllocationTimeout } from "../services/procurementSessionService.js";
 
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 
@@ -36,6 +37,12 @@ const processExpirations = async () => {
       // Mark as expired and fallback
       await PurchaseRequest.updateOne({ _id: pr._id }, { $set: { status: "expired" } });
       const fullPr = await PurchaseRequest.findById(pr._id);
+      if (fullPr?.procurementSessionId && fullPr?.allocationId) {
+        await markAllocationTimeout({
+          procurementSessionId: fullPr.procurementSessionId,
+          allocationId: fullPr.allocationId,
+        });
+      }
       await releasePurchaseRequestCommitments(fullPr);
       await fallbackPurchaseRequest(pr._id);
       console.log(`[ProcurementMonitor] PR ${pr.requestId} expired. Triggered fallback and released commitments.`);

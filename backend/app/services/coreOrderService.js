@@ -8,6 +8,8 @@ import { createNotification, createNotificationBatch } from "./notificationServi
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { startHubDeliverySearchAtomic } from "./orderWorkflowService.js";
 import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "./hubOrderOrchestrator.js";
+import ProcurementSession from "../models/procurementSession.js";
+import { ensureProcurementSession } from "./procurementSessionService.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "./orderSocketEmitter.js";
 import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
 import { 
@@ -260,6 +262,15 @@ export const executeCoreOrderFulfillment = async ({
       promotionApplied: promotionId || null,
     });
     await newOrder.save({ session });
+    const procurementSession = await ensureProcurementSession({
+      order: newOrder,
+      shortages: hubPlan.shortages,
+      hubId: hubPlan.hubId,
+    });
+    if (procurementSession?._id) {
+      newOrder.procurementSessionId = procurementSession._id;
+      await newOrder.save({ session });
+    }
 
     if (promotionId) {
       const PromotionModel = mongoose.model("Promotion");
@@ -303,6 +314,10 @@ export const executeCoreOrderFulfillment = async ({
     }
 
     if (purchaseRequests.length > 0) {
+      const sessionIdFromPr = purchaseRequests.find((pr) => pr?.procurementSessionId)?.procurementSessionId || null;
+      if (sessionIdFromPr) {
+        newOrder.procurementSessionId = sessionIdFromPr;
+      }
       await Promise.all(
         purchaseRequests.map((pr) => {
           if (!pr.vendorId) return null;
@@ -329,6 +344,10 @@ export const executeCoreOrderFulfillment = async ({
 
     newOrder.hubStatus = hubPlan.shortages.length > 0 ? "procurement_required" : "inventory_reserved";
     newOrder.procurementRequired = hubPlan.shortages.length > 0;
+    if (!newOrder.procurementSessionId && hubPlan.shortages.length > 0) {
+      const existingSession = await ProcurementSession.findOne({ orderId: newOrder._id }).select("_id").lean();
+      if (existingSession?._id) newOrder.procurementSessionId = existingSession._id;
+    }
     await newOrder.save({ session });
 
     await createNotification({
