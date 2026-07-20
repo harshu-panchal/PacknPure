@@ -1,10 +1,62 @@
 import ProcurementSession from "../models/procurementSession.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
+import Product from "../models/product.js";
+import { sellerAvailableForMasterVariant } from "./allocationEngine.js";
 
 export const buildItemKey = (productId, variantId = null) =>
   `${String(productId)}::${variantId ? String(variantId) : "root"}`;
 
 const toInt = (v) => Math.max(0, Number(v || 0));
+
+const ACTIVE_ALLOCATION_STATUSES = new Set(["allocated", "locked"]);
+
+/** Quantity still covered by in-flight allocations for an item (parallel split PRs). */
+export const getActiveAllocatedQty = (session, itemKey) => {
+  let total = 0;
+  for (const alloc of session?.allocations || []) {
+    if (alloc.itemKey !== itemKey) continue;
+    if (!ACTIVE_ALLOCATION_STATUSES.has(String(alloc.status || ""))) continue;
+    total += toInt(alloc.quantity);
+  }
+  return total;
+};
+
+/** Remaining shortage not yet covered by active in-flight PR allocations. */
+export const getUncoveredRemainingQty = (session, itemKey) => {
+  const item = session?.items?.find((row) => row.itemKey === itemKey);
+  if (!item) return 0;
+  return Math.max(0, toInt(item.remainingQty) - getActiveAllocatedQty(session, itemKey));
+};
+
+export const isInventoryCommittedForAllocation = (session, allocationId) =>
+  Boolean(session?.metadata?.inventoryCommits?.[String(allocationId)]);
+
+export const markInventoryCommittedForAllocation = async (procurementSessionId, allocationId, quantity) => {
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session || !allocationId) return null;
+  session.metadata = session.metadata || {};
+  session.metadata.inventoryCommits = session.metadata.inventoryCommits || {};
+  session.metadata.inventoryCommits[String(allocationId)] = toInt(quantity);
+  await session.save();
+  return session;
+};
+
+export const revertAllocation = async ({ procurementSessionId, allocationId }) => {
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return null;
+  const allocation = (session.allocations || []).find((a) => a.allocationId === allocationId);
+  if (!allocation || allocation.status !== "allocated") return allocation;
+
+  const item = (session.items || []).find((row) => row.itemKey === allocation.itemKey);
+  if (item) {
+    item.remainingQty = toInt(item.remainingQty) + toInt(allocation.quantity);
+    item.allocatedQty = Math.max(0, toInt(item.allocatedQty) - toInt(allocation.quantity));
+  }
+  allocation.status = "failed";
+  session.status = recomputeSessionStatus(session);
+  await session.save();
+  return allocation;
+};
 
 /** Vendors that already received an allocation (one PR chance per seller per session item). */
 export const getAttemptedVendorIds = (session, itemKey) => {
@@ -156,7 +208,23 @@ export const reserveAllocation = async ({
   }
 
   const requested = toInt(quantity);
-  const allocQty = Math.min(requested, toInt(item.remainingQty));
+  let allocQty = Math.min(requested, toInt(item.remainingQty));
+  if (allocQty <= 0) return null;
+
+  if (selectedSellerProductId) {
+    const [sellerProduct, masterProduct] = await Promise.all([
+      Product.findById(selectedSellerProductId)
+        .select("variants stock committedStock sellerId")
+        .lean(),
+      Product.findById(productId).select("variants").lean(),
+    ]);
+    const sellerAvailable = sellerAvailableForMasterVariant(
+      sellerProduct,
+      variantId,
+      masterProduct,
+    );
+    allocQty = Math.min(allocQty, toInt(sellerAvailable));
+  }
   if (allocQty <= 0) return null;
 
   const vendorAlreadyAttempted = (session.allocations || []).some(

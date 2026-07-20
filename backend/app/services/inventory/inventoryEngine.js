@@ -166,8 +166,20 @@ export const freezeHubInventory = async (productId, variantId, quantity, session
   return result.applied ? result.hubInventory : null;
 };
 
-export const freezeSellerInventory = async (productId, variantId, quantity, session = null) => {
-  const result = await commitSellerInventory({ productId, variantId, quantity, session });
+export const freezeSellerInventory = async (
+  productId,
+  variantId,
+  quantity,
+  session = null,
+  idempotencyKey = null,
+) => {
+  const result = await commitSellerInventory({
+    productId,
+    variantId,
+    quantity,
+    session,
+    idempotencyKey,
+  });
   return result.success;
 };
 

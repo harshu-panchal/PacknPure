@@ -17,10 +17,15 @@ import {
   buildItemKey,
   getEligibleFallbackSellers,
   persistRankedSellersForItem,
+  getUncoveredRemainingQty,
+  isInventoryCommittedForAllocation,
+  markInventoryCommittedForAllocation,
+  revertAllocation,
 } from "./procurementSessionService.js";
 import { rankSellerAllocations } from "./allocationEngine.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
+const toInt = (v) => Math.max(0, Number(v || 0));
 const DEFAULT_PROCUREMENT_MARGIN_TYPE = String(
   process.env.DEFAULT_PROCUREMENT_MARGIN_TYPE || "percent",
 ).toLowerCase() === "flat"
@@ -121,8 +126,19 @@ async function commitSellerStockForPrLine({
   masterProductId = null,
   masterVariantId,
   quantity,
+  procurementSessionId = null,
+  allocationId = null,
 }) {
   if (!selectedSellerProductId || quantity <= 0) return;
+
+  if (procurementSessionId && allocationId) {
+    const ProcurementSession = (await import("../models/procurementSession.js")).default;
+    const session = await ProcurementSession.findById(procurementSessionId).lean();
+    if (isInventoryCommittedForAllocation(session, allocationId)) {
+      return;
+    }
+  }
+
   const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
   let sellerVariantId = null;
   if (masterVariantId) {
@@ -139,7 +155,22 @@ async function commitSellerStockForPrLine({
       masterVariantId,
     });
   }
-  await freezeSellerInventory(selectedSellerProductId, sellerVariantId, quantity);
+
+  const idempotencyKey = allocationId
+    ? `pr_commit:${String(allocationId)}`
+    : `pr_commit:${String(selectedSellerProductId)}:${Number(quantity)}`;
+
+  await freezeSellerInventory(
+    selectedSellerProductId,
+    sellerVariantId,
+    quantity,
+    null,
+    idempotencyKey,
+  );
+
+  if (procurementSessionId && allocationId) {
+    await markInventoryCommittedForAllocation(procurementSessionId, allocationId, quantity);
+  }
 }
 
 /**
@@ -324,7 +355,7 @@ export const createAutoPurchaseRequests = async ({
       variantId,
       hubLat,
       hubLng,
-      enableMultiSellerAllocation: Boolean(settings?.enableMultiSellerAllocation),
+      enableMultiSellerAllocation: true,
     });
   };
 
@@ -403,10 +434,10 @@ export const createAutoPurchaseRequests = async ({
         let remainingToAssign = item.shortageQty;
         for (let i = 0; i < selections.length; i++) {
           const choice = selections[i];
-          const allocated = settings?.enableMultiSellerAllocation ? choice.allocatedQty : remainingToAssign;
-          if (allocated <= 0 && settings?.enableMultiSellerAllocation) continue;
+          const allocated = Math.min(toInt(choice.allocatedQty), toInt(remainingToAssign));
+          if (allocated <= 0) continue;
           remainingToAssign -= allocated;
-          const fallbacks = selections.slice(i + 1).map(s => s.vendorId);
+          const fallbacks = selections.slice(i + 1).map((s) => s.vendorId);
           
           const vendorRate = choice.gstEnabled ? (choice.gstRate || 0) : 0;
           const vendorGstAmount = Number((choice.vendorUnitCost * (vendorRate / 100)).toFixed(2));
@@ -430,10 +461,9 @@ export const createAutoPurchaseRequests = async ({
             marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
             rankedSellers: fallbacks,
           });
-          if (!settings?.enableMultiSellerAllocation) break;
         }
-        
-        if (remainingToAssign > 0 && settings?.enableMultiSellerAllocation) {
+
+        if (remainingToAssign > 0) {
           const fallbackCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
           const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
           const baseGstAmount = Number((fallbackCost * (baseRate / 100)).toFixed(2));
@@ -476,10 +506,33 @@ export const createAutoPurchaseRequests = async ({
   }
 
   const procurementSession = await ensureProcurementSession({ order, shortages, hubId });
-  const docs = [];
-  const docToShortage = new Map();
+
+  const fullRankByItemKey = new Map();
   for (const item of enrichedShortages) {
-    if (!item.vendorId) continue; // Unassigned skipped or handled
+    if (!item.vendorId) continue;
+    const rankKey = buildItemKey(item.productId, item.variantId);
+    if (!fullRankByItemKey.has(rankKey)) {
+      fullRankByItemKey.set(rankKey, []);
+    }
+    const rank = fullRankByItemKey.get(rankKey);
+    if (!rank.includes(String(item.vendorId))) {
+      rank.push(String(item.vendorId));
+    }
+    for (const id of item.rankedSellers || []) {
+      const sid = String(id);
+      if (!rank.includes(sid)) rank.push(sid);
+    }
+  }
+  if (procurementSession) {
+    for (const [rankKey, vendorIds] of fullRankByItemKey.entries()) {
+      await persistRankedSellersForItem(procurementSession._id, rankKey, vendorIds);
+    }
+  }
+
+  const insertedDocs = [];
+  for (const item of enrichedShortages) {
+    if (!item.vendorId) continue;
+
     const reserved = procurementSession
       ? await reserveAllocation({
           procurementSessionId: procurementSession._id,
@@ -502,20 +555,40 @@ export const createAutoPurchaseRequests = async ({
       continue;
     }
 
-    if (procurementSession && reserved?.allocation) {
-      const rankKey = buildItemKey(item.productId, item.variantId);
-      const fullRank = [
-        String(item.vendorId),
-        ...(item.rankedSellers || []).map(String),
-      ];
-      await persistRankedSellersForItem(procurementSession._id, rankKey, fullRank);
+    const allocationId = reserved?.allocation?.allocationId;
+    const actualQty = toInt(reserved?.allocation?.quantity || item.shortageQty);
+
+    if (item.selectedSellerProductId) {
+      try {
+        await commitSellerStockForPrLine({
+          selectedSellerProductId: item.selectedSellerProductId,
+          masterProduct: item.baseProduct,
+          masterProductId: item.productId,
+          masterVariantId: item.variantId || null,
+          quantity: actualQty,
+          procurementSessionId: procurementSession?._id || null,
+          allocationId,
+        });
+      } catch (err) {
+        console.warn(
+          "[createAutoPurchaseRequests] Seller inventory commit failed, skipping PR:",
+          err.message,
+        );
+        if (procurementSession && allocationId) {
+          await revertAllocation({
+            procurementSessionId: procurementSession._id,
+            allocationId,
+          });
+        }
+        continue;
+      }
     }
 
-    const docPayload = {
+    const doc = await PurchaseRequest.create({
       requestId: buildRequestId(),
       orderId: order._id,
       procurementSessionId: procurementSession?._id || undefined,
-      allocationId: reserved?.allocation?.allocationId || undefined,
+      allocationId: allocationId || undefined,
       retryNumber: Number(reserved?.allocation?.retryNumber || 0),
       hubId,
       vendorId: item.vendorId,
@@ -527,9 +600,9 @@ export const createAutoPurchaseRequests = async ({
         variantId: item.variantId || undefined,
         requiredQty: item.requiredQty,
         availableQtyAtHub: item.availableQtyAtHub,
-        shortageQty: item.shortageQty,
-        requestedQty: item.shortageQty,
-        remainingQty: item.shortageQty,
+        shortageQty: actualQty,
+        requestedQty: actualQty,
+        remainingQty: actualQty,
         committedQty: 0,
         selectedSellerProductId: item.selectedSellerProductId || undefined,
         vendorUnitCost: item.vendorUnitCost || 0,
@@ -542,40 +615,17 @@ export const createAutoPurchaseRequests = async ({
         totalProcurementCost: item.totalProcurementCost || 0,
       }],
       notes: `Auto-generated from order ${order.orderId}`,
-    };
-    docs.push(docPayload);
-    docToShortage.set(docPayload.requestId, item);
-  }
+    });
 
-  if (!docs.length) return [];
-  const insertedDocs = await PurchaseRequest.insertMany(docs);
-  if (procurementSession) {
-    for (const doc of insertedDocs) {
-      if (doc.allocationId) {
-        await attachPurchaseRequestAllocation({
-          procurementSessionId: procurementSession._id,
-          allocationId: doc.allocationId,
-          purchaseRequestId: doc._id,
-        });
-      }
-    }
-  }
-
-  // Immediately reserve seller quantity by creating a commitment.
-  for (const doc of insertedDocs) {
-    const item = docToShortage.get(doc.requestId);
-    if (!item.vendorId || !item.selectedSellerProductId) continue;
-    try {
-      await commitSellerStockForPrLine({
-        selectedSellerProductId: item.selectedSellerProductId,
-        masterProduct: item.baseProduct,
-        masterProductId: item.productId,
-        masterVariantId: item.variantId || null,
-        quantity: item.shortageQty,
+    if (procurementSession && allocationId) {
+      await attachPurchaseRequestAllocation({
+        procurementSessionId: procurementSession._id,
+        allocationId,
+        purchaseRequestId: doc._id,
       });
-    } catch (err) {
-      console.warn("[createAutoPurchaseRequests] Failed to update seller committedStock:", err.message);
     }
+
+    insertedDocs.push(doc);
   }
 
   return insertedDocs;
@@ -674,18 +724,15 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   const qtyToProcure =
     remainingQty !== null
-      ? remainingQty
-      : (() => {
-          const sessionItem = session?.items?.find((row) => row.itemKey === itemKey);
-          const fromSession = Math.max(0, Number(sessionItem?.remainingQty || 0));
-          if (fromSession > 0) return fromSession;
-          return (
+      ? toInt(remainingQty)
+      : session
+        ? getUncoveredRemainingQty(session, itemKey)
+        : toInt(
             productLine.remainingQty ||
-            productLine.requestedQty ||
-            productLine.shortageQty ||
-            0
+              productLine.requestedQty ||
+              productLine.shortageQty ||
+              0,
           );
-        })();
 
   if (qtyToProcure <= 0) return null;
 
@@ -709,6 +756,8 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       : (pr.rankedSellers || []).map((id) => String(id));
 
     if (eligibleSellers.length === 0) {
+      const stillUncovered = session ? getUncoveredRemainingQty(session, itemKey) : qtyToProcure;
+      if (stillUncovered <= 0) return null;
       return markProcurementExhausted(pr, session);
     }
 
@@ -757,11 +806,40 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       if (!allocationRecord) continue;
     }
 
+    const actualQty = toInt(allocationRecord?.quantity || qtyToProcure);
+    const allocationId = allocationRecord?.allocationId || null;
+
+    if (selectedSellerProductId) {
+      try {
+        await commitSellerStockForPrLine({
+          selectedSellerProductId,
+          masterProduct,
+          masterProductId: productId,
+          masterVariantId: variantId,
+          quantity: actualQty,
+          procurementSessionId: pr.procurementSessionId || null,
+          allocationId,
+        });
+      } catch (err) {
+        console.warn(
+          `[fallbackPurchaseRequest] Seller inventory commit failed for ${nextVendorId}:`,
+          err.message,
+        );
+        if (pr.procurementSessionId && allocationId) {
+          await revertAllocation({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId,
+          });
+        }
+        continue;
+      }
+    }
+
     const newPr = await PurchaseRequest.create({
       requestId: buildRequestId(),
       orderId: pr.orderId,
       procurementSessionId: pr.procurementSessionId || undefined,
-      allocationId: allocationRecord?.allocationId || undefined,
+      allocationId: allocationId || undefined,
       retryNumber: allocationRecord?.retryNumber ?? retryNumber,
       hubId: pr.hubId,
       vendorId: nextVendorId,
@@ -775,9 +853,9 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
           selectedSellerProductId: selectedSellerProductId || undefined,
           requiredQty: productLine.requiredQty,
           availableQtyAtHub: productLine.availableQtyAtHub,
-          shortageQty: qtyToProcure,
-          requestedQty: qtyToProcure,
-          remainingQty: qtyToProcure,
+          shortageQty: actualQty,
+          requestedQty: actualQty,
+          remainingQty: actualQty,
           committedQty: 0,
           vendorUnitCost: productLine.vendorUnitCost,
           vendorQuotedPrice: productLine.vendorQuotedPrice,
@@ -786,7 +864,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
           gstAmount: productLine.gstAmount,
           baseSupplyPrice: productLine.baseSupplyPrice,
           finalSupplyPrice: productLine.finalSupplyPrice,
-          totalProcurementCost: productLine.finalSupplyPrice * qtyToProcure,
+          totalProcurementCost: productLine.finalSupplyPrice * actualQty,
         },
       ],
       notes: `Fallback request from failed PR ${pr.requestId}`,
@@ -795,32 +873,27 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     pr.rankedSellers = remainingRanked;
     await pr.save();
 
-    if (pr.procurementSessionId && allocationRecord?.allocationId) {
+    if (pr.procurementSessionId && allocationId) {
       await attachPurchaseRequestAllocation({
         procurementSessionId: pr.procurementSessionId,
-        allocationId: allocationRecord.allocationId,
+        allocationId,
         purchaseRequestId: newPr._id,
       });
-    }
-
-    try {
-      await commitSellerStockForPrLine({
-        selectedSellerProductId,
-        masterProduct,
-        masterProductId: productId,
-        masterVariantId: variantId,
-        quantity: qtyToProcure,
-      });
-    } catch (err) {
-      console.warn(`[fallbackPurchaseRequest] Failed to commit stock for next seller:`, err.message);
     }
 
     return newPr;
   }
 
+  const finalSession = pr.procurementSessionId
+    ? await ProcurementSession.findById(pr.procurementSessionId)
+    : null;
+  if (finalSession && getUncoveredRemainingQty(finalSession, itemKey) <= 0) {
+    return null;
+  }
+
   return markProcurementExhausted(
     pr,
-    pr.procurementSessionId ? await ProcurementSession.findById(pr.procurementSessionId) : null,
+    finalSession,
   );
 };
 
@@ -833,7 +906,7 @@ export const releasePurchaseRequestCommitments = async (pr) => {
     const { executeRollbackEvent } = await import("./transactionEngine.js");
     await executeRollbackEvent({
       eventType: "SYSTEM_COMPENSATION",
-      transactionId: `pr_release:${String(pr._id)}`,
+      transactionId: `pr_inventory_release:${String(pr._id)}`,
       orderId: pr.orderId || null,
       purchaseRequestId: pr._id,
       allocationId: pr.allocationId || null,

@@ -1385,7 +1385,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
         const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
         await executeRollbackEvent({
           eventType: "SELLER_REJECTED",
-          transactionId: `seller_reject:${String(pr._id)}`,
+          transactionId: `pr_inventory_release:${String(pr._id)}`,
           orderId: pr.orderId || null,
           purchaseRequestId: pr._id,
           allocationId: pr.allocationId || null,
@@ -1455,7 +1455,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
         const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
         await executeRollbackEvent({
           eventType: "SELLER_REJECTED",
-          transactionId: `seller_reject:${String(pr._id)}`,
+          transactionId: `pr_inventory_release:${String(pr._id)}`,
           orderId: pr.orderId || null,
           purchaseRequestId: pr._id,
           allocationId: pr.allocationId || null,

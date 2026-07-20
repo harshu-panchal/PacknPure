@@ -14,6 +14,8 @@ import { resolveSellerVariantId } from "../utils/productHelpers.js";
 
 const ACTIVE_PR_STATUSES = ["created", "seller_confirmed", "pickup_assigned", "picked", "hub_delivered"];
 
+const PR_INVENTORY_RELEASE_EVENTS = new Set(["SELLER_REJECTED", "SELLER_TIMEOUT", "SYSTEM_COMPENSATION"]);
+
 const toQty = (value) => Math.max(0, Number(value || 0));
 
 const newTransactionId = (eventType, orderId = "none", allocationId = "none") =>
@@ -34,6 +36,15 @@ const createOrGetRecord = async ({
 }) => {
   const existingByTxn = await RollbackRecord.findOne({ transactionId });
   if (existingByTxn) return { record: existingByTxn, duplicate: existingByTxn.status === "completed" || existingByTxn.status === "skipped" };
+
+  if (purchaseRequestId && PR_INVENTORY_RELEASE_EVENTS.has(rollbackEvent) && quantity == null) {
+    const existingPrRelease = await RollbackRecord.findOne({
+      purchaseRequestId,
+      rollbackEvent: { $in: [...PR_INVENTORY_RELEASE_EVENTS] },
+      status: { $in: ["completed", "skipped"] },
+    });
+    if (existingPrRelease) return { record: existingPrRelease, duplicate: true };
+  }
 
   const existingByScope = await RollbackRecord.findOne({
     rollbackEvent,

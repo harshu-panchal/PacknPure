@@ -8,7 +8,7 @@ import {
 
 const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
 
-const sellerAvailableForMasterVariant = (sellerProduct, masterVariantId, masterProduct) => {
+export const sellerAvailableForMasterVariant = (sellerProduct, masterVariantId, masterProduct) => {
   if (!sellerProduct) return 0;
 
   let masterVariantName = null;

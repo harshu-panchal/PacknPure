@@ -50,7 +50,7 @@ const processExpirations = async () => {
       }
       await executeRollbackEvent({
         eventType: "SELLER_TIMEOUT",
-        transactionId: `seller_timeout:${String(fullPr?._id || pr._id)}`,
+        transactionId: `pr_inventory_release:${String(fullPr?._id || pr._id)}`,
         orderId: fullPr?.orderId || null,
         purchaseRequestId: fullPr?._id || null,
         allocationId: fullPr?.allocationId || null,
