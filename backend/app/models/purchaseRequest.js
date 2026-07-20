@@ -66,6 +66,13 @@ const purchaseRequestItemSchema = new mongoose.Schema(
     baseSupplyPrice: { type: Number, default: 0 },
     finalSupplyPrice: { type: Number, default: 0 },
     totalProcurementCost: { type: Number, default: 0 },
+    lineStatus: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "partial"],
+      default: "pending",
+    },
+    itemKey: { type: String, default: null },
+    allocationId: { type: String, default: null, index: true },
   },
   { _id: false },
 );

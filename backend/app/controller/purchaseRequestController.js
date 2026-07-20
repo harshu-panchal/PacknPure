@@ -25,7 +25,13 @@ import {
 import {
   markAllocationFromSellerResponse,
   markAllocationCompletedFromInward,
+  buildItemKey,
 } from "../services/procurementSessionService.js";
+import {
+  deriveLineResponseStatus,
+  processRejectedLinesForFallback,
+  isOrderInventoryReadyForDelivery,
+} from "../services/multiProductProcurementService.js";
 import { executeRollbackEvent } from "../services/transactionEngine.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
@@ -1182,12 +1188,19 @@ export const verifyInward = async (req, res) => {
             console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);
           }
 
-          if (pr.procurementSessionId && pr.allocationId) {
-            await markAllocationCompletedFromInward({
-              procurementSessionId: pr.procurementSessionId,
-              allocationId: pr.allocationId,
-              completedQty: acceptedQty,
-            });
+          if (pr.procurementSessionId) {
+            const lineAllocId =
+              pr.items?.find((row) => {
+                const rowProductId = String(row.productId?._id || row.productId);
+                return rowProductId === productId;
+              })?.allocationId || pr.allocationId;
+            if (lineAllocId) {
+              await markAllocationCompletedFromInward({
+                procurementSessionId: pr.procurementSessionId,
+                allocationId: lineAllocId,
+                completedQty: acceptedQty,
+              });
+            }
           }
         }
       }
@@ -1264,7 +1277,12 @@ export const verifyInward = async (req, res) => {
           parentOrder.status = "confirmed";
         }
         await parentOrder.save();
-        if (verified && parentOrder.workflowVersion >= 2 && parentOrder.hubFlowEnabled) {
+        if (
+          verified &&
+          parentOrder.workflowVersion >= 2 &&
+          parentOrder.hubFlowEnabled &&
+          isOrderInventoryReadyForDelivery(parentOrder)
+        ) {
           try {
             await startHubDeliverySearchAtomic(parentOrder.orderId);
           } catch (e) {
@@ -1370,29 +1388,47 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       };
       pr.status = "seller_rejected";
       pr.exceptionReason = String(rejectionReason || "Rejected by seller");
+      pr.items = (pr.items || []).map((line) => ({
+        ...(line.toObject ? line.toObject() : line),
+        committedQty: 0,
+        lineStatus: "rejected",
+      }));
       await pr.save();
-      if (pr.procurementSessionId && pr.allocationId) {
-        await markAllocationFromSellerResponse({
-          procurementSessionId: pr.procurementSessionId,
-          allocationId: pr.allocationId,
-          responseStatus: "rejected",
-          committedQty: 0,
-        });
-      }
 
-      // Trigger auto-fallback to next seller and release commitments
       try {
-        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
-        await executeRollbackEvent({
-          eventType: "SELLER_REJECTED",
-          transactionId: `pr_inventory_release:${String(pr._id)}`,
-          orderId: pr.orderId || null,
-          purchaseRequestId: pr._id,
-          allocationId: pr.allocationId || null,
-          reason: "seller_rejected",
-          actor: { id: sellerId, type: "seller" },
-        });
-        await fallbackPurchaseRequest(pr._id);
+        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
+          "../services/hubOrderOrchestrator.js"
+        );
+        const isMultiLine = (pr.items || []).length > 1;
+
+        if (isMultiLine) {
+          await processRejectedLinesForFallback({
+            pr,
+            sellerId,
+            executeRollbackEvent,
+            markAllocationFromSellerResponse,
+            fallbackPurchaseRequestLine,
+          });
+        } else {
+          if (pr.procurementSessionId && pr.allocationId) {
+            await markAllocationFromSellerResponse({
+              procurementSessionId: pr.procurementSessionId,
+              allocationId: pr.allocationId,
+              responseStatus: "rejected",
+              committedQty: 0,
+            });
+          }
+          await executeRollbackEvent({
+            eventType: "SELLER_REJECTED",
+            transactionId: `pr_inventory_release:${String(pr._id)}`,
+            orderId: pr.orderId || null,
+            purchaseRequestId: pr._id,
+            allocationId: pr.allocationId || null,
+            reason: "seller_rejected",
+            actor: { id: sellerId, type: "seller" },
+          });
+          await fallbackPurchaseRequest(pr._id);
+        }
       } catch (err) {
         console.warn("[Auto Fallback] Failed to trigger fallback on rejection:", err.message);
       }
@@ -1419,7 +1455,12 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       }
       if (committedQty < shortage) fullyCommitted = false;
       if (committedQty > 0) anyCommitted = true;
-      return { ...line.toObject(), committedQty };
+      const lineStatus = deriveLineResponseStatus(committedQty, shortage);
+      return {
+        ...(line.toObject ? line.toObject() : line),
+        committedQty,
+        lineStatus,
+      };
     });
 
     const responseStatus = fullyCommitted
@@ -1441,7 +1482,25 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     pr.status = responseStatus === "rejected" ? "seller_rejected" : "seller_confirmed";
     pr.exceptionReason = "";
     await pr.save();
-    if (pr.procurementSessionId && pr.allocationId) {
+
+    const isMultiLine = (pr.items || []).length > 1;
+
+    if (isMultiLine) {
+      if (responseStatus === "accepted") {
+        for (const line of pr.items || []) {
+          const lineObj = line.toObject ? line.toObject() : line;
+          const allocId = lineObj.allocationId || pr.allocationId;
+          if (pr.procurementSessionId && allocId) {
+            await markAllocationFromSellerResponse({
+              procurementSessionId: pr.procurementSessionId,
+              allocationId: allocId,
+              responseStatus: "accepted",
+              committedQty: Number(lineObj.committedQty || 0),
+            });
+          }
+        }
+      }
+    } else if (pr.procurementSessionId && pr.allocationId) {
       await markAllocationFromSellerResponse({
         procurementSessionId: pr.procurementSessionId,
         allocationId: pr.allocationId,
@@ -1452,41 +1511,65 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
     if (responseStatus === "rejected") {
       try {
-        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
-        await executeRollbackEvent({
-          eventType: "SELLER_REJECTED",
-          transactionId: `pr_inventory_release:${String(pr._id)}`,
-          orderId: pr.orderId || null,
-          purchaseRequestId: pr._id,
-          allocationId: pr.allocationId || null,
-          reason: "seller_rejected_zero_commit",
-          actor: { id: sellerId, type: "seller" },
-        });
-        await fallbackPurchaseRequest(pr._id);
-      } catch (err) {}
-    } else if (responseStatus === "partial") {
-      const requestedQty = (pr.items || []).reduce(
-        (sum, line) => sum + Math.max(0, Number(line.shortageQty || line.requestedQty || 0)),
-        0,
-      );
-      const remainingToRetry = Math.max(0, requestedQty - committedQtyTotal);
-      if (remainingToRetry > 0) {
-        try {
-          const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
+          "../services/hubOrderOrchestrator.js"
+        );
+        if (isMultiLine) {
+          await processRejectedLinesForFallback({
+            pr,
+            sellerId,
+            executeRollbackEvent,
+            markAllocationFromSellerResponse,
+            fallbackPurchaseRequestLine,
+          });
+        } else {
           await executeRollbackEvent({
             eventType: "SELLER_REJECTED",
-            transactionId: `seller_partial:${String(pr._id)}:${remainingToRetry}`,
+            transactionId: `pr_inventory_release:${String(pr._id)}`,
             orderId: pr.orderId || null,
             purchaseRequestId: pr._id,
             allocationId: pr.allocationId || null,
-            quantity: remainingToRetry,
-            reason: "seller_partial_uncommitted_release",
+            reason: "seller_rejected_zero_commit",
             actor: { id: sellerId, type: "seller" },
           });
-          await fallbackPurchaseRequest(pr._id, remainingToRetry);
-        } catch (err) {
-          console.warn("[Auto Fallback] Failed to trigger fallback on partial response:", err.message);
+          await fallbackPurchaseRequest(pr._id);
         }
+      } catch (err) {}
+    } else if (responseStatus === "partial" || isMultiLine) {
+      try {
+        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
+          "../services/hubOrderOrchestrator.js"
+        );
+        if (isMultiLine) {
+          await processRejectedLinesForFallback({
+            pr,
+            sellerId,
+            executeRollbackEvent,
+            markAllocationFromSellerResponse,
+            fallbackPurchaseRequestLine,
+          });
+        } else {
+          const requestedQty = (pr.items || []).reduce(
+            (sum, line) => sum + Math.max(0, Number(line.shortageQty || line.requestedQty || 0)),
+            0,
+          );
+          const remainingToRetry = Math.max(0, requestedQty - committedQtyTotal);
+          if (remainingToRetry > 0) {
+            await executeRollbackEvent({
+              eventType: "SELLER_REJECTED",
+              transactionId: `seller_partial:${String(pr._id)}:${remainingToRetry}`,
+              orderId: pr.orderId || null,
+              purchaseRequestId: pr._id,
+              allocationId: pr.allocationId || null,
+              quantity: remainingToRetry,
+              reason: "seller_partial_uncommitted_release",
+              actor: { id: sellerId, type: "seller" },
+            });
+            await fallbackPurchaseRequest(pr._id, remainingToRetry);
+          }
+        }
+      } catch (err) {
+        console.warn("[Auto Fallback] Failed to trigger fallback on partial response:", err.message);
       }
     }
 
