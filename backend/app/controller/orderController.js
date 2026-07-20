@@ -46,6 +46,11 @@ import {
 } from "../utils/orderItemHelpers.js";
 import { resolveVariantIndex } from "../utils/productHelpers.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
+import {
+  transitionOrderFulfillment,
+  transitionOrderReturn,
+  RETURN_WORKFLOW_STATUS,
+} from "../services/fulfillmentWorkflowEngine.js";
 
 // COD strike logic now handled in orderService.js
 
@@ -492,13 +497,18 @@ export const requestReturn = async (req, res) => {
       });
     }
 
-    order.returnStatus = "return_requested";
     order.returnReason = reason.trim();
     order.returnImages = Array.isArray(images) ? images.slice(0, 5) : [];
     order.returnItems = selectedItems;
     order.returnRequestedAt = now;
     order.returnDeadline = deadline;
 
+    transitionOrderReturn(order, {
+      toState: RETURN_WORKFLOW_STATUS.RETURN_REQUESTED,
+      actor: { id: customerId, role: "customer" },
+      reason: reason.trim(),
+      metadata: { images: Array.isArray(images) ? images.length : 0 },
+    });
     await order.save();
 
     // Basic notification for seller about new return request
@@ -758,7 +768,12 @@ export const updateOrderStatus = async (req, res) => {
         return handleResponse(res, 400, "Order already assigned to a delivery partner.");
       }
       order.deliveryBoy = deliveryBoyId;
-      order.workflowStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
+      transitionOrderFulfillment(order, {
+        toState: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+        actor: { id: userId, role: "admin" },
+        reason: "Manual delivery assignment by admin",
+        metadata: { deliveryBoyId: String(deliveryBoyId) },
+      });
       order.assignedAt = new Date();
       newDeliveryBoyAssigned = true;
 
@@ -768,7 +783,30 @@ export const updateOrderStatus = async (req, res) => {
       }
     }
 
-    if (status) order.status = status;
+    if (status) {
+      if (order.workflowVersion >= 2) {
+        const normalized = String(status).toLowerCase();
+        const statusToState = {
+          confirmed: WORKFLOW_STATUS.READY_FOR_DELIVERY,
+          packed: WORKFLOW_STATUS.PACKING,
+          out_for_delivery: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+          delivered: WORKFLOW_STATUS.DELIVERED,
+          cancelled: WORKFLOW_STATUS.CANCELLED,
+        };
+        const targetState = statusToState[normalized] || null;
+        if (targetState) {
+          transitionOrderFulfillment(order, {
+            toState: targetState,
+            actor: { id: userId, role },
+            reason: `Legacy status update requested: ${normalized}`,
+          });
+        } else {
+          order.status = status;
+        }
+      } else {
+        order.status = status;
+      }
+    }
 
     // Legacy orders: keep rider UI step in sync with status (delivery app refresh-safe)
     if (
@@ -786,7 +824,11 @@ export const updateOrderStatus = async (req, res) => {
       await compensateOrderCancellation(order, canonicalOrderId);
       
       if (order.workflowVersion >= 2) {
-        order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
+        transitionOrderFulfillment(order, {
+          toState: WORKFLOW_STATUS.CANCELLED,
+          actor: { id: userId, role },
+          reason: order.cancelReason || "Order cancelled",
+        });
         if (isAdmin) {
           order.cancelledBy = "admin";
           order.cancelReason = "Cancelled manually by Admin via Dashboard";
@@ -866,7 +908,7 @@ export const updateOrderStatus = async (req, res) => {
 
     return handleResponse(res, 200, "Order status updated", order);
   } catch (error) {
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
@@ -925,7 +967,11 @@ export const approveReturnRequest = async (req, res) => {
       ...(item.toObject?.() ?? item),
       status: "approved",
     }));
-    order.returnStatus = "return_approved";
+    transitionOrderReturn(order, {
+      toState: RETURN_WORKFLOW_STATUS.RETURN_APPROVED,
+      actor: { id: userId, role },
+      reason: "Return approved",
+    });
     order.returnRefundAmount = refundAmount;
     order.returnDeliveryCommission = returnCommission;
 
@@ -981,7 +1027,11 @@ export const rejectReturnRequest = async (req, res) => {
       );
     }
 
-    order.returnStatus = "return_rejected";
+    transitionOrderReturn(order, {
+      toState: RETURN_WORKFLOW_STATUS.RETURN_REJECTED,
+      actor: { id: userId, role },
+      reason: reason.trim(),
+    });
     order.returnRejectedReason = reason.trim();
 
     await order.save();
@@ -1042,7 +1092,12 @@ export const assignReturnDelivery = async (req, res) => {
     }
 
     order.returnDeliveryBoy = deliveryBoyId;
-    order.returnStatus = "return_pickup_assigned";
+    transitionOrderReturn(order, {
+      toState: RETURN_WORKFLOW_STATUS.RETURN_PICKUP_ASSIGNED,
+      actor: { id: userId, role },
+      reason: "Return pickup assigned",
+      metadata: { deliveryBoyId: String(deliveryBoyId) },
+    });
 
     await order.save();
 
@@ -1129,7 +1184,11 @@ const completeReturnAndRefund = async (order) => {
     });
   }
 
-  order.returnStatus = "refund_completed";
+  transitionOrderReturn(order, {
+    toState: RETURN_WORKFLOW_STATUS.REFUND_COMPLETED,
+    actor: { id: "system", role: "admin" },
+    reason: "Refund completed",
+  });
   if (order.payment) {
     order.payment.status = "refunded";
   }
@@ -1202,7 +1261,11 @@ export const updateReturnStatus = async (req, res) => {
     const now = new Date();
 
     if (returnStatus === "return_in_transit") {
-      order.returnStatus = "return_in_transit";
+      transitionOrderReturn(order, {
+        toState: RETURN_WORKFLOW_STATUS.RETURN_PICKED,
+        actor: { id: userId, role },
+        reason: "Return picked from customer",
+      });
       if (!order.returnPickedAt) {
         order.returnPickedAt = now;
       }
@@ -1211,7 +1274,11 @@ export const updateReturnStatus = async (req, res) => {
     }
 
     if (returnStatus === "returned") {
-      order.returnStatus = "returned";
+      transitionOrderReturn(order, {
+        toState: RETURN_WORKFLOW_STATUS.RETURN_RECEIVED_AT_HUB,
+        actor: { id: userId, role },
+        reason: "Return received at hub",
+      });
       if (!order.returnDeliveredBackAt) {
         order.returnDeliveredBackAt = now;
       }
@@ -1226,7 +1293,11 @@ export const updateReturnStatus = async (req, res) => {
       );
     }
 
-    order.returnStatus = returnStatus;
+    transitionOrderReturn(order, {
+      toState: returnStatus,
+      actor: { id: userId, role },
+      reason: "Return status updated",
+    });
     await order.save();
 
     return handleResponse(res, 200, "Return status updated", order);

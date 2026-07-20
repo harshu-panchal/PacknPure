@@ -60,6 +60,49 @@ export function normalizeVariantMatchKey(value) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+/** Map master catalog variant id to seller listing variant id by normalized name. */
+export function resolveSellerVariantIdSync({
+  masterProduct,
+  sellerProduct,
+  masterVariantId,
+}) {
+  if (!masterVariantId || !masterProduct || !sellerProduct) return null;
+  if (!Array.isArray(masterProduct.variants) || !Array.isArray(sellerProduct.variants)) {
+    return null;
+  }
+  const mVar = masterProduct.variants.find(
+    (v) =>
+      String(v._id || v.id) === String(masterVariantId),
+  );
+  if (!mVar?.name) return null;
+  const key = normalizeVariantMatchKey(mVar.name);
+  const sVar = sellerProduct.variants.find(
+    (v) => normalizeVariantMatchKey(v.name) === key,
+  );
+  return sVar?._id || null;
+}
+
+export async function resolveSellerVariantId({
+  sellerProductId,
+  masterProductId,
+  masterVariantId,
+  session = null,
+}) {
+  if (!sellerProductId || !masterVariantId) return null;
+  const Product = (await import("../models/product.js")).default;
+  const [master, seller] = await Promise.all([
+    masterProductId
+      ? Product.findById(masterProductId).select("variants").session(session)
+      : null,
+    Product.findById(sellerProductId).select("variants").session(session),
+  ]);
+  return resolveSellerVariantIdSync({
+    masterProduct: master,
+    sellerProduct: seller,
+    masterVariantId,
+  });
+}
+
 export function normalizeProductName(name) {
   return String(name || "")
     .trim()

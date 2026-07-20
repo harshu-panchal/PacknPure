@@ -9,6 +9,7 @@ import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { writeDeliveryLocation, appendTrailPoint } from "../services/firebaseService.js";
 import { getRedisClient } from "../config/redis.js";
 import { distanceMeters } from "../utils/geoUtils.js";
+import { transitionOrderFulfillment } from "../services/fulfillmentWorkflowEngine.js";
 
 const LOC_MIN_INTERVAL_MS = () =>
   parseInt(process.env.LOCATION_MIN_INTERVAL_MS || "3000", 10);
@@ -726,19 +727,17 @@ export const validateDeliveryOtp = async (req, res) => {
             : null;
 
         // Update order status
-        const updatedOrder = await Order.findOneAndUpdate(
-            orderKey,
-            {
-                $set: {
-                    workflowStatus: WORKFLOW_STATUS.DELIVERED,
-                    status: "delivered",
-                    deliveredAt: now,
-                    otpValidatedAt: now,
-                    otpValidationLocation: validationLocation
-                }
-            },
-            { new: true }
-        );
+        transitionOrderFulfillment(order, {
+            toState: WORKFLOW_STATUS.DELIVERED,
+            actor: { id: deliveryBoyId, role: "delivery" },
+            reason: "Delivery OTP validated",
+            otp: { required: true, verified: true },
+            metadata: { otpValidatedAt: now.toISOString() },
+        });
+        order.deliveredAt = now;
+        order.otpValidatedAt = now;
+        order.otpValidationLocation = validationLocation;
+        const updatedOrder = await order.save();
 
         // Financial side effects - Apply delivered financial settlements
         try {

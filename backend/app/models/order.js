@@ -458,6 +458,37 @@ const orderSchema = new mongoose.Schema(
       lng: Number,
       // Location where OTP validation occurred
     },
+    fulfillmentEvents: [
+      {
+        domain: {
+          type: String,
+          enum: ["fulfillment", "return"],
+          default: "fulfillment",
+        },
+        oldState: String,
+        newState: String,
+        actorId: {
+          type: String,
+          default: null,
+        },
+        actorRole: {
+          type: String,
+          default: null,
+        },
+        reason: {
+          type: String,
+          default: null,
+        },
+        metadata: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true },
 );

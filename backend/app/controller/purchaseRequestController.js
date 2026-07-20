@@ -1072,7 +1072,7 @@ export const verifyInward = async (req, res) => {
     if (notes !== undefined) pr.notes = String(notes || "");
     await pr.save();
 
-    // Commitment was already consumed at pickup, no need to release here.
+    // Ownership transfers at QA pass — seller committed is released then.
 
     // Move stock from Reserved to Available in Hub Inventory
     if (verified && inward.receivedItems) {
@@ -1143,6 +1143,8 @@ export const verifyInward = async (req, res) => {
           // Release Seller Committed Stock (SC) now that goods are physically at the hub.
           try {
             const { moveSellerCommitToTransit } = await import("../services/inventory/inventoryEngine.js");
+            const { resolveSellerVariantIdSync } = await import("../utils/productHelpers.js");
+            const ProductModel = (await import("../models/product.js")).default;
             const prLine = pr.items?.find((line) => {
               const lineProductId = String(line.productId?._id || line.productId);
               return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
@@ -1151,22 +1153,17 @@ export const verifyInward = async (req, res) => {
               ? String(prLine.selectedSellerProductId)
               : String(item.sellerProductId || productId);
             if (sellerProductId && prLine) {
-              let sellerVariantId = prLine.variantId || null;
-
-              if (sellerVariantId) {
-                const ProductModel = (await import("../models/product.js")).default;
-                const { normalizeVariantMatchKey } = await import("../utils/productHelpers.js");
-                const masterProduct = await ProductModel.findById(prLine.productId);
-                const sellerProduct = await ProductModel.findById(sellerProductId);
-
-                if (masterProduct && sellerProduct) {
-                  const masterVar = masterProduct.variants?.find(v => String(v._id) === String(sellerVariantId));
-                  if (masterVar) {
-                    const masterKey = normalizeVariantMatchKey(masterVar.name);
-                    const sellerVar = sellerProduct.variants?.find(v => normalizeVariantMatchKey(v.name) === masterKey);
-                    if (sellerVar) sellerVariantId = sellerVar._id;
-                  }
-                }
+              let sellerVariantId = null;
+              if (prLine.variantId) {
+                const [masterProduct, sellerProduct] = await Promise.all([
+                  ProductModel.findById(prLine.productId).select("variants").lean(),
+                  ProductModel.findById(sellerProductId).select("variants").lean(),
+                ]);
+                sellerVariantId = resolveSellerVariantIdSync({
+                  masterProduct,
+                  sellerProduct,
+                  masterVariantId: prLine.variantId,
+                });
               }
 
               await moveSellerCommitToTransit({
@@ -1175,9 +1172,11 @@ export const verifyInward = async (req, res) => {
                 quantity: acceptedQty,
                 sellerId: pr.vendorId,
                 orderId: pr.orderId,
-                reason: "verify_inward_pickup_commit_release",
+                reason: "verify_inward_qa_passed_seller_commit_release",
               });
-              console.log(`[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`);
+              console.log(
+                `[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`,
+              );
             }
           } catch (scErr) {
             console.warn("[verifyInward] Failed to release seller committedStock (SC):", scErr.message);

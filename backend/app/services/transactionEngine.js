@@ -10,7 +10,7 @@ import {
   restoreSellerInventory,
   withInventorySession,
 } from "./inventory/inventoryEngine.js";
-import { normalizeVariantMatchKey } from "../utils/productHelpers.js";
+import { resolveSellerVariantId } from "../utils/productHelpers.js";
 
 const ACTIVE_PR_STATUSES = ["created", "seller_confirmed", "pickup_assigned", "picked", "hub_delivered"];
 
@@ -21,26 +21,6 @@ const newTransactionId = (eventType, orderId = "none", allocationId = "none") =>
 
 const buildIdempotencyKey = ({ eventType, orderId = null, allocationId = null, purchaseRequestId = null, reason = "" }) =>
   `${eventType}:${String(orderId || "none")}:${String(allocationId || "none")}:${String(purchaseRequestId || "none")}:${String(reason || "na")}`;
-
-const resolveSellerVariantId = async ({
-  sellerProductId,
-  masterProductId,
-  masterVariantId,
-  session = null,
-}) => {
-  if (!sellerProductId || !masterVariantId) return null;
-  const Product = (await import("../models/product.js")).default;
-  const [master, seller] = await Promise.all([
-    Product.findById(masterProductId).select("variants").session(session),
-    Product.findById(sellerProductId).select("variants").session(session),
-  ]);
-  if (!master || !seller || !Array.isArray(master.variants) || !Array.isArray(seller.variants)) return null;
-  const mVar = master.variants.find((v) => String(v._id) === String(masterVariantId) || String(v.id) === String(masterVariantId));
-  if (!mVar) return null;
-  const key = normalizeVariantMatchKey(mVar.name);
-  const sVar = seller.variants.find((v) => normalizeVariantMatchKey(v.name) === key);
-  return sVar?._id || null;
-};
 
 const createOrGetRecord = async ({
   transactionId,
@@ -100,7 +80,7 @@ const rollbackOrderReservations = async ({ order, session }) => {
     const releasableQty = Math.max(
       0,
       Math.min(
-        toQty(item.hubReservedQty),
+        toQty(item.hubReservedQty) + toQty(item.qaAcceptedQty),
         toQty(item.quantity) - toQty(item.deliveredQty || 0),
       ),
     );
@@ -149,7 +129,7 @@ const releasePendingProcurementAllocations = async ({
     if (releasableQty <= 0) continue;
 
     const line = pr.items?.[0];
-    if (!line?.variantId || !line?.selectedSellerProductId) continue; // variant-level only
+    if (!line?.selectedSellerProductId) continue;
     const sellerVariantId = await resolveSellerVariantId({
       sellerProductId: line.selectedSellerProductId,
       masterProductId: line.productId,
@@ -205,15 +185,14 @@ const rollbackSingleAllocation = async ({
   if (!pr) return [];
 
   const line = pr.items?.[0];
-  if (!line?.variantId || !line?.selectedSellerProductId) return [];
+  if (!line?.selectedSellerProductId) return [];
 
   const qty =
-    rollbackEvent === "SYSTEM_COMPENSATION"
-      ? toQty(quantity ?? line.shortageQty)
-      : Math.min(
-          toQty(quantity ?? line.shortageQty),
-          Math.max(0, toQty(line.shortageQty) - toQty(line.committedQty)),
-        );
+    quantity != null
+      ? toQty(quantity)
+      : rollbackEvent === "SYSTEM_COMPENSATION"
+        ? toQty(line.shortageQty)
+        : toQty(line.shortageQty);
   if (qty <= 0) return [];
 
   const sellerVariantId = await resolveSellerVariantId({
@@ -361,7 +340,7 @@ export const executeRollbackEvent = async ({
           const pr = await PurchaseRequest.findById(purchaseRequestId).session(inventorySession);
           if (!pr) return [];
           const line = pr.items?.[0];
-          if (!line?.variantId || !line?.selectedSellerProductId) return [];
+          if (!line?.selectedSellerProductId) return [];
           const sellerVariantId = await resolveSellerVariantId({
             sellerProductId: line.selectedSellerProductId,
             masterProductId: line.productId,

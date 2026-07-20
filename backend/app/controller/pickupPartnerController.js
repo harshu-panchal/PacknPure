@@ -516,27 +516,36 @@ export const markAssignmentPicked = async (req, res) => {
     };
     await pr.save();
 
-    // --- DEDUCT SELLER STOCK ---
-    try {
-      const { deductSellerInventoryAfterPickup, releaseSellerReservation } = await import("../services/inventoryLifecycleService.js");
-      for (const item of pr.items) {
-        if (item.productId) {
-          const sellerProductId = item.selectedSellerProductId || item.productId;
-          
-          if (pickedQty > 0) {
-            await deductSellerInventoryAfterPickup(sellerProductId, item.variantId, pickedQty);
-            console.log(`[InventorySync] Deducted ${pickedQty} from Seller ${pr.vendorId} for product ${sellerProductId}`);
+    // Pickup does not transfer inventory ownership — only release unfulfilled commitment.
+    if (remainingQty > 0) {
+      try {
+        const { releaseSellerReservation } = await import("../services/inventoryLifecycleService.js");
+        const { resolveSellerVariantIdSync } = await import("../utils/productHelpers.js");
+        const ProductModel = (await import("../models/product.js")).default;
+
+        for (const item of pr.items) {
+          if (!item.selectedSellerProductId) continue;
+          const sellerProductId = String(item.selectedSellerProductId);
+          let sellerVariantId = null;
+          if (item.variantId) {
+            const [masterProduct, sellerProduct] = await Promise.all([
+              ProductModel.findById(item.productId).select("variants").lean(),
+              ProductModel.findById(sellerProductId).select("variants").lean(),
+            ]);
+            sellerVariantId = resolveSellerVariantIdSync({
+              masterProduct,
+              sellerProduct,
+              masterVariantId: item.variantId,
+            });
           }
-          
-          if (remainingQty > 0) {
-            // Release the commitment for the part the seller couldn't fulfill
-            await releaseSellerReservation(sellerProductId, item.variantId, remainingQty);
-            console.log(`[InventorySync] Released unfulfilled commitment of ${remainingQty} for product ${sellerProductId}`);
-          }
+          await releaseSellerReservation(sellerProductId, sellerVariantId, remainingQty);
+          console.log(
+            `[InventorySync] Released unfulfilled commitment of ${remainingQty} for product ${sellerProductId}`,
+          );
         }
+      } catch (err) {
+        console.warn("[InventorySync] Failed to release unfulfilled seller commitment:", err.message);
       }
-    } catch (err) {
-      console.warn("[InventorySync] Failed to deduct seller stock:", err.message);
     }
 
     // If partial pickup, create fallback for remaining

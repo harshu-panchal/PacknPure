@@ -1,6 +1,10 @@
 import Product from "../models/product.js";
 import { distanceMeters } from "../utils/geoUtils.js";
-import { effectiveProductStock, normalizeVariantMatchKey } from "../utils/productHelpers.js";
+import {
+  effectiveProductStock,
+  normalizeVariantMatchKey,
+  totalVariantCommitted,
+} from "../utils/productHelpers.js";
 
 const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
 
@@ -19,10 +23,25 @@ const sellerAvailableForMasterVariant = (sellerProduct, masterVariantId, masterP
     const sellerVar = sellerProduct.variants.find(
       (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
     );
-    if (sellerVar) return Math.max(0, Number(sellerVar.stock) || 0);
+    if (sellerVar) {
+      return Math.max(
+        0,
+        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
+      );
+    }
   }
 
-  return effectiveProductStock(sellerProduct);
+  if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length > 0) {
+    return Math.max(
+      0,
+      effectiveProductStock(sellerProduct) - totalVariantCommitted(sellerProduct.variants),
+    );
+  }
+
+  return Math.max(
+    0,
+    (Number(sellerProduct.stock) || 0) - (Number(sellerProduct.committedStock) || 0),
+  );
 };
 
 const effectiveCatalogPrice = (sellerProduct, masterVariantId = null, baseProduct = null) => {

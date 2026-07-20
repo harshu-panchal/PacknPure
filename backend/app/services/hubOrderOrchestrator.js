@@ -2,7 +2,12 @@ import HubInventory from "../models/hubInventory.js";
 import Product from "../models/product.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import Seller from "../models/seller.js";
-import { effectiveProductStock, normalizeVariantMatchKey } from "../utils/productHelpers.js";
+import {
+  effectiveProductStock,
+  normalizeVariantMatchKey,
+  resolveSellerVariantIdSync,
+  totalVariantCommitted,
+} from "../utils/productHelpers.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
   ensureProcurementSession,
@@ -89,12 +94,49 @@ export function sellerAvailableForMasterVariant(sellerProduct, masterVariantId, 
     if (sellerVar) {
       return Math.max(
         0,
-        Number(sellerVar.stock) || 0,
+        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
       );
     }
   }
 
-  return effectiveProductStock(sellerProduct);
+  if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length > 0) {
+    return Math.max(
+      0,
+      effectiveProductStock(sellerProduct) - totalVariantCommitted(sellerProduct.variants),
+    );
+  }
+
+  return Math.max(
+    0,
+    (Number(sellerProduct.stock) || 0) - (Number(sellerProduct.committedStock) || 0),
+  );
+}
+
+async function commitSellerStockForPrLine({
+  selectedSellerProductId,
+  masterProduct,
+  masterProductId = null,
+  masterVariantId,
+  quantity,
+}) {
+  if (!selectedSellerProductId || quantity <= 0) return;
+  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
+  let sellerVariantId = null;
+  if (masterVariantId) {
+    let resolvedMaster = masterProduct;
+    if (!resolvedMaster && masterProductId) {
+      resolvedMaster = await Product.findById(masterProductId).select("variants").lean();
+    }
+    const sellerProduct = await Product.findById(selectedSellerProductId)
+      .select("variants")
+      .lean();
+    sellerVariantId = resolveSellerVariantIdSync({
+      masterProduct: resolvedMaster,
+      sellerProduct,
+      masterVariantId,
+    });
+  }
+  await freezeSellerInventory(selectedSellerProductId, sellerVariantId, quantity);
 }
 
 /**
@@ -507,33 +549,18 @@ export const createAutoPurchaseRequests = async ({
     }
   }
 
-  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
   // Immediately reserve seller quantity by creating a commitment.
   for (const doc of insertedDocs) {
     const item = docToShortage.get(doc.requestId);
     if (!item.vendorId || !item.selectedSellerProductId) continue;
     try {
-      if (item.variantId) {
-        // Need to find the seller variant by matching name with master variant
-        const masterProduct = item.baseProduct;
-        const masterVar = Array.isArray(masterProduct?.variants) ? masterProduct.variants.find(v => String(v._id) === String(item.variantId) || String(v.id) === String(item.variantId)) : null;
-        if (masterVar) {
-          const sellerProduct = await Product.findById(item.selectedSellerProductId);
-          if (sellerProduct && Array.isArray(sellerProduct.variants)) {
-            const masterKey = normalizeVariantMatchKey(masterVar.name);
-            const sellerVar = sellerProduct.variants.find(
-              (v) => normalizeVariantMatchKey(v.name) === masterKey,
-            );
-            if (sellerVar) {
-              await freezeSellerInventory(item.selectedSellerProductId, sellerVar._id, item.shortageQty);
-            } else {
-              await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
-            }
-          }
-        }
-      } else {
-        await freezeSellerInventory(item.selectedSellerProductId, null, item.shortageQty);
-      }
+      await commitSellerStockForPrLine({
+        selectedSellerProductId: item.selectedSellerProductId,
+        masterProduct: item.baseProduct,
+        masterProductId: item.productId,
+        masterVariantId: item.variantId || null,
+        quantity: item.shortageQty,
+      });
     } catch (err) {
       console.warn("[createAutoPurchaseRequests] Failed to update seller committedStock:", err.message);
     }
@@ -702,27 +729,14 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   }
 
   // Commit stock for the new seller
-  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
   try {
-    if (selectedSellerProductId) {
-      if (pr.items[0].variantId && Array.isArray(masterProduct?.variants)) {
-        const masterVar = masterProduct.variants.find(v => String(v._id) === String(pr.items[0].variantId) || String(v.id) === String(pr.items[0].variantId));
-        if (masterVar) {
-          const sellerProductFull = await Product.findById(selectedSellerProductId);
-          if (sellerProductFull && Array.isArray(sellerProductFull.variants)) {
-             const masterKey = normalizeVariantMatchKey(masterVar.name);
-             const sellerVar = sellerProductFull.variants.find(v => normalizeVariantMatchKey(v.name) === masterKey);
-             if (sellerVar) {
-               await freezeSellerInventory(selectedSellerProductId, sellerVar._id, qtyToProcure);
-             } else {
-               await freezeSellerInventory(selectedSellerProductId, null, qtyToProcure);
-             }
-          }
-        }
-      } else {
-        await freezeSellerInventory(selectedSellerProductId, null, qtyToProcure);
-      }
-    }
+    await commitSellerStockForPrLine({
+      selectedSellerProductId,
+      masterProduct,
+      masterProductId: pr.items[0].productId,
+      masterVariantId: pr.items[0].variantId || null,
+      quantity: qtyToProcure,
+    });
   } catch (err) {
     console.warn(`[fallbackPurchaseRequest] Failed to commit stock for next seller:`, err.message);
   }
