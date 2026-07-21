@@ -1,7 +1,18 @@
 /**
  * Single entry point for Purchase Request lifecycle writes.
- * Controllers and jobs must use this service — not PurchaseRequest.create directly.
+ * Controllers and jobs must use this service — not PurchaseRequest model directly.
  */
+export {
+  createPurchaseRequest,
+  findPurchaseRequestById,
+  findOnePurchaseRequest,
+  findPurchaseRequests,
+  savePurchaseRequest,
+  updatePurchaseRequestById,
+  updateOnePurchaseRequest,
+  updateManyPurchaseRequests,
+} from "./purchaseRequestRepository.js";
+
 export {
   createAutoPurchaseRequests,
   fallbackPurchaseRequest,

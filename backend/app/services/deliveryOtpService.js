@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import Order from '../models/order.js';
 import OrderOtp from '../models/orderOtp.js';
 import { checkProximity } from './proximityService.js';
+import { getDeliveryOtpExpiryMs } from './settingsService.js';
 
 /**
  * Generate OTP for delivery completion (proximity-validated)
@@ -82,7 +83,7 @@ export async function generateDeliveryOtp(orderId, deliveryLocation) {
     const codeHash = OrderOtp.hashCode(otp);
 
     // Set expiration time to 10 minutes from now
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + (await getDeliveryOtpExpiryMs()));
 
     // Invalidate any previous OTPs for this order
     await OrderOtp.updateMany(

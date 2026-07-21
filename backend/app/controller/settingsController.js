@@ -43,6 +43,10 @@ const ALLOWED_KEYS = [
   "pickupTimeout",
   "hubReceiveTimeout",
   "returnConfirmationTimeout",
+  "deliveryTimeout",
+  "pickupOtpTimeout",
+  "deliveryOtpExpiry",
+  "slaHours",
   "procurementFailureAction",
   "enableMultiSellerAllocation"
 ];
@@ -90,6 +94,10 @@ const updateSettingsSchema = Joi.object({
   pickupTimeout: Joi.number().min(1),
   hubReceiveTimeout: Joi.number().min(1),
   returnConfirmationTimeout: Joi.number().min(1),
+  deliveryTimeout: Joi.number().min(1),
+  pickupOtpTimeout: Joi.number().min(1),
+  deliveryOtpExpiry: Joi.number().min(1),
+  slaHours: Joi.number().min(1),
   procurementFailureAction: Joi.string().valid("auto_cancel", "put_on_hold"),
   enableMultiSellerAllocation: Joi.boolean(),
 }).unknown(false);
@@ -108,7 +116,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout procurementFailureAction enableMultiSellerAllocation createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry slaHours procurementFailureAction enableMultiSellerAllocation createdAt",
       )
       .lean();
 

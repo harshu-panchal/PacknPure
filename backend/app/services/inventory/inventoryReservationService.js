@@ -13,6 +13,7 @@ import { buildOperationResult } from "./inventoryTransactionService.js";
 import {
   getExistingInventoryMutation,
   recordInventoryMutation,
+  guardInventoryMutation,
 } from "./inventoryIdempotencyService.js";
 
 const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
@@ -278,16 +279,23 @@ export const commitSellerInventory = async ({
 /**
  * Receive non-order procurement at hub: increases availableQty.
  */
-export const receiveInventoryAtHub = async ({
-  productId,
-  variantId = null,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "receive_inventory_at_hub",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const receiveInventoryAtHub = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "receive_inventory_at_hub",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "receive_inventory_at_hub",
+    meta: { productId, variantId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
 
   const existing = await HubInventory.findOne({ productId, hubId }).session(session);
@@ -343,20 +351,29 @@ export const receiveInventoryAtHub = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * QA accepted for order-linked inward: increases reservedQty only.
  */
-export const acceptQAInventory = async ({
-  productId,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "accept_qa_inventory",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const acceptQAInventory = async (opts) => {
+  const {
+    productId,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "accept_qa_inventory",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "accept_qa_inventory",
+    meta: { productId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const hubInventory = await validateHubInventoryExists(productId, hubId, session);
 
@@ -404,21 +421,30 @@ export const acceptQAInventory = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * Initialize or add stock to hub row (admin hub inventory upsert).
  */
-export const addHubAvailableStock = async ({
-  productId,
-  variantId = null,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "add_hub_available_stock",
-  idempotencyKey = null,
-  initialRowData = null,
-}) => {
+export const addHubAvailableStock = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "add_hub_available_stock",
+    idempotencyKey = null,
+    initialRowData = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "add_hub_available_stock",
+    meta: { productId, variantId, hubId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   let row = await HubInventory.findOne({ hubId, productId }).session(session);
 
@@ -522,5 +548,7 @@ export const addHubAvailableStock = async ({
     reason,
     idempotencyKey,
     hubInventory: row,
+  });
+    },
   });
 };

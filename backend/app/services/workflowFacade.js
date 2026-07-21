@@ -1,41 +1,183 @@
-import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
+import { WORKFLOW_STATUS, legacyStatusFromWorkflow } from "../constants/orderWorkflow.js";
 import { transitionOrderFulfillment } from "./fulfillmentWorkflowEngine.js";
+import Order from "../models/order.js";
+
+const VALID_HUB_STATUSES = new Set([
+  "inventory_reserved",
+  "procurement_required",
+  "ready_for_packing",
+  "on_hold",
+  "dispatching",
+  "delivered",
+]);
+
+const pushHubEvent = (order, fromState, toState, { actor = {}, reason = "" } = {}) => {
+  if (!Array.isArray(order.fulfillmentEvents)) order.fulfillmentEvents = [];
+  order.fulfillmentEvents.push({
+    domain: "hub",
+    oldState: fromState,
+    newState: toState,
+    actorId: actor.id || null,
+    actorRole: actor.role || null,
+    reason: reason || null,
+    timestamp: new Date(),
+  });
+};
 
 /**
  * Single workflow writer facade.
  * Services must transition orders through this module.
  */
-export const transitionOrder = async (order, toState, options = {}) => {
-  return transitionOrderFulfillment(order, toState, options);
+export const transitionOrder = (order, toState, options = {}) =>
+  transitionOrderFulfillment(order, { toState, ...options });
+
+export const setOrderHubStatus = (order, hubStatus, options = {}) => {
+  if (!VALID_HUB_STATUSES.has(hubStatus)) {
+    const err = new Error(`Invalid hubStatus: ${hubStatus}`);
+    err.statusCode = 400;
+    throw err;
+  }
+  const fromState = order.hubStatus;
+  if (fromState === hubStatus) return order;
+  order.hubStatus = hubStatus;
+  pushHubEvent(order, fromState, hubStatus, options);
+  return order;
 };
 
-export const markOrderProcurementRequired = async (order) =>
+export const setOrderLegacyStatus = (order, status, options = {}) => {
+  const fromState = order.status;
+  order.status = status;
+  if (Array.isArray(order.fulfillmentEvents)) {
+    order.fulfillmentEvents.push({
+      domain: "legacy",
+      oldState: fromState,
+      newState: status,
+      actorId: options.actor?.id || null,
+      actorRole: options.actor?.role || null,
+      reason: options.reason || null,
+      timestamp: new Date(),
+    });
+  }
+  return order;
+};
+
+export const markOrderInventoryReserved = (order, options = {}) =>
+  setOrderHubStatus(order, "inventory_reserved", {
+    actor: { role: "system" },
+    reason: "inventory_reserved",
+    ...options,
+  });
+
+export const markOrderProcurementRequiredHub = (order, options = {}) =>
+  setOrderHubStatus(order, "procurement_required", {
+    actor: { role: "system" },
+    reason: "procurement_required",
+    ...options,
+  });
+
+export const markOrderReadyForPacking = (order, options = {}) => {
+  order.procurementRequired = false;
+  setOrderHubStatus(order, "ready_for_packing", {
+    actor: { role: "system" },
+    reason: "procurement_complete",
+    ...options,
+  });
+  if (order.workflowVersion >= 2) {
+    transitionOrder(order, WORKFLOW_STATUS.SELLER_ACCEPTED, {
+      actor: { role: "system" },
+      reason: "procurement_complete",
+      ...options,
+    });
+  }
+  if (order.status === "pending") {
+    setOrderLegacyStatus(order, "confirmed", options);
+  }
+  return order;
+};
+
+export const markOrderOnHold = (order, options = {}) =>
+  setOrderHubStatus(order, "on_hold", {
+    actor: { role: "system" },
+    reason: options.reason || "procurement_failed",
+    ...options,
+  });
+
+export const markOrderProcurementFailedCancelled = (order, options = {}) => {
+  transitionOrder(order, WORKFLOW_STATUS.CANCELLED, {
+    actor: { role: "system" },
+    reason: options.reason || "procurement_failed",
+    ...options,
+  });
+  setOrderLegacyStatus(order, "cancelled", options);
+  order.cancelReason = options.reason || "Procurement failed";
+  return order;
+};
+
+export const markOrderProcurementRequired = (order, options = {}) =>
   transitionOrder(order, WORKFLOW_STATUS.PROCUREMENT_REQUIRED, {
     actor: { role: "system" },
     reason: "procurement_required",
+    ...options,
   });
 
-export const markOrderProcurementCompleted = async (order) =>
+export const markOrderProcurementCompleted = (order, options = {}) =>
   transitionOrder(order, WORKFLOW_STATUS.PROCUREMENT_COMPLETED, {
     actor: { role: "system" },
     reason: "procurement_completed",
+    ...options,
   });
 
-export const markOrderReadyForDelivery = async (order) =>
+export const markOrderReadyForDelivery = (order, options = {}) =>
   transitionOrder(order, WORKFLOW_STATUS.READY_FOR_DELIVERY, {
     actor: { role: "admin" },
     reason: "ready_for_delivery",
+    ...options,
   });
 
-export const markOrderCancelled = async (order, actor = { role: "system" }) =>
+export const markOrderCancelled = (order, actor = { role: "system" }, options = {}) =>
   transitionOrder(order, WORKFLOW_STATUS.ORDER_CANCELLED, {
     actor,
     reason: "order_cancelled",
+    ...options,
   });
 
-export const markOrderDelivered = async (order, actor = { role: "delivery" }) =>
+export const markOrderDelivered = (order, actor = { role: "delivery" }, options = {}) =>
   transitionOrder(order, WORKFLOW_STATUS.DELIVERED, {
     actor,
     reason: "delivered",
     otp: { required: true, verified: true },
+    ...options,
   });
+
+/**
+ * Load order by filter, validate transition, apply fields, persist.
+ * Sole path for atomic workflow writes outside fulfillmentWorkflowEngine.
+ */
+export const findAndTransitionOrder = async ({
+  filter,
+  toState,
+  assign = {},
+  options = {},
+  populate = [],
+  session = null,
+}) => {
+  let query = Order.findOne(filter);
+  if (session) query = query.session(session);
+  for (const path of populate) {
+    query = query.populate(path);
+  }
+  const order = await query;
+  if (!order) return null;
+  transitionOrder(order, toState, options);
+  Object.assign(order, assign);
+  if (session) await order.save({ session });
+  else await order.save();
+  return order;
+};
+
+export const persistOrder = async (order, { session = null } = {}) => {
+  if (session) return order.save({ session });
+  return order.save();
+};
+
+export { legacyStatusFromWorkflow, WORKFLOW_STATUS };

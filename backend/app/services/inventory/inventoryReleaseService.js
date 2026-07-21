@@ -5,6 +5,7 @@ import {
   validateHubInventoryExists,
   validateSufficientHubReserved,
   validateSufficientSellerCommitted,
+  validateSufficientSellerAvailable,
   loadProduct,
 } from "./inventoryValidationService.js";
 import { syncProductStock, readProductStockSnapshot } from "./inventorySyncService.js";
@@ -13,6 +14,7 @@ import { buildOperationResult } from "./inventoryTransactionService.js";
 import {
   getExistingInventoryMutation,
   recordInventoryMutation,
+  guardInventoryMutation,
 } from "./inventoryIdempotencyService.js";
 
 const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
@@ -27,16 +29,23 @@ const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
  * Release hub reservation back to available.
  * Idempotent-safe: only releases up to current reservedQty.
  */
-export const releaseHubReservation = async ({
-  productId,
-  variantId = null,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "release_hub_reservation",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const releaseHubReservation = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "release_hub_reservation",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "release_hub_reservation",
+    meta: { productId, variantId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const hubInventory = await HubInventory.findOne({ productId, hubId }).session(session);
 
@@ -150,6 +159,8 @@ export const releaseHubReservation = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
@@ -260,16 +271,23 @@ export const releaseSellerCommit = async ({
 /**
  * After pickup: reduce committedStock only (stock was already deducted at commit).
  */
-export const moveSellerCommitToTransit = async ({
-  productId,
-  variantId = null,
-  quantity,
-  session = null,
-  reason = "move_seller_commit_to_transit",
-  orderId = null,
-  sellerId = null,
-  idempotencyKey = null,
-}) => {
+export const moveSellerCommitToTransit = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    session = null,
+    reason = "move_seller_commit_to_transit",
+    orderId = null,
+    sellerId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "move_seller_commit_to_transit",
+    meta: { productId, variantId, sellerId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const product = await loadProduct(productId, session);
   const previousSnapshot = await readProductStockSnapshot(productId, variantId, session);
@@ -335,21 +353,30 @@ export const moveSellerCommitToTransit = async ({
     reason,
     idempotencyKey,
   });
+    },
+  });
 };
 
 /**
  * Deduct hub available stock directly (POS / immediate sale).
  */
-export const deductHubInventory = async ({
-  productId,
-  variantId = null,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "deduct_hub_inventory",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const deductHubInventory = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "deduct_hub_inventory",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "deduct_hub_inventory",
+    meta: { productId, variantId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const hubInventory = await HubInventory.findOne({ productId, hubId }).session(session);
 
@@ -432,20 +459,29 @@ export const deductHubInventory = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * Complete hub delivery: deduct reservedQty only.
  */
-export const completeHubDelivery = async ({
-  productId,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "complete_hub_delivery",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const completeHubDelivery = async (opts) => {
+  const {
+    productId,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "complete_hub_delivery",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "complete_hub_delivery",
+    meta: { productId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const hubInventory = await HubInventory.findOne({ productId, hubId }).session(session);
 
@@ -522,21 +558,30 @@ export const completeHubDelivery = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * Restore hub available stock (returns, POS restore, post-pickup cancellation).
  */
-export const restoreHubAvailableInventory = async ({
-  productId,
-  variantId = null,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  session = null,
-  reason = "restore_hub_available",
-  orderId = null,
-  idempotencyKey = null,
-}) => {
+export const restoreHubAvailableInventory = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    session = null,
+    reason = "restore_hub_available",
+    orderId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "restore_hub_available",
+    meta: { productId, variantId, hubId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const existing = await HubInventory.findOne({ productId, hubId }).session(session);
   const previousQty = {
@@ -588,21 +633,30 @@ export const restoreHubAvailableInventory = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * Restore seller physical stock (returns, vendor return confirmation).
  */
-export const restoreSellerInventory = async ({
-  productId,
-  variantId = null,
-  quantity,
-  session = null,
-  reason = "restore_seller_inventory",
-  orderId = null,
-  sellerId = null,
-  idempotencyKey = null,
-}) => {
+export const restoreSellerInventory = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    session = null,
+    reason = "restore_seller_inventory",
+    orderId = null,
+    sellerId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "restore_seller_inventory",
+    meta: { productId, variantId, sellerId, orderId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const previousSnapshot = await readProductStockSnapshot(productId, variantId, session);
 
@@ -635,6 +689,8 @@ export const restoreSellerInventory = async ({
     newQty: newSnapshot,
     reason,
     idempotencyKey,
+  });
+    },
   });
 };
 
@@ -710,16 +766,23 @@ export const adjustHubAvailableStock = async ({
 /**
  * Set absolute hub available stock (admin catalog sync).
  */
-export const setAdminHubStock = async ({
-  productId,
-  quantity,
-  hubId = DEFAULT_HUB_ID,
-  reorderLevel = 10,
-  sellPrice = 0,
-  session = null,
-  reason = "set_admin_hub_stock",
-  idempotencyKey = null,
-}) => {
+export const setAdminHubStock = async (opts) => {
+  const {
+    productId,
+    quantity,
+    hubId = DEFAULT_HUB_ID,
+    reorderLevel = 10,
+    sellPrice = 0,
+    session = null,
+    reason = "set_admin_hub_stock",
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "set_admin_hub_stock",
+    meta: { productId, hubId, quantity, reason },
+    execute: async () => {
   const qty = Math.max(0, Number(quantity) || 0);
   const reorder = Math.max(0, Number(reorderLevel) || 0);
 
@@ -777,21 +840,30 @@ export const setAdminHubStock = async ({
     idempotencyKey,
     hubInventory: updated,
   });
+    },
+  });
 };
 
 /**
  * Manual seller stock adjustment (delta or absolute).
  */
-export const adjustSellerStock = async ({
-  productId,
-  variantId = null,
-  delta = null,
-  absoluteStock = null,
-  session = null,
-  reason = "adjust_seller_stock",
-  sellerId = null,
-  idempotencyKey = null,
-}) => {
+export const adjustSellerStock = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    delta = null,
+    absoluteStock = null,
+    session = null,
+    reason = "adjust_seller_stock",
+    sellerId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "adjust_seller_stock",
+    meta: { productId, variantId, sellerId, reason },
+    execute: async () => {
   const previousSnapshot = await readProductStockSnapshot(productId, variantId, session);
   let numericDelta = Number(delta);
 
@@ -852,20 +924,29 @@ export const adjustSellerStock = async ({
     reason,
     idempotencyKey,
   });
+    },
+  });
 };
 
 /**
  * Deduct seller stock directly (seller POS).
  */
-export const deductSellerInventory = async ({
-  productId,
-  variantId = null,
-  quantity,
-  session = null,
-  reason = "deduct_seller_inventory",
-  sellerId = null,
-  idempotencyKey = null,
-}) => {
+export const deductSellerInventory = async (opts) => {
+  const {
+    productId,
+    variantId = null,
+    quantity,
+    session = null,
+    reason = "deduct_seller_inventory",
+    sellerId = null,
+    idempotencyKey = null,
+  } = opts;
+
+  return guardInventoryMutation({
+    idempotencyKey,
+    action: "deduct_seller_inventory",
+    meta: { productId, variantId, sellerId, quantity, reason },
+    execute: async () => {
   const qty = assertPositiveQuantity(quantity);
   const product = await loadProduct(productId, session);
   validateSufficientSellerAvailable(product, variantId, qty);
@@ -898,5 +979,7 @@ export const deductSellerInventory = async ({
     newQty: newSnapshot,
     reason,
     idempotencyKey,
+  });
+    },
   });
 };

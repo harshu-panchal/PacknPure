@@ -1,48 +1,12 @@
 import Product from "../models/product.js";
 import { distanceMeters } from "../utils/geoUtils.js";
-import {
-  effectiveProductStock,
-  normalizeVariantMatchKey,
-  totalVariantCommitted,
-} from "../utils/productHelpers.js";
+import { normalizeVariantMatchKey } from "../utils/productHelpers.js";
+import { getSellerAvailableQty } from "./inventoryReadService.js";
+
+export const sellerAvailableForMasterVariant = (sellerProduct, masterVariantId, masterProduct) =>
+  getSellerAvailableQty(sellerProduct, masterVariantId, masterProduct);
 
 const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
-
-export const sellerAvailableForMasterVariant = (sellerProduct, masterVariantId, masterProduct) => {
-  if (!sellerProduct) return 0;
-
-  let masterVariantName = null;
-  if (masterVariantId && Array.isArray(masterProduct?.variants)) {
-    const masterVar = masterProduct.variants.find(
-      (v) => String(v._id || v.id) === String(masterVariantId),
-    );
-    masterVariantName = masterVar?.name ? normalizeVariantMatchKey(masterVar.name) : null;
-  }
-
-  if (masterVariantName && Array.isArray(sellerProduct.variants)) {
-    const sellerVar = sellerProduct.variants.find(
-      (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
-    );
-    if (sellerVar) {
-      return Math.max(
-        0,
-        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
-      );
-    }
-  }
-
-  if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length > 0) {
-    return Math.max(
-      0,
-      effectiveProductStock(sellerProduct) - totalVariantCommitted(sellerProduct.variants),
-    );
-  }
-
-  return Math.max(
-    0,
-    (Number(sellerProduct.stock) || 0) - (Number(sellerProduct.committedStock) || 0),
-  );
-};
 
 const effectiveCatalogPrice = (sellerProduct, masterVariantId = null, baseProduct = null) => {
   let sellerVar = null;

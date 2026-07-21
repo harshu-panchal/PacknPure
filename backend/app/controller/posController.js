@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import User from "../models/customer.js";
 import PosCashTransaction from "../models/posCashTransaction.js";
 import { getPosProviders } from "../services/posProviders/index.js";
+import { markOrderCancelled } from "../services/workflowFacade.js";
 
 // Terminals
 export const createTerminal = async (req, res) => {
@@ -232,8 +233,7 @@ export const returnPosOrder = async (req, res) => {
     // Update order status if fully returned
     const allReturned = order.items.every(i => i.returnedQty === i.quantity);
     if (allReturned) {
-      order.status = "cancelled";
-      order.workflowStatus = "CANCELLED";
+      markOrderCancelled(order, { role: "admin" }, { reason: "pos_full_return" });
       order.returnStatus = "refund_completed";
     } else {
       order.returnStatus = "partial_refund_completed";

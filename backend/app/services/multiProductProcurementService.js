@@ -1,4 +1,4 @@
-import PurchaseRequest from "../models/purchaseRequest.js";
+import { createPurchaseRequest } from "./purchaseRequestRepository.js";
 import {
   buildItemKey,
   reserveAllocation,
@@ -150,7 +150,7 @@ export const createSellerGroupedPurchaseRequests = async ({
       allocationId,
     }));
 
-    const doc = await PurchaseRequest.create({
+    const doc = await createPurchaseRequest({
       requestId: buildRequestId(),
       orderId: order._id,
       procurementSessionId: procurementSession?._id || undefined,

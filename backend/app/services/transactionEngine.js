@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import Setting from "../models/setting.js";
 import Order from "../models/order.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import ProcurementSession from "../models/procurementSession.js";
@@ -11,6 +10,11 @@ import {
   withInventorySession,
 } from "./inventory/inventoryEngine.js";
 import { resolveSellerVariantId } from "../utils/productHelpers.js";
+import { getProcurementFailureAction } from "./settingsService.js";
+import {
+  markOrderProcurementFailedCancelled,
+  markOrderOnHold,
+} from "./workflowFacade.js";
 
 const ACTIVE_PR_STATUSES = ["created", "seller_confirmed", "pickup_assigned", "picked", "hub_delivered"];
 
@@ -133,40 +137,46 @@ const releasePendingProcurementAllocations = async ({
   }).session(session);
 
   for (const pr of prs) {
-    const alloc = procurementSession?.allocations?.find((a) => a.allocationId === pr.allocationId) || null;
-    const acceptedQty = alloc ? toQty(alloc.acceptedQty) : 0;
-    const baseQty = alloc ? toQty(alloc.quantity) : toQty(pr.items?.[0]?.shortageQty);
-    const releasableQty = releaseAccepted ? baseQty : Math.max(0, baseQty - acceptedQty);
-    if (releasableQty <= 0) continue;
+    const lines = Array.isArray(pr.items) && pr.items.length > 0 ? pr.items : [null];
+    for (const line of lines) {
+      if (!line) continue;
+      const lineAllocId = line.allocationId || pr.allocationId;
+      const alloc =
+        procurementSession?.allocations?.find((a) => a.allocationId === lineAllocId) || null;
+      const acceptedQty = alloc ? toQty(alloc.acceptedQty) : 0;
+      const baseQty = alloc ? toQty(alloc.quantity) : toQty(line.shortageQty);
+      const releasableQty = releaseAccepted ? baseQty : Math.max(0, baseQty - acceptedQty);
+      if (releasableQty <= 0) continue;
 
-    const line = pr.items?.[0];
-    if (!line?.selectedSellerProductId) continue;
-    const sellerVariantId = await resolveSellerVariantId({
-      sellerProductId: line.selectedSellerProductId,
-      masterProductId: line.productId,
-      masterVariantId: line.variantId,
-      session,
-    });
+      if (!line?.selectedSellerProductId) continue;
+      const sellerVariantId = await resolveSellerVariantId({
+        sellerProductId: line.selectedSellerProductId,
+        masterProductId: line.productId,
+        masterVariantId: line.variantId,
+        session,
+      });
 
-    const result = await releaseSellerCommit({
-      productId: line.selectedSellerProductId,
-      variantId: sellerVariantId || null,
-      quantity: releasableQty,
-      session,
-      orderId: order._id,
-      sellerId: pr.vendorId,
-      reason: `transaction_engine_${rollbackEvent.toLowerCase()}`,
-      idempotencyKey: `${rollbackEvent}:${String(order._id)}:${String(pr._id)}:${String(pr.allocationId || "none")}`,
-    });
+      const result = await releaseSellerCommit({
+        productId: line.selectedSellerProductId,
+        variantId: sellerVariantId || null,
+        quantity: releasableQty,
+        session,
+        orderId: order._id,
+        sellerId: pr.vendorId,
+        reason: `transaction_engine_${rollbackEvent.toLowerCase()}`,
+        idempotencyKey: `${rollbackEvent}:${String(order._id)}:${String(pr._id)}:${String(lineAllocId || "none")}`,
+      });
 
-    operations.push({
-      action: "release_seller_commit",
-      productId: String(line.productId),
-      sellerProductId: String(line.selectedSellerProductId),
-      variantId: String(line.variantId),
-      quantity: releasableQty,
-      result,
-    });
+      operations.push({
+        action: "release_seller_commit",
+        productId: String(line.productId),
+        sellerProductId: String(line.selectedSellerProductId),
+        variantId: String(line.variantId),
+        allocationId: String(lineAllocId || ""),
+        quantity: releasableQty,
+        result,
+      });
+    }
 
     if (rollbackEvent === "PROCUREMENT_FAILED" || rollbackEvent === "ORDER_CANCELLED" || rollbackEvent === "ORDER_EXPIRED" || rollbackEvent === "PAYMENT_FAILED") {
       pr.status = "cancelled";
@@ -327,8 +337,7 @@ export const executeRollbackEvent = async ({
 
         if (rollbackEvent === "PROCUREMENT_FAILED") {
           if (!order) return [];
-          const settings = await Setting.findOne().lean().session(inventorySession);
-          const autoCancel = settings?.procurementFailureAction === "auto_cancel";
+          const autoCancel = (await getProcurementFailureAction()) === "auto_cancel";
           const releaseOps = autoCancel
             ? await rollbackOrderReservations({ order, session: inventorySession })
             : [];
@@ -339,11 +348,9 @@ export const executeRollbackEvent = async ({
             rollbackEvent,
           });
           if (autoCancel) {
-            order.status = "cancelled";
-            order.workflowStatus = "CANCELLED";
-            order.cancelReason = "Procurement failed";
+            markOrderProcurementFailedCancelled(order, { reason: "Procurement failed" });
           } else {
-            order.hubStatus = "on_hold";
+            markOrderOnHold(order, { reason: "Procurement failed" });
           }
           await order.save({ session: inventorySession });
           return [...releaseOps, ...procurementOps];
@@ -363,7 +370,7 @@ export const executeRollbackEvent = async ({
           if (!purchaseRequestId) return [];
           const pr = await PurchaseRequest.findById(purchaseRequestId).session(inventorySession);
           if (!pr) return [];
-          const line = pr.items?.[0];
+          const line = resolvePrLineForRollback(pr, allocationId);
           if (!line?.selectedSellerProductId) return [];
           const sellerVariantId = await resolveSellerVariantId({
             sellerProductId: line.selectedSellerProductId,
@@ -373,6 +380,7 @@ export const executeRollbackEvent = async ({
           });
           const qtyToRestore = toQty(quantity);
           if (qtyToRestore <= 0) return [];
+          const lineAllocationId = line.allocationId || pr.allocationId || allocationId;
           const result = await restoreSellerInventory({
             productId: line.selectedSellerProductId,
             variantId: sellerVariantId || null,
@@ -381,7 +389,7 @@ export const executeRollbackEvent = async ({
             orderId: pr.orderId,
             sellerId: pr.vendorId,
             reason: "transaction_engine_qa_rejected",
-            idempotencyKey: `qa_rejected:${String(pr._id)}:${qtyToRestore}`,
+            idempotencyKey: `qa_rejected:${String(pr._id)}:${String(lineAllocationId || "none")}:${qtyToRestore}`,
           });
           return [
             {
@@ -389,6 +397,7 @@ export const executeRollbackEvent = async ({
               productId: String(line.productId),
               sellerProductId: String(line.selectedSellerProductId),
               variantId: String(line.variantId),
+              allocationId: String(lineAllocationId || ""),
               quantity: qtyToRestore,
               result,
             },

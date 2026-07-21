@@ -7,7 +7,16 @@ import Admin from "../models/admin.js";
 import { createNotification, createNotificationBatch } from "./notificationService.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { startHubDeliverySearchAtomic } from "./orderWorkflowService.js";
-import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "./hubOrderOrchestrator.js";
+import {
+  planHubFulfillment,
+  reserveHubInventory,
+  createAutoPurchaseRequests,
+} from "./purchaseRequestService.js";
+import { getSlaDeadline } from "./settingsService.js";
+import {
+  markOrderInventoryReserved,
+  markOrderProcurementRequiredHub,
+} from "./workflowFacade.js";
 import ProcurementSession from "../models/procurementSession.js";
 import { ensureProcurementSession } from "./procurementSessionService.js";
 import { executeRollbackEvent } from "./transactionEngine.js";
@@ -136,8 +145,7 @@ export const executeCoreOrderFulfillment = async ({
       orderItems = normalizedItems;
     }
 
-    const defaultSlaHours = parseInt(process.env.HUB_SLA_HOURS || "3", 10);
-    const slaDeadlineAt = new Date(Date.now() + Math.max(1, defaultSlaHours) * 60 * 60 * 1000);
+    const slaDeadlineAt = await getSlaDeadline();
 
     // 5. Pricing and GST calculation
     let validatedPricing = { ...pricing };
@@ -222,8 +230,6 @@ export const executeCoreOrderFulfillment = async ({
        };
     });
 
-    const hubStatus = hubPlan.fullyAvailable ? "inventory_reserved" : "procurement_required";
-
     // 7. Delivery Mode snapshot — frozen at order creation (never rewrite later)
     const resolvedMode = deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
     const deliverySnapshot =
@@ -231,8 +237,8 @@ export const executeCoreOrderFulfillment = async ({
         ? existingDeliverySnapshot
         : await buildDeliverySnapshot({
             deliveryMode: resolvedMode,
-            selectedSlot: resolvedMode === "SLOT" ? selectedSlot : null,
-            selectedDate: resolvedMode === "SLOT" ? selectedDate : null,
+            selectedSlot: resolvedMode === "SLOT" ? (selectedSlot || null) : null,
+            selectedDate: resolvedMode === "SLOT" ? (selectedDate || null) : null,
             deliveryCharges: validatedPricing?.deliveryFee ?? pricing?.deliveryFee ?? 0,
           });
 
@@ -257,11 +263,15 @@ export const executeCoreOrderFulfillment = async ({
       supplyChainStatus: hubPlan.fullyAvailable ? "READY_FOR_DELIVERY" : "WAITING_VENDOR",
       hubFlowEnabled: true,
       hubId: hubPlan.hubId,
-      hubStatus,
       procurementRequired: !hubPlan.fullyAvailable,
       slaDeadlineAt,
       promotionApplied: promotionId || null,
     });
+    if (hubPlan.fullyAvailable) {
+      markOrderInventoryReserved(newOrder);
+    } else {
+      markOrderProcurementRequiredHub(newOrder);
+    }
     await newOrder.save({ session });
     const procurementSession = await ensureProcurementSession({
       order: newOrder,
@@ -344,7 +354,11 @@ export const executeCoreOrderFulfillment = async ({
       );
     }
 
-    newOrder.hubStatus = hubPlan.shortages.length > 0 ? "procurement_required" : "inventory_reserved";
+    if (hubPlan.shortages.length > 0) {
+      markOrderProcurementRequiredHub(newOrder);
+    } else {
+      markOrderInventoryReserved(newOrder);
+    }
     newOrder.procurementRequired = hubPlan.shortages.length > 0;
     if (!newOrder.procurementSessionId && hubPlan.shortages.length > 0) {
       const existingSession = await ProcurementSession.findOne({ orderId: newOrder._id }).select("_id").lean();

@@ -5,7 +5,8 @@ import { generateReceiptNumber, generateInvoiceNumber } from "../services/posSeq
 import { recordCashMovement } from "../services/posSessionService.js";
 import { logPosAction } from "../services/posAuditService.js";
 import { handleResponse } from "../utils/helper.js";
-import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "../services/hubOrderOrchestrator.js";
+import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "../services/purchaseRequestService.js";
+import { markOrderInventoryReserved, markOrderDelivered } from "../services/workflowFacade.js";
 import crypto from "crypto";
 
 import Razorpay from "razorpay";
@@ -217,13 +218,12 @@ export const processPosCheckout = async (req, res) => {
     }
 
     // No procurement required for POS
-    newOrder.hubStatus = "inventory_reserved";
+    markOrderInventoryReserved(newOrder);
     newOrder.procurementRequired = false;
 
     // Step through lifecycle rapidly ONLY if it's TAKE_AWAY
     if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
-      newOrder.status = "delivered";
-      newOrder.workflowStatus = "DELIVERED";
+      markOrderDelivered(newOrder, { role: "admin" });
       newOrder.acceptedAt = new Date();
       newOrder.deliveredAt = new Date();
     }

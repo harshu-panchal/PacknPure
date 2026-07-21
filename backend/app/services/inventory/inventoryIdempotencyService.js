@@ -56,6 +56,46 @@ export const recordInventoryMutation = async ({
   }
 };
 
+/**
+ * Replay-safe guard for any Inventory Engine mutation.
+ * Returns stored result when idempotencyKey was already applied.
+ */
+export const guardInventoryMutation = async ({
+  idempotencyKey,
+  action,
+  meta = {},
+  execute,
+}) => {
+  if (idempotencyKey) {
+    const existing = await getExistingInventoryMutation(idempotencyKey);
+    if (existing?.result && Object.keys(existing.result).length > 0) {
+      return { ...existing.result, skipped: true, idempotencyKey };
+    }
+  }
+
+  const result = await execute();
+
+  if (idempotencyKey) {
+    await recordInventoryMutation({
+      idempotencyKey,
+      action,
+      productId: meta.productId,
+      variantId: meta.variantId,
+      hubId: meta.hubId,
+      sellerId: meta.sellerId,
+      orderId: meta.orderId,
+      purchaseRequestId: meta.purchaseRequestId,
+      allocationId: meta.allocationId,
+      quantity: meta.quantity ?? result?.quantity ?? 0,
+      applied: Boolean(result?.applied ?? result?.success),
+      result,
+      reason: meta.reason || result?.reason || "",
+    });
+  }
+
+  return result;
+};
+
 export const withInventoryIdempotency = async ({
   idempotencyKey,
   action,

@@ -1,9 +1,11 @@
-import PurchaseRequest from "../models/purchaseRequest.js";
 import Admin from "../models/admin.js";
 import {
   fallbackPurchaseRequest,
   fallbackPurchaseRequestLine,
-} from "../services/hubOrderOrchestrator.js";
+  updateOnePurchaseRequest,
+  findPurchaseRequests,
+  findPurchaseRequestById,
+} from "../services/purchaseRequestService.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 import { markAllocationTimeout, buildItemKey } from "../services/procurementSessionService.js";
 import { executeRollbackEvent } from "../services/transactionEngine.js";
@@ -31,7 +33,7 @@ const notifyAdmins = async (title, message, data = {}) => {
 const processExpirations = async () => {
   const now = new Date();
   try {
-    const expiredPRs = await PurchaseRequest.find({
+    const expiredPRs = await findPurchaseRequests({
       status: "created",
       expiresAt: { $lte: now },
     }).select("_id requestId").lean();
@@ -39,13 +41,13 @@ const processExpirations = async () => {
     if (!expiredPRs.length) return;
 
     for (const pr of expiredPRs) {
-      const updateResult = await PurchaseRequest.updateOne(
+      const updateResult = await updateOnePurchaseRequest(
         { _id: pr._id, status: "created" },
         { $set: { status: "expired" } },
       );
       if (updateResult.modifiedCount !== 1) continue;
 
-      const fullPr = await PurchaseRequest.findById(pr._id);
+      const fullPr = await findPurchaseRequestById(pr._id);
       const isMultiLine = (fullPr?.items || []).length > 1;
 
       if (isMultiLine) {
@@ -103,7 +105,7 @@ const processPickupTimeouts = async () => {
   const timeoutMs = await getPickupTimeoutMs();
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
-    const stalledPRs = await PurchaseRequest.find({
+    const stalledPRs = await findPurchaseRequests({
       status: "pickup_assigned",
       updatedAt: { $lte: cutoff }, // Proxy for when it was assigned
     }).select("_id requestId pickupPartnerId").lean();
@@ -128,7 +130,7 @@ const processHubReceiveTimeouts = async () => {
   const timeoutMs = await getHubReceiveTimeoutMs();
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
-    const stalledPRs = await PurchaseRequest.find({
+    const stalledPRs = await findPurchaseRequests({
       status: "picked",
       "pickupProof.pickedAt": { $lte: cutoff },
     }).select("_id requestId pickupPartnerId").lean();

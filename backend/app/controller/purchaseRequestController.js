@@ -31,7 +31,11 @@ import {
   deriveLineResponseStatus,
   processRejectedLinesForFallback,
   isOrderInventoryReadyForDelivery,
-} from "../services/multiProductProcurementService.js";
+  createPurchaseRequest,
+  savePurchaseRequest,
+} from "../services/purchaseRequestService.js";
+import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
+import { markOrderReadyForPacking, persistOrder } from "../services/workflowFacade.js";
 import { executeRollbackEvent } from "../services/transactionEngine.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
@@ -75,10 +79,8 @@ const prStatusLabel = (status) => {
   return map[String(status || "")] || String(status || "—");
 };
 
-const PICKUP_OTP_EXPIRY_MINUTES = Math.max(
-  1,
-  Number(process.env.PICKUP_OTP_EXPIRY_MINUTES || 30),
-);
+const resolvePickupOtpExpiryMs = async () =>
+  (await getPickupOtpTimeoutMinutes()) * 60 * 1000;
 const PICKUP_OTP_MOCK_MODE =
   String(process.env.PICKUP_OTP_MOCK_MODE || "").toLowerCase() === "true";
 const PICKUP_OTP_MOCK_VALUE = String(process.env.PICKUP_OTP_MOCK_VALUE || "1234");
@@ -163,16 +165,15 @@ const assignPickupToRequest = async (doc, partner) => {
   const otp = generatePickupOtp();
   doc.pickupOtpCode = otp;
   doc.pickupOtpHash = hashPickupOtp(otp);
-  doc.pickupOtpExpiresAt = new Date(
-    Date.now() + PICKUP_OTP_EXPIRY_MINUTES * 60 * 1000,
-  );
+  const otpMinutes = await getPickupOtpTimeoutMinutes();
+  doc.pickupOtpExpiresAt = new Date(Date.now() + otpMinutes * 60 * 1000);
   doc.pickupOtpVerifiedAt = undefined;
   doc.pickupProof = undefined;
   doc.hubDropProof = undefined;
   doc.exceptionReason = "";
   doc.status = "pickup_assigned";
   doc.pickupAssignedAt = new Date();
-  await doc.save();
+  await savePurchaseRequest();
   await PickupPartner.findByIdAndUpdate(partner._id, {
     $set: { status: "active", isActive: true },
   });
@@ -755,7 +756,7 @@ export const createManualPurchaseRequest = async (req, res) => {
       .filter(Boolean)
       .join(" · ");
 
-    const doc = await PurchaseRequest.create({
+    const doc = await createPurchaseRequest({
       requestId,
       orderId: null,
       hubId: String(hubId || DEFAULT_HUB_ID),
@@ -786,8 +787,15 @@ export const createManualPurchaseRequest = async (req, res) => {
     });
 
     try {
-      const { freezeSellerInventory } = await import("../services/inventoryLifecycleService.js");
-      await freezeSellerInventory(product._id, targetVariant ? targetVariant._id : null, qty);
+      const { commitSellerInventory } = await import("../services/inventory/inventoryEngine.js");
+      await commitSellerInventory({
+        productId: product._id,
+        variantId: targetVariant ? targetVariant._id : null,
+        quantity: qty,
+        sellerId: vendor._id,
+        reason: "manual_pr_create",
+        idempotencyKey: `manual_pr_commit:${String(doc._id)}:${qty}`,
+      });
     } catch (err) {
       console.warn("[createManualPurchaseRequest] Failed to update seller committedStock:", err.message);
     }
@@ -826,7 +834,7 @@ export const updatePurchaseRequestStatus = async (req, res) => {
     doc.status = status;
     if (notes !== undefined) doc.notes = String(notes || "");
     if (eta) doc.eta = new Date(eta);
-    await doc.save();
+    await savePurchaseRequest();
 
     return handleResponse(res, 200, "Purchase request status updated", doc);
   } catch (error) {
@@ -859,7 +867,7 @@ export const assignPickupPartner = async (req, res) => {
       doc.pickupOtpExpiresAt = undefined;
       doc.pickupOtpVerifiedAt = undefined;
       doc.status = "seller_confirmed";
-      await doc.save();
+      await savePurchaseRequest();
       return handleResponse(res, 200, "Pickup partner assignment cleared", doc);
     }
   } catch (error) {
@@ -886,7 +894,7 @@ export const assignVendor = async (req, res) => {
     if (doc.status === "cancelled") {
       doc.status = "created";
     }
-    await doc.save();
+    await savePurchaseRequest();
 
     return handleResponse(res, 200, "Vendor assigned successfully", doc);
   } catch (error) {
@@ -1004,7 +1012,7 @@ export const receiveAtHub = async (req, res) => {
 
     pr.status = "received_at_hub";
     pr.receivedAtHubAt = new Date();
-    await pr.save();
+    await savePurchaseRequest();
 
     // Trace: Create a PENDING transaction immediately upon receipt for financial visibility
     try {
@@ -1076,7 +1084,7 @@ export const verifyInward = async (req, res) => {
     }
     if (verified) pr.verifiedAt = new Date();
     if (notes !== undefined) pr.notes = String(notes || "");
-    await pr.save();
+    await savePurchaseRequest();
 
     // Ownership transfers at QA pass — seller committed is released then.
 
@@ -1094,7 +1102,7 @@ export const verifyInward = async (req, res) => {
             notes: `QA partially rejected ${rejectedQty} units.`
           };
           try {
-            const { fallbackPurchaseRequestLine } = await import('../services/hubOrderOrchestrator.js');
+            const { fallbackPurchaseRequestLine } = await import('../services/purchaseRequestService.js');
             await fallbackPurchaseRequestLine(pr._id, productId, item.variantId || null, rejectedQty);
           } catch (e) {
             console.error("[verifyInward] Failed to trigger partial fallback PR:", e);
@@ -1268,15 +1276,8 @@ export const verifyInward = async (req, res) => {
         }
       }
       if (allDone) {
-        parentOrder.hubStatus = "ready_for_packing";
-        parentOrder.procurementRequired = false;
-        if (parentOrder.workflowVersion >= 2) {
-          parentOrder.workflowStatus = WORKFLOW_STATUS.SELLER_ACCEPTED;
-        }
-        if (parentOrder.status === "pending") {
-          parentOrder.status = "confirmed";
-        }
-        await parentOrder.save();
+        markOrderReadyForPacking(parentOrder);
+        await persistOrder(parentOrder);
         if (
           verified &&
           parentOrder.workflowVersion >= 2 &&
@@ -1393,11 +1394,11 @@ export const respondSellerPurchaseRequest = async (req, res) => {
         committedQty: 0,
         lineStatus: "rejected",
       }));
-      await pr.save();
+      await savePurchaseRequest();
 
       try {
         const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/hubOrderOrchestrator.js"
+          "../services/purchaseRequestService.js"
         );
         const isMultiLine = (pr.items || []).length > 1;
 
@@ -1481,7 +1482,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     };
     pr.status = responseStatus === "rejected" ? "seller_rejected" : "seller_confirmed";
     pr.exceptionReason = "";
-    await pr.save();
+    await savePurchaseRequest();
 
     const isMultiLine = (pr.items || []).length > 1;
 
@@ -1512,7 +1513,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     if (responseStatus === "rejected") {
       try {
         const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/hubOrderOrchestrator.js"
+          "../services/purchaseRequestService.js"
         );
         if (isMultiLine) {
           await processRejectedLinesForFallback({
@@ -1538,7 +1539,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     } else if (responseStatus === "partial" || isMultiLine) {
       try {
         const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/hubOrderOrchestrator.js"
+          "../services/purchaseRequestService.js"
         );
         if (isMultiLine) {
           await processRejectedLinesForFallback({
@@ -1582,7 +1583,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
           console.log(`[Step 10] Automatically assigned Pickup Partner ${bestPartner.name} to PR ${pr.requestId}`);
         } else {
           pr.status = "pickup_assignment_failed";
-          await pr.save();
+          await savePurchaseRequest();
           try {
             const { createNotification } = await import("../services/notificationService.js");
             const Admin = (await import("../models/admin.js")).default;
@@ -1651,7 +1652,7 @@ export const markSellerRequestReady = async (req, res) => {
         autoAssigned = true;
       } else {
         doc.status = "pickup_assignment_failed";
-        await doc.save();
+        await savePurchaseRequest();
         try {
           const { createNotification } = await import("../services/notificationService.js");
           const Admin = (await import("../models/admin.js")).default;
@@ -1668,7 +1669,7 @@ export const markSellerRequestReady = async (req, res) => {
         } catch (e) { console.error("[markReady] Failed to notify admins:", e); }
       }
     } else {
-      await doc.save();
+      await savePurchaseRequest();
     }
 
     const updated = await PurchaseRequest.findById(id)
@@ -1722,7 +1723,7 @@ export const confirmSellerHandover = async (req, res) => {
       notes: String(notes || ""),
     };
     pr.pickupOtpVerifiedAt = new Date();
-    await pr.save();
+    await savePurchaseRequest();
 
     return handleResponse(
       res,
@@ -1757,7 +1758,7 @@ export const assignReturnPickup = async (req, res) => {
 
     pr.returnDetails.returnPickupPartnerId = pickupPartnerId;
     pr.status = "return_pickup";
-    await pr.save();
+    await savePurchaseRequest();
 
     return handleResponse(res, 200, "Return pickup partner assigned", pr);
   } catch (error) {
@@ -1778,7 +1779,7 @@ export const markReturnDelivered = async (req, res) => {
 
     pr.returnDetails.returnDeliveredAt = new Date();
     pr.status = "return_delivered";
-    await pr.save();
+    await savePurchaseRequest();
 
     return handleResponse(res, 200, "Return marked as delivered to vendor", pr);
   } catch (error) {
@@ -1799,15 +1800,24 @@ export const confirmVendorReturn = async (req, res) => {
 
     pr.returnDetails.sellerConfirmedReturnAt = new Date();
     pr.status = "seller_confirmed_return";
-    await pr.save();
+    await savePurchaseRequest();
 
     // --- RESTORE STOCK ---
     try {
-      const { restoreSellerInventory } = await import("../services/inventoryLifecycleService.js");
+      const { restoreSellerInventory } = await import("../services/inventory/inventoryEngine.js");
       for (const item of pr.items) {
         if (item.productId && item.actualPickedQty > 0) {
           const sellerProductId = item.selectedSellerProductId || item.productId;
-          await restoreSellerInventory(sellerProductId, item.variantId, item.actualPickedQty);
+          const restoreQty = Number(item.actualPickedQty);
+          await restoreSellerInventory({
+            productId: sellerProductId,
+            variantId: item.variantId || null,
+            quantity: restoreQty,
+            orderId: pr.orderId,
+            sellerId: pr.vendorId,
+            reason: "vendor_return_confirmed",
+            idempotencyKey: `vendor_return:${String(pr._id)}:${String(item.allocationId || item.productId)}:${restoreQty}`,
+          });
           console.log(`[Reverse Logistics] Restored ${item.actualPickedQty} to Seller ${pr.vendorId}`);
         }
       }

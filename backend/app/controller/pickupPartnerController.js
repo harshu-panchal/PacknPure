@@ -14,7 +14,8 @@ async function resolvePickupPartnerId(user) {
   }
   return null;
 }
-import handleResponse from "../utils/helper.js";
+import { savePurchaseRequest } from "../services/purchaseRequestService.js";
+import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
 import getPagination from "../utils/pagination.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
 import { distanceMeters } from "../utils/geoUtils.js";
@@ -236,7 +237,7 @@ export const sendPickupPartnerLoginOtp = async (req, res) => {
 
     const otp = generateOTP();
     partner.otp = otp;
-    partner.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    partner.otpExpiry = new Date(Date.now() + (await getPickupOtpTimeoutMinutes()) * 60 * 1000);
     await partner.save();
 
     if (useRealSMS()) {
@@ -460,11 +461,8 @@ export const markAssignmentPicked = async (req, res) => {
 
     // Handle partial/failed pickups
     const { actualPickedQty } = req.body || {};
-    const requestedQty = Number(pr.items[0]?.requestedQty || pr.items[0]?.shortageQty || 0);
-    const pickedQty = actualPickedQty !== undefined ? Number(actualPickedQty) : requestedQty;
-    const remainingQty = Math.max(0, requestedQty - pickedQty);
-
-    const isMultiLine = (pr.items || []).length > 1;
+    const lineRows = pr.items || [];
+    const isMultiLine = lineRows.length > 1;
     const lineUpdates = Array.isArray(req.body?.items) ? req.body.items : [];
     const pickedByProduct = new Map(
       lineUpdates
@@ -472,7 +470,31 @@ export const markAssignmentPicked = async (req, res) => {
         .map((row) => [String(row.productId), Number(row.actualPickedQty ?? row.pickedQty ?? 0)]),
     );
 
-    if (pickedQty === 0 && !isMultiLine) {
+    const lineRequestedQty = (line) =>
+      Number(line?.requestedQty || line?.shortageQty || 0);
+    const linePickedQty = (line) => {
+      const productKey = String(line?.productId?._id || line?.productId);
+      if (isMultiLine && pickedByProduct.has(productKey)) {
+        return Number(pickedByProduct.get(productKey));
+      }
+      if (!isMultiLine && actualPickedQty !== undefined) return Number(actualPickedQty);
+      return lineRequestedQty(line);
+    };
+
+    const requestedQty = isMultiLine
+      ? lineRows.reduce((sum, line) => sum + lineRequestedQty(line), 0)
+      : lineRequestedQty(lineRows[0]);
+    const pickedQty =
+      actualPickedQty !== undefined && !isMultiLine
+        ? Number(actualPickedQty)
+        : lineRows.reduce((sum, line) => sum + linePickedQty(line), 0);
+    const remainingQty = Math.max(0, requestedQty - pickedQty);
+
+    const allLinesFailed = isMultiLine
+      ? lineRows.every((line) => linePickedQty(line) <= 0)
+      : pickedQty <= 0;
+
+    if (allLinesFailed) {
       // Seller failed to provide inventory
       pr.status = "seller_failed";
       pr.pickupOtpCode = undefined;
@@ -487,12 +509,42 @@ export const markAssignmentPicked = async (req, res) => {
         notes: String(notes || "Seller failed to provide stock"),
         location: { lat: latitude, lng: longitude },
       };
-      await pr.save();
+      await savePurchaseRequest(pr);
 
       try {
-        const { fallbackPurchaseRequest, releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
-        await releasePurchaseRequestCommitments(pr);
-        await fallbackPurchaseRequest(pr._id, remainingQty);
+        const {
+          fallbackPurchaseRequest,
+          fallbackPurchaseRequestLine,
+          releasePurchaseRequestCommitments,
+        } = await import("../services/purchaseRequestService.js");
+        const { executeRollbackEvent } = await import("../services/transactionEngine.js");
+
+        if (isMultiLine) {
+          for (const line of lineRows) {
+            const lineRemaining = lineRequestedQty(line);
+            if (lineRemaining <= 0) continue;
+            await executeRollbackEvent({
+              eventType: "SELLER_REJECTED",
+              transactionId: `pr_inventory_release:${String(pr._id)}:${String(line.allocationId || line.productId)}:seller_failed`,
+              orderId: pr.orderId || null,
+              purchaseRequestId: pr._id,
+              allocationId: line.allocationId || pr.allocationId || null,
+              quantity: lineRemaining,
+              reason: "seller_failed_pickup",
+              actor: { type: "pickup" },
+            });
+            await fallbackPurchaseRequestLine(
+              pr._id,
+              line.productId,
+              line.variantId || null,
+              lineRemaining,
+              line.allocationId || null,
+            );
+          }
+        } else {
+          await releasePurchaseRequestCommitments(pr);
+          await fallbackPurchaseRequest(pr._id, remainingQty);
+        }
       } catch (err) {
         console.warn("[Auto Fallback] Failed after seller_failed:", err.message);
       }
@@ -538,12 +590,12 @@ export const markAssignmentPicked = async (req, res) => {
       notes: String(notes || ""),
       location: { lat: latitude, lng: longitude },
     };
-    await pr.save();
+    await savePurchaseRequest(pr);
 
     // Pickup does not transfer inventory ownership — only release unfulfilled commitment per line.
     try {
       const { fallbackPurchaseRequestLine, fallbackPurchaseRequest } = await import(
-        "../services/hubOrderOrchestrator.js"
+        "../services/purchaseRequestService.js"
       );
       const { executeRollbackEvent } = await import("../services/transactionEngine.js");
 
@@ -614,7 +666,7 @@ export const cancelPickupAssignment = async (req, res) => {
     pr.pickupOtpVerifiedAt = undefined;
     pr.status = "pickup_cancelled";
     pr.exceptionReason = String(reason || "Cancelled by delivery partner");
-    await pr.save();
+    await savePurchaseRequest(pr);
 
     // Re-trigger pickup assignment in the background
     try {
@@ -673,7 +725,7 @@ export const markAssignmentHubDelivered = async (req, res) => {
       notes: String(notes || ""),
       location: { lat: latitude, lng: longitude },
     };
-    await pr.save();
+    await savePurchaseRequest(pr);
 
     // --- CALCULATE EARNINGS ---
     try {

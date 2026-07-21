@@ -29,7 +29,7 @@ import {
   planHubFulfillment,
   reserveHubInventory,
   createAutoPurchaseRequests,
-} from "../services/hubOrderOrchestrator.js";
+} from "../services/purchaseRequestService.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "../services/orderSocketEmitter.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
@@ -714,7 +714,7 @@ export const updateOrderStatus = async (req, res) => {
               status: "created",
             });
             if (pr) {
-              const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
+              const { releasePurchaseRequestCommitments } = await import("../services/purchaseRequestService.js");
               await releasePurchaseRequestCommitments(pr);
               pr.vendorResponse = {
                 status: "rejected",

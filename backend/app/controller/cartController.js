@@ -26,11 +26,16 @@ function getSellPrice(productDoc, variant) {
   return { sale: 0, mrp: 0 };
 }
 
-import { calculateTotalAvailableStock } from "../utils/productHelpers.js";
+import { getCustomerFulfillableQty } from "../services/inventoryReadService.js";
 
 async function getAvailableStock(productDoc, variant) {
   const variantId = variant ? (variant._id || variant.id) : null;
-  return await calculateTotalAvailableStock(productDoc, variantId);
+  const masterProductId = productDoc.masterProductId || productDoc._id;
+  const view = await getCustomerFulfillableQty({
+    masterProductId,
+    variantId: variantId || null,
+  });
+  return view.totalFulfillableQty;
 }
 
 async function enrichCartStock(cartDoc) {
@@ -38,7 +43,7 @@ async function enrichCartStock(cartDoc) {
   for (const item of cartDoc.items) {
     if (item.productId && Array.isArray(item.productId.variants)) {
       for (const v of item.productId.variants) {
-        v.stock = await calculateTotalAvailableStock(item.productId, v._id || v.id);
+        v.stock = await getAvailableStock(item.productId, v);
       }
     }
   }

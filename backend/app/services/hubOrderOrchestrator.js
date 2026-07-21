@@ -1,12 +1,12 @@
 import HubInventory from "../models/hubInventory.js";
 import Product from "../models/product.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
+import { createPurchaseRequest, savePurchaseRequest } from "./purchaseRequestRepository.js";
 import Seller from "../models/seller.js";
+import { getSellerAvailableQty } from "./inventoryReadService.js";
 import {
-  effectiveProductStock,
   normalizeVariantMatchKey,
   resolveSellerVariantIdSync,
-  totalVariantCommitted,
 } from "../utils/productHelpers.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
@@ -32,6 +32,7 @@ import {
   isMultiSellerAllocationEnabled,
   getProcurementFailureAction,
 } from "./settingsService.js";
+import { markOrderOnHold } from "./workflowFacade.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const toInt = (v) => Math.max(0, Number(v || 0));
@@ -92,41 +93,7 @@ export function sellerProcurementCapacity(
 
 /** Seller fulfillable qty for a master catalog variant (stock minus committed). */
 export function sellerAvailableForMasterVariant(sellerProduct, masterVariantId, masterProduct) {
-  if (!sellerProduct) return 0;
-
-  let masterVariantName = null;
-  if (masterVariantId && Array.isArray(masterProduct?.variants)) {
-    const masterVar = masterProduct.variants.find(
-      (v) => String(v._id || v.id) === String(masterVariantId),
-    );
-    masterVariantName = masterVar?.name
-      ? normalizeVariantMatchKey(masterVar.name)
-      : null;
-  }
-
-  if (masterVariantName && Array.isArray(sellerProduct.variants)) {
-    const sellerVar = sellerProduct.variants.find(
-      (v) => normalizeVariantMatchKey(v.name) === masterVariantName,
-    );
-    if (sellerVar) {
-      return Math.max(
-        0,
-        (Number(sellerVar.stock) || 0) - (Number(sellerVar.committedStock) || 0),
-      );
-    }
-  }
-
-  if (Array.isArray(sellerProduct.variants) && sellerProduct.variants.length > 0) {
-    return Math.max(
-      0,
-      effectiveProductStock(sellerProduct) - totalVariantCommitted(sellerProduct.variants),
-    );
-  }
-
-  return Math.max(
-    0,
-    (Number(sellerProduct.stock) || 0) - (Number(sellerProduct.committedStock) || 0),
-  );
+  return getSellerAvailableQty(sellerProduct, masterVariantId, masterProduct);
 }
 
 async function commitSellerStockForPrLine({
@@ -148,7 +115,7 @@ async function commitSellerStockForPrLine({
     }
   }
 
-  const { freezeSellerInventory } = await import("./inventoryLifecycleService.js");
+  const { freezeSellerInventory } = await import("./inventory/inventoryEngine.js");
   let sellerVariantId = null;
   if (masterVariantId) {
     let resolvedMaster = masterProduct;
@@ -272,7 +239,7 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
  * Returns false if any reserve check fails (race-safe).
  */
 export const reserveHubInventory = async (allocations, hubId = HUB_ID, orderId = null) => {
-  const { freezeHubInventory, releaseHubReservation } = await import("./inventoryLifecycleService.js");
+  const { freezeHubInventory, releaseHubReservation } = await import("./inventory/inventoryEngine.js");
   const reservedRows = [];
   for (const row of allocations) {
     if (!row.reserveQty || row.reserveQty <= 0) continue;
@@ -614,7 +581,7 @@ export const createAutoPurchaseRequests = async ({
       }
     }
 
-    const doc = await PurchaseRequest.create({
+    const doc = await createPurchaseRequest({
       requestId: buildRequestId(),
       orderId: order._id,
       procurementSessionId: procurementSession?._id || undefined,
@@ -667,7 +634,7 @@ export const createAutoPurchaseRequests = async ({
 async function markProcurementExhausted(pr, session) {
   pr.status = "procurement_failed";
   pr.exceptionReason = "All eligible sellers exhausted.";
-  await pr.save();
+  await savePurchaseRequest(pr);
   if (pr.procurementSessionId) {
     const ProcurementSession = (await import("../models/procurementSession.js")).default;
     await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
@@ -709,7 +676,7 @@ async function markProcurementExhausted(pr, session) {
             $set: { status: "on_hold" },
           });
         }
-        order.hubStatus = "on_hold";
+        markOrderOnHold(order, { reason: "all_sellers_exhausted_put_on_hold" });
         await order.save();
         const { createNotification } = await import("./notificationService.js");
         const Admin = (await import("../models/admin.js")).default;
@@ -738,6 +705,20 @@ async function markProcurementExhausted(pr, session) {
 export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const pr = await PurchaseRequest.findById(prId);
   if (!pr) return null;
+
+  if ((pr.items || []).length > 1 && remainingQty === null) {
+    let lastResult = null;
+    for (const line of pr.items || []) {
+      lastResult = await fallbackPurchaseRequestLine(
+        pr._id,
+        line.productId,
+        line.variantId || null,
+        null,
+        line.allocationId || pr.allocationId || null,
+      );
+    }
+    return lastResult;
+  }
 
   if (pr.procurementSessionId && pr.allocationId && String(pr.status) === "expired") {
     await markAllocationTimeout({
@@ -830,7 +811,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       if (reserved?.duplicate) {
         if (reserved.existingPurchaseRequest?._id) {
           pr.rankedSellers = remainingRanked;
-          await pr.save();
+          await savePurchaseRequest(pr);
           return PurchaseRequest.findById(reserved.existingPurchaseRequest._id);
         }
         continue;
@@ -869,7 +850,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
       }
     }
 
-    const newPr = await PurchaseRequest.create({
+    const newPr = await createPurchaseRequest({
       requestId: buildRequestId(),
       orderId: pr.orderId,
       procurementSessionId: pr.procurementSessionId || undefined,
@@ -905,7 +886,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
     });
 
     pr.rankedSellers = remainingRanked;
-    await pr.save();
+    await savePurchaseRequest(pr);
 
     if (pr.procurementSessionId && allocationId) {
       await attachPurchaseRequestAllocation({
@@ -1049,7 +1030,7 @@ export const fallbackPurchaseRequestLine = async (
     }
   }
 
-  const newPr = await PurchaseRequest.create({
+  const newPr = await createPurchaseRequest({
     requestId: buildRequestId(),
     orderId: pr.orderId,
     procurementSessionId: pr.procurementSessionId,

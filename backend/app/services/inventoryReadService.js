@@ -145,3 +145,45 @@ export const getSellerProductStockView = (sellerProduct) => {
     })),
   };
 };
+
+/**
+ * Hub inventory list row — canonical stock view for admin hub screen.
+ */
+export const getHubInventoryRowView = async ({
+  productId,
+  hubAvailableQty,
+  hubReservedQty,
+  masterProduct = null,
+  hubId = DEFAULT_HUB_ID,
+}) => {
+  const hubAvailable = hubAvailableQty ?? (await getHubAvailableQty(productId, hubId));
+  const hubReserved = hubReservedQty ?? (await getHubReservedQty(productId, hubId));
+
+  let sellerAvailable = 0;
+  let sellerCommitted = 0;
+  if (masterProduct) {
+    const sellerProducts = await Product.find({
+      masterProductId: String(masterProduct._id || productId),
+      ownerType: "seller",
+      isActive: true,
+    })
+      .select("variants stock committedStock")
+      .lean();
+    for (const sp of sellerProducts) {
+      sellerAvailable += getSellerAvailableQty(sp, null, masterProduct);
+      if (Array.isArray(sp.variants) && sp.variants.length > 0) {
+        sellerCommitted += sp.variants.reduce((s, v) => s + toQty(v.committedStock), 0);
+      } else {
+        sellerCommitted += toQty(sp.committedStock);
+      }
+    }
+  }
+
+  return {
+    hubAvailableQty: hubAvailable,
+    hubReservedQty: hubReserved,
+    sellerAvailableQty: sellerAvailable,
+    sellerCommittedQty: sellerCommitted,
+    totalFulfillableQty: hubAvailable + sellerAvailable,
+  };
+};

@@ -5,12 +5,15 @@ import OrderOtp from "../models/orderOtp.js";
 import Notification from "../models/notification.js";
 import { createNotification } from "./notificationService.js";
 import Seller from "../models/seller.js";
+import { getDeliveryTimeoutMs, getDeliveryOtpExpiryMs } from "./settingsService.js";
 import {
+  findAndTransitionOrder,
   WORKFLOW_STATUS,
   legacyStatusFromWorkflow,
+} from "./workflowFacade.js";
+import {
   workflowFromLegacyStatus,
   DEFAULT_SELLER_TIMEOUT_MS,
-  DEFAULT_DELIVERY_TIMEOUT_MS,
 } from "../constants/orderWorkflow.js";
 import { compensateOrderCancellation } from "./orderCompensation.js";
 import { applyCodCancellationStrike, isCodMethod } from "./orderService.js";
@@ -74,8 +77,7 @@ const PICKUP_RADIUS_M = () =>
   parseInt(process.env.PICKUP_RADIUS_METERS || "1000000", 10);
 const OTP_RADIUS_M = () =>
   parseInt(process.env.DELIVERY_OTP_RADIUS_METERS || "150", 10);
-const OTP_EXPIRY_MS = () =>
-  parseInt(process.env.DELIVERY_OTP_EXPIRY_MS || "300000", 10);
+const OTP_EXPIRY_MS = async () => getDeliveryOtpExpiryMs();
 
 function parseHubCoordinate(...keys) {
   for (const key of keys) {
@@ -211,7 +213,7 @@ export async function removeSellerTimeoutJob(orderId) {
 }
 
 export async function scheduleDeliveryTimeoutJob(orderId, attempt = 1) {
-  const delay = DEFAULT_DELIVERY_TIMEOUT_MS();
+  const delay = await getDeliveryTimeoutMs();
   const jobId = `order:${orderId}:delivery:${attempt}`;
   const addPromise = deliveryTimeoutQueue
     .add(
@@ -279,36 +281,30 @@ export async function removeDeliveryTimeoutJob(orderId, attempt = 1) {
 export async function sellerAcceptAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
-  const sellerMs = DEFAULT_SELLER_TIMEOUT_MS();
-  const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
+  const deliveryMs = await getDeliveryTimeoutMs();
 
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
       sellerPendingExpiresAt: { $gt: now },
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_SEARCH),
-        sellerAcceptedAt: now,
-        deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
-        deliverySearchMeta: {
-          radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
-          attempt: 1,
-          lastBroadcastAt: now,
-        },
+    toState: WORKFLOW_STATUS.DELIVERY_SEARCH,
+    assign: {
+      sellerAcceptedAt: now,
+      deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
+      deliverySearchMeta: {
+        radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
+        attempt: 1,
+        lastBroadcastAt: now,
       },
-      // CRITICAL FIX: Remove expiresAt to prevent TTL index from auto-deleting the order
-      $unset: { expiresAt: 1 },
+      expiresAt: undefined,
     },
-    { new: true },
-  )
-    .populate("customer", "name phone")
-    .populate("seller", "shopName address name location serviceRadius");
+    options: { actor: { role: "seller" }, reason: "seller_accepted" },
+    populate: ["customer", { path: "seller", select: "shopName address name location serviceRadius" }],
+  });
 
   if (!updated) {
     const err = new Error("Order not available for acceptance or expired");
@@ -394,7 +390,7 @@ export async function sellerRejectAtomic(sellerId, orderId) {
 export async function startHubDeliverySearchAtomic(orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
-  const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
+  const deliveryMs = await getDeliveryTimeoutMs();
 
   const updated = await Order.findOneAndUpdate(
     {
@@ -681,7 +677,7 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
       (meta.radiusMeters || INITIAL_DELIVERY_RADIUS_M()) *
         DELIVERY_RADIUS_MULTIPLIER(),
     );
-    const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
+    const deliveryMs = await getDeliveryTimeoutMs();
     const nextExpiry = new Date(now.getTime() + deliveryMs);
 
     await Order.findOneAndUpdate(
@@ -1106,7 +1102,7 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
     consumedAt: null,
   });
 
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS());
+  const expiresAt = new Date(Date.now() + (await OTP_EXPIRY_MS()));
   await OrderOtp.create({
     orderId,
     orderMongoId: order._id,
@@ -1210,13 +1206,14 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
           const qtyToDeduct = Number(item.quantity || 0);
 
           if (qtyToDeduct > 0) {
-            const { completeHubDelivery } = await import("./inventoryLifecycleService.js");
+            const { completeHubDelivery } = await import("./inventory/inventoryEngine.js");
             const deliveryResult = await completeHubDelivery({
               productId,
               quantity: qtyToDeduct,
               hubId,
               orderId: updated._id,
               reason: "order_delivery_complete",
+              idempotencyKey: `hub_delivery:${String(updated._id)}:${productId}:${qtyToDeduct}`,
             });
             const hubStock = deliveryResult?.hubInventory;
 

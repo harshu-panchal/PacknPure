@@ -140,6 +140,34 @@ const settingSchema = new mongoose.Schema(
             type: Number,
             default: 1440, // default 24 hours in minutes
         },
+        deliveryTimeout: {
+            type: Number,
+            default: 15, // minutes
+        },
+        pickupOtpTimeout: {
+            type: Number,
+            default: 30, // minutes
+        },
+        deliveryOtpExpiry: {
+            type: Number,
+            default: 5, // minutes
+        },
+        slaHours: {
+            type: Number,
+            default: 3,
+        },
+        authOtpExpiry: {
+            type: Number,
+            default: 5, // minutes
+        },
+        paymentIntentExpiry: {
+            type: Number,
+            default: 15, // minutes
+        },
+        returnWindowDays: {
+            type: Number,
+            default: 7,
+        },
         procurementFailureAction: {
             type: String,
             enum: ["auto_cancel", "put_on_hold"],
