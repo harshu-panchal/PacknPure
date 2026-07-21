@@ -14,7 +14,7 @@ async function resolvePickupPartnerId(user) {
   }
   return null;
 }
-import { savePurchaseRequest } from "../services/purchaseRequestService.js";
+import { savePurchaseRequest, isPickupEligibleLine, buildItemKey, releaseAllocationSellerStock } from "../services/purchaseRequestService.js";
 import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
 import getPagination from "../utils/pagination.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
@@ -384,13 +384,15 @@ export const getMyPickupAssignments = async (req, res) => {
         phone: row.vendorId?.phone || "",
         location: row.vendorId?.location || null,
       },
-      products: (row.items || []).map((i) => ({
+      products: (row.items || [])
+        .filter(isPickupEligibleLine)
+        .map((i) => ({
         productId: i.productId?._id || i.productId,
         name: i.productId?.name || "Product",
         sku: i.productId?.sku || "",
         weight: i.productId?.weight || "",
         unit: i.productId?.unit || "",
-        qty: Number(i.shortageQty || i.requiredQty || 0),
+        qty: Number(i.committedQty || i.shortageQty || i.requiredQty || 0),
         unitCost: Number(i.vendorUnitCost || 0),
       })),
       pickupOtpRequired: row.status === "pickup_assigned",
@@ -442,6 +444,11 @@ export const markAssignmentPicked = async (req, res) => {
       return handleResponse(res, 404, "Pickup assignment not found");
     }
 
+    const eligibleLines = (pr.items || []).filter(isPickupEligibleLine);
+    if (eligibleLines.length === 0) {
+      return handleResponse(res, 400, "No accepted product lines are available for pickup");
+    }
+
     const expectedHash = pr.pickupOtpHash || "";
     if (!expectedHash || expectedHash !== hashPickupOtp(otp)) {
       return handleResponse(res, 400, "Invalid pickup OTP");
@@ -461,21 +468,28 @@ export const markAssignmentPicked = async (req, res) => {
 
     // Handle partial/failed pickups
     const { actualPickedQty } = req.body || {};
-    const lineRows = pr.items || [];
+    const lineRows = (pr.items || []).filter(isPickupEligibleLine);
     const isMultiLine = lineRows.length > 1;
     const lineUpdates = Array.isArray(req.body?.items) ? req.body.items : [];
-    const pickedByProduct = new Map(
+    const pickedByLineKey = new Map(
       lineUpdates
         .filter((row) => row?.productId != null)
-        .map((row) => [String(row.productId), Number(row.actualPickedQty ?? row.pickedQty ?? 0)]),
+        .map((row) => [
+          buildItemKey(row.productId, row.variantId || null),
+          Number(row.actualPickedQty ?? row.pickedQty ?? 0),
+        ]),
     );
 
     const lineRequestedQty = (line) =>
-      Number(line?.requestedQty || line?.shortageQty || 0);
+      Number(line?.committedQty || line?.requestedQty || line?.shortageQty || 0);
     const linePickedQty = (line) => {
+      const lineKey = line?.itemKey || buildItemKey(line?.productId?._id || line?.productId, line?.variantId);
+      if (isMultiLine && pickedByLineKey.has(lineKey)) {
+        return Number(pickedByLineKey.get(lineKey));
+      }
       const productKey = String(line?.productId?._id || line?.productId);
-      if (isMultiLine && pickedByProduct.has(productKey)) {
-        return Number(pickedByProduct.get(productKey));
+      if (isMultiLine && pickedByLineKey.has(productKey)) {
+        return Number(pickedByLineKey.get(productKey));
       }
       if (!isMultiLine && actualPickedQty !== undefined) return Number(actualPickedQty);
       return lineRequestedQty(line);
@@ -512,37 +526,46 @@ export const markAssignmentPicked = async (req, res) => {
       await savePurchaseRequest(pr);
 
       try {
-        const {
-          fallbackPurchaseRequest,
-          fallbackPurchaseRequestLine,
-          releasePurchaseRequestCommitments,
-        } = await import("../services/purchaseRequestService.js");
-        const { executeRollbackEvent } = await import("../services/transactionEngine.js");
+        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
+          "../services/purchaseRequestService.js"
+        );
 
         if (isMultiLine) {
           for (const line of lineRows) {
             const lineRemaining = lineRequestedQty(line);
             if (lineRemaining <= 0) continue;
-            await executeRollbackEvent({
-              eventType: "SELLER_REJECTED",
-              transactionId: `pr_inventory_release:${String(pr._id)}:${String(line.allocationId || line.productId)}:seller_failed`,
-              orderId: pr.orderId || null,
-              purchaseRequestId: pr._id,
-              allocationId: line.allocationId || pr.allocationId || null,
-              quantity: lineRemaining,
-              reason: "seller_failed_pickup",
-              actor: { type: "pickup" },
-            });
+            const allocId = line.allocationId || pr.allocationId || null;
+            if (pr.procurementSessionId && allocId) {
+              await releaseAllocationSellerStock({
+                procurementSessionId: pr.procurementSessionId,
+                allocationId: allocId,
+                purchaseRequestId: pr._id,
+                orderId: pr.orderId || null,
+                quantity: lineRemaining,
+                eventType: "SELLER_REJECTED",
+                reason: "seller_failed_pickup",
+                actor: { type: "pickup" },
+                transactionId: `pickup_failed:${String(pr._id)}:${String(allocId)}`,
+              });
+            }
             await fallbackPurchaseRequestLine(
               pr._id,
               line.productId,
               line.variantId || null,
               lineRemaining,
-              line.allocationId || null,
             );
           }
-        } else {
-          await releasePurchaseRequestCommitments(pr);
+        } else if (pr.procurementSessionId && pr.allocationId) {
+          await releaseAllocationSellerStock({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId: pr.allocationId,
+            purchaseRequestId: pr._id,
+            orderId: pr.orderId || null,
+            eventType: "SELLER_REJECTED",
+            reason: "seller_failed_pickup",
+            actor: { type: "pickup" },
+            transactionId: `pickup_failed:${String(pr._id)}:${String(pr.allocationId)}`,
+          });
           await fallbackPurchaseRequest(pr._id, remainingQty);
         }
       } catch (err) {
@@ -563,12 +586,12 @@ export const markAssignmentPicked = async (req, res) => {
     if (pr.items && pr.items.length > 0) {
       pr.items = pr.items.map((line) => {
         const lineObj = line.toObject ? line.toObject() : line;
-        const productKey = String(lineObj.productId?._id || lineObj.productId);
-        const lineRequested = Number(lineObj.requestedQty || lineObj.shortageQty || 0);
+        const lineKey = lineObj.itemKey || buildItemKey(lineObj.productId?._id || lineObj.productId, lineObj.variantId);
+        const lineRequested = Number(lineObj.committedQty || lineObj.requestedQty || lineObj.shortageQty || 0);
         let linePicked = pickedQty;
         if (isMultiLine) {
-          linePicked = pickedByProduct.has(productKey)
-            ? Number(pickedByProduct.get(productKey))
+          linePicked = pickedByLineKey.has(lineKey)
+            ? Number(pickedByLineKey.get(lineKey))
             : lineRequested;
         } else if (actualPickedQty !== undefined) {
           linePicked = Number(actualPickedQty);
@@ -597,7 +620,6 @@ export const markAssignmentPicked = async (req, res) => {
       const { fallbackPurchaseRequestLine, fallbackPurchaseRequest } = await import(
         "../services/purchaseRequestService.js"
       );
-      const { executeRollbackEvent } = await import("../services/transactionEngine.js");
 
       for (const item of pr.items || []) {
         const lineObj = item.toObject ? item.toObject() : item;
@@ -606,17 +628,20 @@ export const markAssignmentPicked = async (req, res) => {
         const lineRemaining = Math.max(0, lineRequested - linePicked);
         if (lineRemaining <= 0 || !lineObj.selectedSellerProductId) continue;
 
-        const itemKey = lineObj.itemKey || `${String(lineObj.productId)}::${lineObj.variantId || "root"}`;
-        await executeRollbackEvent({
-          eventType: "SELLER_REJECTED",
-          transactionId: `pr_inventory_release:${String(pr._id)}:${itemKey}:pickup_partial`,
-          orderId: pr.orderId || null,
-          purchaseRequestId: pr._id,
-          allocationId: lineObj.allocationId || pr.allocationId || null,
-          quantity: lineRemaining,
-          reason: "pickup_partial_unfulfilled",
-          actor: { type: "pickup" },
-        });
+        const allocId = lineObj.allocationId || pr.allocationId || null;
+        if (pr.procurementSessionId && allocId) {
+          await releaseAllocationSellerStock({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId: allocId,
+            purchaseRequestId: pr._id,
+            orderId: pr.orderId || null,
+            quantity: lineRemaining,
+            eventType: "SELLER_REJECTED",
+            reason: "pickup_partial_unfulfilled",
+            actor: { type: "pickup" },
+            transactionId: `pickup_partial:${String(pr._id)}:${String(allocId)}:${lineRemaining}`,
+          });
+        }
 
         if (isMultiLine) {
           await fallbackPurchaseRequestLine(

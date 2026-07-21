@@ -4,9 +4,85 @@ import {
   reserveAllocation,
   attachPurchaseRequestAllocation,
   revertAllocation,
+  releaseAllocationSellerStock,
 } from "./procurementSessionService.js";
 
 const toInt = (v) => Math.max(0, Number(v || 0));
+
+export const buildPrLineKey = (productId, variantId = null) =>
+  buildItemKey(productId, variantId);
+
+export const normalizePrLine = (line) => (line?.toObject ? line.toObject() : line);
+
+export const isRetryEligibleLineStatus = (status) => {
+  const s = String(status || "").toLowerCase();
+  return s === "rejected" || s === "partial";
+};
+
+export const isPickupEligibleLine = (line) => {
+  const row = normalizePrLine(line);
+  const status = String(row.lineStatus || "pending").toLowerCase();
+  const committed = toInt(row.committedQty);
+  return committed > 0 && (status === "accepted" || status === "partial");
+};
+
+export const applyLineSellerQuantities = (line, committedQty) => {
+  const row = normalizePrLine(line);
+  const productId = row.productId?._id || row.productId;
+  const requestedQty = toInt(row.requestedQty || row.shortageQty);
+  const accepted = Math.min(requestedQty, Math.max(0, toInt(committedQty)));
+  const rejectedQty = Math.max(0, requestedQty - accepted);
+  const remainingQty = rejectedQty;
+  const lineStatus = deriveLineResponseStatus(accepted, requestedQty);
+  return {
+    ...row,
+    productId,
+    itemKey: row.itemKey || buildItemKey(productId, row.variantId),
+    requestedQty,
+    committedQty: accepted,
+    rejectedQty,
+    remainingQty,
+    lineStatus,
+  };
+};
+
+export const syncPrAggregateStatus = (pr, { notes = "", rejectionReason = "", sellerId = null } = {}) => {
+  const lines = (pr.items || []).map(normalizePrLine);
+  const pending = lines.filter((l) => String(l.lineStatus || "pending") === "pending");
+  const anyCommitted = lines.some((l) => toInt(l.committedQty) > 0);
+
+  if (pending.length > 0) {
+    if (!["pickup_assigned", "picked"].includes(String(pr.status))) {
+      pr.status = "created";
+    }
+    pr.vendorResponse = {
+      ...(pr.vendorResponse || {}),
+      status: "pending",
+      notes: String(notes || pr.vendorResponse?.notes || ""),
+    };
+    return pr;
+  }
+
+  const allAccepted = lines.every((l) => l.lineStatus === "accepted");
+  const allRejected = lines.every((l) => l.lineStatus === "rejected");
+
+  pr.vendorResponse = {
+    status: allAccepted ? "accepted" : allRejected ? "rejected" : "partial",
+    respondedAt: new Date(),
+    rejectionReason: allRejected ? String(rejectionReason || "Rejected by seller") : "",
+    notes: String(notes || ""),
+  };
+
+  if (allRejected) {
+    pr.status = "seller_rejected";
+    pr.exceptionReason = String(rejectionReason || "Rejected by seller");
+  } else if (!["pickup_assigned", "picked", "hub_delivered"].includes(String(pr.status))) {
+    pr.status = "seller_confirmed";
+    pr.exceptionReason = "";
+  }
+
+  return pr;
+};
 
 /** True when more than one distinct product/variant needs procurement. */
 export const isMultiProductProcurementOrder = (shortages = []) => {
@@ -99,7 +175,7 @@ export const createSellerGroupedPurchaseRequests = async ({
 
       if (item.selectedSellerProductId) {
         try {
-          await commitSellerStockForPrLine({
+          const commitResult = await commitSellerStockForPrLine({
             selectedSellerProductId: item.selectedSellerProductId,
             masterProduct: item.baseProduct,
             masterProductId: item.productId,
@@ -108,6 +184,15 @@ export const createSellerGroupedPurchaseRequests = async ({
             procurementSessionId: procurementSession?._id || null,
             allocationId,
           });
+          if (!commitResult?.committed) {
+            if (procurementSession && allocationId) {
+              await revertAllocation({
+                procurementSessionId: procurementSession._id,
+                allocationId,
+              });
+            }
+            continue;
+          }
         } catch (err) {
           console.warn(
             "[createSellerGroupedPurchaseRequests] Seller commit failed, reverting allocation:",
@@ -211,67 +296,77 @@ export const deriveLineResponseStatus = (committedQty, shortageQty) => {
   return "partial";
 };
 
-/** Release inventory and reallocate rejected/partial lines in a multi-item PR. */
-export const processRejectedLinesForFallback = async ({
+/** Release reserved stock, then retry — never retry while RESERVED. */
+export const releaseLineAndRetry = async ({
   pr,
+  lineObj,
   sellerId,
-  executeRollbackEvent,
+  executeRollbackEvent: _unused,
   markAllocationFromSellerResponse,
   fallbackPurchaseRequestLine,
+  skipAllocationMark = false,
+  eventType = "SELLER_REJECTED",
+  reason = "seller_line_release",
 }) => {
-  const isMultiLine = (pr.items || []).length > 1;
+  const lineStatus =
+    lineObj.lineStatus ||
+    deriveLineResponseStatus(lineObj.committedQty, lineObj.shortageQty || lineObj.requestedQty);
 
-  for (const line of pr.items || []) {
-    const lineObj = line.toObject ? line.toObject() : line;
-    const lineStatus =
-      lineObj.lineStatus || deriveLineResponseStatus(lineObj.committedQty, lineObj.shortageQty);
-    const allocId = lineObj.allocationId || pr.allocationId;
+  if (!isRetryEligibleLineStatus(lineStatus)) return false;
 
-    if (pr.procurementSessionId && allocId) {
-      await markAllocationFromSellerResponse({
-        procurementSessionId: pr.procurementSessionId,
-        allocationId: allocId,
-        responseStatus:
-          lineStatus === "accepted"
-            ? "accepted"
-            : lineStatus === "partial"
-              ? "partial"
-              : "rejected",
-        committedQty: toInt(lineObj.committedQty),
-      });
-    }
+  const allocId = lineObj.allocationId || pr.allocationId;
+  const retryQty =
+    toInt(lineObj.remainingQty) ||
+    Math.max(
+      0,
+      toInt(lineObj.requestedQty || lineObj.shortageQty) - toInt(lineObj.committedQty),
+    );
+  if (retryQty <= 0) return false;
 
-    if (lineStatus === "accepted") continue;
-
-    const releaseQty =
-      lineStatus === "rejected"
-        ? toInt(lineObj.shortageQty)
-        : Math.max(0, toInt(lineObj.shortageQty) - toInt(lineObj.committedQty));
-
-    if (releaseQty <= 0) continue;
-
-    const itemKey = lineObj.itemKey || buildItemKey(lineObj.productId, lineObj.variantId);
-
-    await executeRollbackEvent({
-      eventType: "SELLER_REJECTED",
-      transactionId: `pr_inventory_release:${String(pr._id)}:${itemKey}`,
-      orderId: pr.orderId || null,
-      purchaseRequestId: pr._id,
+  if (!skipAllocationMark && pr.procurementSessionId && allocId) {
+    await markAllocationFromSellerResponse({
+      procurementSessionId: pr.procurementSessionId,
       allocationId: allocId,
-      quantity: releaseQty,
-      reason: "seller_line_release",
-      actor: { id: sellerId, type: "seller" },
+      responseStatus: lineStatus === "partial" ? "partial" : "rejected",
+      committedQty: toInt(lineObj.committedQty),
     });
-
-    if (isMultiLine) {
-      await fallbackPurchaseRequestLine(
-        pr._id,
-        lineObj.productId,
-        lineObj.variantId || null,
-        lineStatus === "rejected" ? toInt(lineObj.shortageQty) : releaseQty,
-      );
-    }
   }
 
-  return isMultiLine;
+  if (pr.procurementSessionId && allocId) {
+    const releaseQty =
+      lineStatus === "partial"
+        ? retryQty
+        : toInt(lineObj.requestedQty || lineObj.shortageQty || lineObj.remainingQty);
+
+    await releaseAllocationSellerStock({
+      procurementSessionId: pr.procurementSessionId,
+      allocationId: allocId,
+      purchaseRequestId: pr._id,
+      orderId: pr.orderId || null,
+      quantity: releaseQty,
+      eventType,
+      reason,
+      actor: { id: sellerId, type: "seller" },
+      transactionId: `pr_release:${String(pr._id)}:${String(allocId)}:${releaseQty}`,
+    });
+  }
+
+  const productId = lineObj.productId?._id || lineObj.productId;
+  await fallbackPurchaseRequestLine(
+    pr._id,
+    productId,
+    lineObj.variantId || null,
+    retryQty,
+  );
+  return true;
+};
+
+/** Release inventory and reallocate rejected/partial lines — never retries accepted lines. */
+export const processRejectedLinesForFallback = async (params) => {
+  for (const line of params.pr.items || []) {
+    const lineObj = normalizePrLine(line);
+    // eslint-disable-next-line no-await-in-loop
+    await releaseLineAndRetry({ ...params, lineObj });
+  }
+  return (params.pr.items || []).length > 1;
 };

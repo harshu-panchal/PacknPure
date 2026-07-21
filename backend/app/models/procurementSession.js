@@ -19,6 +19,13 @@ const allocationSchema = new mongoose.Schema(
       default: "allocated",
       index: true,
     },
+    reservationState: {
+      type: String,
+      enum: ["NOT_RESERVED", "RESERVED", "RELEASED", "COMPLETED"],
+      default: "NOT_RESERVED",
+      index: true,
+    },
+    reservedQty: { type: Number, default: 0, min: 0 },
     acceptedQty: { type: Number, default: 0, min: 0 },
     rejectedQty: { type: Number, default: 0, min: 0 },
     completedQty: { type: Number, default: 0, min: 0 },

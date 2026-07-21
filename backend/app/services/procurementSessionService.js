@@ -8,7 +8,195 @@ export const buildItemKey = (productId, variantId = null) =>
 
 const toInt = (v) => Math.max(0, Number(v || 0));
 
-const ACTIVE_ALLOCATION_STATUSES = new Set(["allocated", "locked"]);
+export const RESERVATION_STATE = {
+  NOT_RESERVED: "NOT_RESERVED",
+  RESERVED: "RESERVED",
+  RELEASED: "RELEASED",
+  COMPLETED: "COMPLETED",
+};
+
+/** Allocation statuses that may hold SellerCommitted stock. */
+export const STOCK_HOLDING_ALLOCATION_STATUSES = new Set(["allocated", "locked"]);
+
+const ACTIVE_ALLOCATION_STATUSES = STOCK_HOLDING_ALLOCATION_STATUSES;
+
+const normalizeReservationState = (allocation) =>
+  String(allocation?.reservationState || RESERVATION_STATE.NOT_RESERVED);
+
+export const isAllocationStockReserved = (allocation) =>
+  normalizeReservationState(allocation) === RESERVATION_STATE.RESERVED &&
+  toInt(allocation?.reservedQty) > 0;
+
+export const canClaimAllocationReservation = (allocation) => {
+  const state = normalizeReservationState(allocation);
+  return state === RESERVATION_STATE.NOT_RESERVED || state === RESERVATION_STATE.RELEASED;
+};
+
+/** Atomically claim reservation slot — prevents double SellerCommitted. */
+export const tryClaimAllocationReservation = async (procurementSessionId, allocationId, quantity) => {
+  if (!procurementSessionId || !allocationId || toInt(quantity) <= 0) return false;
+
+  const qty = toInt(quantity);
+  const updated = await ProcurementSession.findOneAndUpdate(
+    {
+      _id: procurementSessionId,
+      allocations: {
+        $elemMatch: {
+          allocationId: String(allocationId),
+          reservationState: { $in: [RESERVATION_STATE.NOT_RESERVED, null, undefined] },
+        },
+      },
+    },
+    {
+      $set: {
+        "allocations.$.reservationState": RESERVATION_STATE.RESERVED,
+        "allocations.$.reservedQty": qty,
+      },
+    },
+    { new: true },
+  );
+
+  return Boolean(updated);
+};
+
+/** Undo a reservation claim when inventory engine commit fails. */
+export const revertAllocationReservationClaim = async (procurementSessionId, allocationId) => {
+  if (!procurementSessionId || !allocationId) return null;
+  return ProcurementSession.findOneAndUpdate(
+    {
+      _id: procurementSessionId,
+      allocations: {
+        $elemMatch: {
+          allocationId: String(allocationId),
+          reservationState: RESERVATION_STATE.RESERVED,
+        },
+      },
+    },
+    {
+      $set: {
+        "allocations.$.reservationState": RESERVATION_STATE.NOT_RESERVED,
+        "allocations.$.reservedQty": 0,
+      },
+    },
+    { new: true },
+  );
+};
+
+/** Mark reservation consumed after inward/QA completion. */
+export const markAllocationReservationCompleted = async (procurementSessionId, allocationId) => {
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return null;
+  const allocation = (session.allocations || []).find((a) => a.allocationId === allocationId);
+  if (!allocation) return null;
+  allocation.reservationState = RESERVATION_STATE.COMPLETED;
+  allocation.reservedQty = 0;
+  await session.save();
+  return allocation;
+};
+
+/**
+ * Idempotent seller stock release for one allocation.
+ * Must complete before retry. Skips if already RELEASED or NOT_RESERVED.
+ */
+export const releaseAllocationSellerStock = async ({
+  procurementSessionId,
+  allocationId,
+  purchaseRequestId = null,
+  orderId = null,
+  quantity = null,
+  eventType = "SELLER_REJECTED",
+  reason = "allocation_release",
+  actor = { type: "system" },
+  transactionId = null,
+}) => {
+  if (!procurementSessionId || !allocationId) {
+    return { skipped: true, reason: "missing_ids" };
+  }
+
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return { skipped: true, reason: "no_session" };
+
+  const allocation = (session.allocations || []).find((a) => a.allocationId === allocationId);
+  if (!allocation) return { skipped: true, reason: "no_allocation" };
+
+  const state = normalizeReservationState(allocation);
+  if (state === RESERVATION_STATE.RELEASED || state === RESERVATION_STATE.NOT_RESERVED) {
+    return { skipped: true, reason: "already_released", reservationState: state };
+  }
+  if (state === RESERVATION_STATE.COMPLETED) {
+    return { skipped: true, reason: "completed", reservationState: state };
+  }
+
+  const currentlyReserved = toInt(allocation.reservedQty || allocation.quantity);
+  const releaseQty =
+    quantity != null ? Math.min(toInt(quantity), currentlyReserved) : currentlyReserved;
+  if (releaseQty <= 0) {
+    allocation.reservationState = RESERVATION_STATE.RELEASED;
+    allocation.reservedQty = 0;
+    await session.save();
+    return { skipped: true, reason: "zero_reserved", reservationState: RESERVATION_STATE.RELEASED };
+  }
+
+  const { executeRollbackEvent } = await import("./transactionEngine.js");
+  const txnId =
+    transactionId ||
+    `alloc_release:${String(allocationId)}:${releaseQty}:${String(reason || "na")}`;
+
+  await executeRollbackEvent({
+    eventType,
+    transactionId: txnId,
+    orderId,
+    purchaseRequestId,
+    allocationId,
+    quantity: releaseQty,
+    reason,
+    actor,
+  });
+
+  const remainingReserved = Math.max(0, currentlyReserved - releaseQty);
+  allocation.reservedQty = remainingReserved;
+  allocation.reservationState =
+    remainingReserved > 0 ? RESERVATION_STATE.RESERVED : RESERVATION_STATE.RELEASED;
+  await session.save();
+
+  return {
+    skipped: false,
+    releasedQty: releaseQty,
+    reservationState: allocation.reservationState,
+    remainingReserved,
+  };
+};
+
+/** Release every RESERVED allocation on a session (procurement failure / cancel). */
+export const releaseAllReservedAllocations = async ({
+  procurementSessionId,
+  orderId = null,
+  eventType = "SELLER_REJECTED",
+  reason = "procurement_session_release",
+  actor = { type: "system" },
+}) => {
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return [];
+
+  const results = [];
+  for (const allocation of session.allocations || []) {
+    if (!isAllocationStockReserved(allocation)) continue;
+    const prId = allocation.purchaseRequestId || null;
+    // eslint-disable-next-line no-await-in-loop
+    const result = await releaseAllocationSellerStock({
+      procurementSessionId,
+      allocationId: allocation.allocationId,
+      purchaseRequestId: prId,
+      orderId,
+      eventType,
+      reason,
+      actor,
+      transactionId: `session_release:${String(allocation.allocationId)}:${String(reason)}`,
+    });
+    results.push({ allocationId: allocation.allocationId, ...result });
+  }
+  return results;
+};
 
 /** Quantity still covered by in-flight allocations for an item (parallel split PRs). */
 export const getActiveAllocatedQty = (session, itemKey) => {
@@ -28,8 +216,13 @@ export const getUncoveredRemainingQty = (session, itemKey) => {
   return Math.max(0, toInt(item.remainingQty) - getActiveAllocatedQty(session, itemKey));
 };
 
-export const isInventoryCommittedForAllocation = (session, allocationId) =>
-  Boolean(session?.metadata?.inventoryCommits?.[String(allocationId)]);
+export const isInventoryCommittedForAllocation = (session, allocationId) => {
+  const allocation = (session?.allocations || []).find(
+    (a) => a.allocationId === String(allocationId),
+  );
+  if (allocation) return isAllocationStockReserved(allocation);
+  return Boolean(session?.metadata?.inventoryCommits?.[String(allocationId)]);
+};
 
 export const markInventoryCommittedForAllocation = async (procurementSessionId, allocationId, quantity) => {
   const session = await ProcurementSession.findById(procurementSessionId);
@@ -53,6 +246,8 @@ export const revertAllocation = async ({ procurementSessionId, allocationId }) =
     item.allocatedQty = Math.max(0, toInt(item.allocatedQty) - toInt(allocation.quantity));
   }
   allocation.status = "failed";
+  allocation.reservationState = RESERVATION_STATE.NOT_RESERVED;
+  allocation.reservedQty = 0;
   session.status = recomputeSessionStatus(session);
   await session.save();
   return allocation;
@@ -275,6 +470,8 @@ export const reserveAllocation = async ({
     sourceAllocationId: sourceAllocationId || null,
     rankedSellers,
     status: "allocated",
+    reservationState: RESERVATION_STATE.NOT_RESERVED,
+    reservedQty: 0,
     acceptedQty: 0,
     rejectedQty: 0,
     completedQty: 0,
@@ -375,9 +572,35 @@ export const markAllocationCompletedFromInward = async ({
   const item = (session.items || []).find((row) => row.itemKey === allocation.itemKey);
   const qty = Math.min(toInt(completedQty), toInt(allocation.quantity));
   allocation.completedQty = Math.max(toInt(allocation.completedQty), qty);
-  if (allocation.completedQty >= toInt(allocation.quantity)) allocation.status = "completed";
+  if (allocation.completedQty >= toInt(allocation.quantity)) {
+    allocation.status = "completed";
+    allocation.reservationState = RESERVATION_STATE.COMPLETED;
+    allocation.reservedQty = 0;
+  }
   if (item) item.completedQty = Math.min(toInt(item.requiredQty), toInt(item.completedQty) + qty);
   session.status = recomputeSessionStatus(session);
   await session.save();
   return allocation;
+};
+
+/** Mark session completed when every item is fulfilled or has no uncovered remaining qty. */
+export const evaluateProcurementSessionCompletion = async (procurementSessionId) => {
+  const session = await ProcurementSession.findById(procurementSessionId);
+  if (!session) return null;
+
+  const hasUncovered = (session.items || []).some(
+    (item) => getUncoveredRemainingQty(session, item.itemKey) > 0,
+  );
+  const allFulfilled = (session.items || []).every(
+    (item) =>
+      toInt(item.remainingQty) <= 0 &&
+      toInt(item.completedQty) >= toInt(item.requiredQty),
+  );
+
+  if (!hasUncovered && allFulfilled) {
+    session.status = "completed";
+    await session.save();
+  }
+
+  return session;
 };

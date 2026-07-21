@@ -5,8 +5,6 @@ import { generateReceiptNumber, generateInvoiceNumber } from "../services/posSeq
 import { recordCashMovement } from "../services/posSessionService.js";
 import { logPosAction } from "../services/posAuditService.js";
 import { handleResponse } from "../utils/helper.js";
-import { planHubFulfillment, reserveHubInventory, createAutoPurchaseRequests } from "../services/purchaseRequestService.js";
-import { markOrderInventoryReserved, markOrderDelivered } from "../services/workflowFacade.js";
 import crypto from "crypto";
 
 import Razorpay from "razorpay";
@@ -217,13 +215,14 @@ export const processPosCheckout = async (req, res) => {
       item.vendorProcuredQty = 0;
     }
 
-    // No procurement required for POS
-    markOrderInventoryReserved(newOrder);
+    // POS orders bypass hub procurement and delivery workflow entirely.
+    newOrder.hubStatus = "inventory_reserved";
     newOrder.procurementRequired = false;
 
-    // Step through lifecycle rapidly ONLY if it's TAKE_AWAY
+    // Take-away POS: mark complete locally — never route through delivery workflow.
     if (fulfillmentDetails?.type !== "HOME_DELIVERY") {
-      markOrderDelivered(newOrder, { role: "admin" });
+      newOrder.status = "delivered";
+      newOrder.workflowStatus = "DELIVERED";
       newOrder.acceptedAt = new Date();
       newOrder.deliveredAt = new Date();
     }

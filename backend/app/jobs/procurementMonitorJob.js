@@ -7,10 +7,10 @@ import {
   findPurchaseRequestById,
 } from "../services/purchaseRequestService.js";
 import { createNotificationBatch } from "../services/notificationService.js";
-import { markAllocationTimeout, buildItemKey } from "../services/procurementSessionService.js";
-import { executeRollbackEvent } from "../services/transactionEngine.js";
+import { markAllocationTimeout, releaseAllocationSellerStock } from "../services/procurementSessionService.js";
 import { getPickupTimeoutMs, getHubReceiveTimeoutMs } from "../services/settingsService.js";
 
+const toInt = (v) => Math.max(0, Number(v || 0));
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 
 const notifyAdmins = async (title, message, data = {}) => {
@@ -52,29 +52,37 @@ const processExpirations = async () => {
 
       if (isMultiLine) {
         for (const line of fullPr.items || []) {
-          const allocId = line.allocationId || fullPr.allocationId;
+          const row = line.toObject ? line.toObject() : line;
+          const lineStatus = String(row.lineStatus || "pending").toLowerCase();
+          if (lineStatus !== "pending") continue;
+
+          const allocId = row.allocationId || fullPr.allocationId;
           if (fullPr.procurementSessionId && allocId) {
             await markAllocationTimeout({
               procurementSessionId: fullPr.procurementSessionId,
               allocationId: allocId,
             });
+            const retryQty = toInt(row.remainingQty || row.requestedQty || row.shortageQty);
+            if (retryQty > 0) {
+              await releaseAllocationSellerStock({
+                procurementSessionId: fullPr.procurementSessionId,
+                allocationId: allocId,
+                purchaseRequestId: fullPr._id,
+                orderId: fullPr.orderId || null,
+                quantity: retryQty,
+                eventType: "SELLER_TIMEOUT",
+                reason: "procurement_request_expired_line",
+                actor: { type: "system" },
+                transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(allocId)}`,
+              });
+              await fallbackPurchaseRequestLine(
+                fullPr._id,
+                row.productId,
+                row.variantId || null,
+                retryQty,
+              );
+            }
           }
-          const itemKey = line.itemKey || buildItemKey(line.productId, line.variantId);
-          await executeRollbackEvent({
-            eventType: "SELLER_TIMEOUT",
-            transactionId: `pr_inventory_release:${String(fullPr._id)}:${itemKey}`,
-            orderId: fullPr.orderId || null,
-            purchaseRequestId: fullPr._id,
-            allocationId: allocId,
-            quantity: line.shortageQty,
-            reason: "procurement_request_expired_line",
-            actor: { type: "system" },
-          });
-          await fallbackPurchaseRequestLine(
-            fullPr._id,
-            line.productId,
-            line.variantId || null,
-          );
         }
       } else {
         if (fullPr?.procurementSessionId && fullPr?.allocationId) {
@@ -82,17 +90,18 @@ const processExpirations = async () => {
             procurementSessionId: fullPr.procurementSessionId,
             allocationId: fullPr.allocationId,
           });
+          await releaseAllocationSellerStock({
+            procurementSessionId: fullPr.procurementSessionId,
+            allocationId: fullPr.allocationId,
+            purchaseRequestId: fullPr._id,
+            orderId: fullPr.orderId || null,
+            eventType: "SELLER_TIMEOUT",
+            reason: "procurement_request_expired",
+            actor: { type: "system" },
+            transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(fullPr.allocationId)}`,
+          });
         }
-        await executeRollbackEvent({
-          eventType: "SELLER_TIMEOUT",
-          transactionId: `pr_inventory_release:${String(fullPr?._id || pr._id)}`,
-          orderId: fullPr?.orderId || null,
-          purchaseRequestId: fullPr?._id || null,
-          allocationId: fullPr?.allocationId || null,
-          reason: "procurement_request_expired",
-          actor: { type: "system" },
-        });
-        await fallbackPurchaseRequest(pr._id);
+        await fallbackPurchaseRequest(fullPr._id);
       }
       console.log(`[ProcurementMonitor] PR ${pr.requestId} expired. Triggered fallback and released commitments.`);
     }

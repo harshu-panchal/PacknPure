@@ -25,18 +25,23 @@ import {
 import {
   markAllocationFromSellerResponse,
   markAllocationCompletedFromInward,
+  evaluateProcurementSessionCompletion,
+  releaseAllocationSellerStock,
   buildItemKey,
 } from "../services/procurementSessionService.js";
 import {
-  deriveLineResponseStatus,
-  processRejectedLinesForFallback,
   isOrderInventoryReadyForDelivery,
   createPurchaseRequest,
   savePurchaseRequest,
+  applyLineSellerQuantities,
+  syncPrAggregateStatus,
+  isPickupEligibleLine,
+  isRetryEligibleLineStatus,
+  buildPrLineKey,
+  normalizePrLine,
 } from "../services/purchaseRequestService.js";
 import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
 import { markOrderReadyForPacking, persistOrder } from "../services/workflowFacade.js";
-import { executeRollbackEvent } from "../services/transactionEngine.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 
@@ -160,6 +165,11 @@ const pickBestPickupPartner = async (hubId = DEFAULT_HUB_ID) => {
 };
 
 const assignPickupToRequest = async (doc, partner) => {
+  const eligibleItems = (doc.items || []).filter(isPickupEligibleLine);
+  if (eligibleItems.length === 0) {
+    throw new Error("No accepted product lines are eligible for pickup assignment");
+  }
+
   doc.pickupPartnerId = partner._id;
   doc.pickupPartnerName = String(partner.name || "").trim();
   const otp = generatePickupOtp();
@@ -173,7 +183,7 @@ const assignPickupToRequest = async (doc, partner) => {
   doc.exceptionReason = "";
   doc.status = "pickup_assigned";
   doc.pickupAssignedAt = new Date();
-  await savePurchaseRequest();
+  await savePurchaseRequest(doc);
   await PickupPartner.findByIdAndUpdate(partner._id, {
     $set: { status: "active", isActive: true },
   });
@@ -182,11 +192,10 @@ const assignPickupToRequest = async (doc, partner) => {
   try {
     const { createNotification } = await import("../services/notificationService.js");
     
-    // Construct a more descriptive message
-    const firstItem = doc.items?.[0];
+    const firstItem = eligibleItems[0];
     const productName = firstItem?.productId?.name || "Products";
-    const qty = firstItem?.shortageQty || firstItem?.requiredQty || 0;
-    const moreCount = (doc.items?.length || 0) - 1;
+    const qty = firstItem?.committedQty || firstItem?.shortageQty || firstItem?.requiredQty || 0;
+    const moreCount = eligibleItems.length - 1;
     const itemSummary = `${productName} x ${qty}${moreCount > 0 ? ` (+${moreCount} more)` : ""}`;
     
     await createNotification({
@@ -207,6 +216,31 @@ const assignPickupToRequest = async (doc, partner) => {
   }
 
   return otp;
+};
+
+const findPrLine = (pr, productId, variantId = null) => {
+  const targetKey = buildPrLineKey(productId, variantId);
+  return (pr.items || []).find((line) => {
+    const row = normalizePrLine(line);
+    const key = row.itemKey || buildPrLineKey(row.productId, row.variantId);
+    return key === targetKey;
+  });
+};
+
+const maybeAssignPickup = async (pr) => {
+  const hasEligible = (pr.items || []).some(isPickupEligibleLine);
+  if (!hasEligible || pr.pickupPartnerId) return false;
+
+  const bestPartner = await pickBestPickupPartner(pr.hubId);
+  if (bestPartner) {
+    await assignPickupToRequest(pr, bestPartner);
+    return true;
+  }
+
+  pr.status = "exception";
+  pr.exceptionReason = "No pickup partners available";
+  await savePurchaseRequest(pr);
+  return false;
 };
 
 const mapPrPhase = (status) => {
@@ -834,7 +868,7 @@ export const updatePurchaseRequestStatus = async (req, res) => {
     doc.status = status;
     if (notes !== undefined) doc.notes = String(notes || "");
     if (eta) doc.eta = new Date(eta);
-    await savePurchaseRequest();
+    await savePurchaseRequest(doc);
 
     return handleResponse(res, 200, "Purchase request status updated", doc);
   } catch (error) {
@@ -867,7 +901,7 @@ export const assignPickupPartner = async (req, res) => {
       doc.pickupOtpExpiresAt = undefined;
       doc.pickupOtpVerifiedAt = undefined;
       doc.status = "seller_confirmed";
-      await savePurchaseRequest();
+      await savePurchaseRequest(doc);
       return handleResponse(res, 200, "Pickup partner assignment cleared", doc);
     }
   } catch (error) {
@@ -894,7 +928,7 @@ export const assignVendor = async (req, res) => {
     if (doc.status === "cancelled") {
       doc.status = "created";
     }
-    await savePurchaseRequest();
+    await savePurchaseRequest(doc);
 
     return handleResponse(res, 200, "Vendor assigned successfully", doc);
   } catch (error) {
@@ -1012,7 +1046,7 @@ export const receiveAtHub = async (req, res) => {
 
     pr.status = "received_at_hub";
     pr.receivedAtHubAt = new Date();
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     // Trace: Create a PENDING transaction immediately upon receipt for financial visibility
     try {
@@ -1084,7 +1118,7 @@ export const verifyInward = async (req, res) => {
     }
     if (verified) pr.verifiedAt = new Date();
     if (notes !== undefined) pr.notes = String(notes || "");
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     // Ownership transfers at QA pass — seller committed is released then.
 
@@ -1359,6 +1393,9 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       notes = "",
       rejectionReason = "",
       items = [],
+      productId: lineProductId,
+      variantId: lineVariantId = null,
+      committedQty: lineCommittedQty,
     } = req.body || {};
 
     const pr = await PurchaseRequest.findOne({ _id: id, vendorId: sellerId }).populate(
@@ -1375,11 +1412,133 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       );
     }
 
+    const isMultiLine = (pr.items || []).length > 1;
     const normalizedAction = String(action).toLowerCase();
-    if (!["accept", "reject", "partial"].includes(normalizedAction)) {
+
+    if (!["accept", "reject", "partial", "accept_line", "reject_line"].includes(normalizedAction)) {
       return handleResponse(res, 400, "Invalid action");
     }
 
+    // Per-line response for multi-product purchase requests
+    if (isMultiLine && ["accept_line", "reject_line"].includes(normalizedAction)) {
+      if (!lineProductId) {
+        return handleResponse(res, 400, "productId is required for line-level response");
+      }
+
+      const targetLine = findPrLine(pr, lineProductId, lineVariantId);
+      if (!targetLine) {
+        return handleResponse(res, 404, "Product line not found in this request");
+      }
+
+      const currentLine = normalizePrLine(targetLine);
+      if (currentLine.lineStatus && currentLine.lineStatus !== "pending") {
+        return handleResponse(res, 400, "This product line has already been responded to");
+      }
+
+      const requestedQty = Number(currentLine.requestedQty || currentLine.shortageQty || 0);
+      let committedQty = 0;
+      if (normalizedAction === "reject_line") {
+        committedQty = 0;
+      } else {
+        committedQty =
+          lineCommittedQty !== undefined
+            ? Math.min(requestedQty, Math.max(0, Number(lineCommittedQty || 0)))
+            : requestedQty;
+        if (committedQty <= 0) {
+          return handleResponse(
+            res,
+            400,
+            "committedQty must be at least 1 to accept a line, or use reject_line",
+          );
+        }
+      }
+
+      const updatedLine = applyLineSellerQuantities(currentLine, committedQty);
+      pr.items = (pr.items || []).map((line) => {
+        const row = normalizePrLine(line);
+        const key = row.itemKey || buildPrLineKey(row.productId, row.variantId);
+        return key === updatedLine.itemKey ? updatedLine : row;
+      });
+
+      syncPrAggregateStatus(pr, { notes, rejectionReason, sellerId });
+      await savePurchaseRequest(pr);
+
+      const allocId = updatedLine.allocationId || pr.allocationId;
+      if (pr.procurementSessionId && allocId) {
+        await markAllocationFromSellerResponse({
+          procurementSessionId: pr.procurementSessionId,
+          allocationId: allocId,
+          responseStatus:
+            updatedLine.lineStatus === "accepted"
+              ? "accepted"
+              : updatedLine.lineStatus === "partial"
+                ? "partial"
+                : "rejected",
+          committedQty: Number(updatedLine.committedQty || 0),
+        });
+        await evaluateProcurementSessionCompletion(pr.procurementSessionId);
+      }
+
+      if (isRetryEligibleLineStatus(updatedLine.lineStatus)) {
+        try {
+          const { fallbackPurchaseRequestLine } = await import("../services/purchaseRequestService.js");
+          const retryQty = Number(updatedLine.remainingQty || 0);
+          if (retryQty > 0) {
+            const releaseQty =
+              updatedLine.lineStatus === "partial"
+                ? retryQty
+                : Math.max(0, Number(updatedLine.requestedQty || updatedLine.shortageQty || 0));
+            if (pr.procurementSessionId && allocId) {
+              await releaseAllocationSellerStock({
+                procurementSessionId: pr.procurementSessionId,
+                allocationId: allocId,
+                purchaseRequestId: pr._id,
+                orderId: pr.orderId || null,
+                quantity: releaseQty,
+                eventType: "SELLER_REJECTED",
+                reason:
+                  updatedLine.lineStatus === "rejected"
+                    ? "seller_line_rejected"
+                    : "seller_line_partial_release",
+                actor: { id: sellerId, type: "seller" },
+                transactionId: `pr_release:${String(pr._id)}:${String(allocId)}:${releaseQty}`,
+              });
+            }
+            await fallbackPurchaseRequestLine(
+              pr._id,
+              updatedLine.productId,
+              updatedLine.variantId || null,
+              retryQty,
+            );
+          }
+        } catch (err) {
+          console.warn("[Line Fallback] Failed:", err.message);
+        }
+      }
+
+      if (isPickupEligibleLine(updatedLine)) {
+        try {
+          await maybeAssignPickup(pr);
+        } catch (assignErr) {
+          console.warn("[PickupAssign] Line accept failed:", assignErr.message);
+        }
+      }
+
+      const refreshed = await PurchaseRequest.findById(pr._id)
+        .populate("items.productId", "name")
+        .lean();
+      return handleResponse(res, 200, "Product line response saved", mapSellerRow(refreshed));
+    }
+
+    if (isMultiLine) {
+      return handleResponse(
+        res,
+        400,
+        "Multi-product requests require per-line actions. Use accept_line or reject_line for each product.",
+      );
+    }
+
+    // Single-line purchase request flow
     if (normalizedAction === "reject") {
       pr.vendorResponse = {
         status: "rejected",
@@ -1389,47 +1548,33 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       };
       pr.status = "seller_rejected";
       pr.exceptionReason = String(rejectionReason || "Rejected by seller");
-      pr.items = (pr.items || []).map((line) => ({
-        ...(line.toObject ? line.toObject() : line),
-        committedQty: 0,
-        lineStatus: "rejected",
-      }));
-      await savePurchaseRequest();
+      pr.items = (pr.items || []).map((line) => {
+        const updated = applyLineSellerQuantities(line, 0);
+        return updated;
+      });
+      await savePurchaseRequest(pr);
 
       try {
-        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/purchaseRequestService.js"
-        );
-        const isMultiLine = (pr.items || []).length > 1;
-
-        if (isMultiLine) {
-          await processRejectedLinesForFallback({
-            pr,
-            sellerId,
-            executeRollbackEvent,
-            markAllocationFromSellerResponse,
-            fallbackPurchaseRequestLine,
+        const { fallbackPurchaseRequest } = await import("../services/purchaseRequestService.js");
+        if (pr.procurementSessionId && pr.allocationId) {
+          await markAllocationFromSellerResponse({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId: pr.allocationId,
+            responseStatus: "rejected",
+            committedQty: 0,
           });
-        } else {
-          if (pr.procurementSessionId && pr.allocationId) {
-            await markAllocationFromSellerResponse({
-              procurementSessionId: pr.procurementSessionId,
-              allocationId: pr.allocationId,
-              responseStatus: "rejected",
-              committedQty: 0,
-            });
-          }
-          await executeRollbackEvent({
-            eventType: "SELLER_REJECTED",
-            transactionId: `pr_inventory_release:${String(pr._id)}`,
-            orderId: pr.orderId || null,
+          await releaseAllocationSellerStock({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId: pr.allocationId,
             purchaseRequestId: pr._id,
-            allocationId: pr.allocationId || null,
+            orderId: pr.orderId || null,
+            eventType: "SELLER_REJECTED",
             reason: "seller_rejected",
             actor: { id: sellerId, type: "seller" },
+            transactionId: `pr_release:${String(pr._id)}:${String(pr.allocationId)}`,
           });
-          await fallbackPurchaseRequest(pr._id);
         }
+        await fallbackPurchaseRequest(pr._id);
       } catch (err) {
         console.warn("[Auto Fallback] Failed to trigger fallback on rejection:", err.message);
       }
@@ -1440,28 +1585,31 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     const incomingMap = new Map(
       (Array.isArray(items) ? items : [])
         .filter((row) => row && row.productId != null)
-        .map((row) => [String(row.productId), Number(row.committedQty || 0)]),
+        .map((row) => {
+          const key = row.variantId
+            ? buildPrLineKey(row.productId, row.variantId)
+            : String(row.productId);
+          return [key, Number(row.committedQty || 0)];
+        }),
     );
 
     let fullyCommitted = true;
     let anyCommitted = false;
     pr.items = (pr.items || []).map((line) => {
-      const shortage = Number(line.shortageQty || 0);
+      const row = normalizePrLine(line);
+      const shortage = Number(row.requestedQty || row.shortageQty || 0);
+      const lineKey = row.itemKey || buildPrLineKey(row.productId, row.variantId);
       let committedQty = shortage;
-      const key = String(line.productId?._id || line.productId);
-      if (incomingMap.has(key)) {
-        committedQty = Math.min(shortage, Math.max(0, incomingMap.get(key)));
+      if (incomingMap.has(lineKey)) {
+        committedQty = Math.min(shortage, Math.max(0, incomingMap.get(lineKey)));
+      } else if (incomingMap.has(String(row.productId))) {
+        committedQty = Math.min(shortage, Math.max(0, incomingMap.get(String(row.productId))));
       } else if (normalizedAction === "partial") {
-        committedQty = Number(line.committedQty || 0);
+        committedQty = Number(row.committedQty || 0);
       }
       if (committedQty < shortage) fullyCommitted = false;
       if (committedQty > 0) anyCommitted = true;
-      const lineStatus = deriveLineResponseStatus(committedQty, shortage);
-      return {
-        ...(line.toObject ? line.toObject() : line),
-        committedQty,
-        lineStatus,
-      };
+      return applyLineSellerQuantities(row, committedQty);
     });
 
     const responseStatus = fullyCommitted
@@ -1482,26 +1630,9 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     };
     pr.status = responseStatus === "rejected" ? "seller_rejected" : "seller_confirmed";
     pr.exceptionReason = "";
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
-    const isMultiLine = (pr.items || []).length > 1;
-
-    if (isMultiLine) {
-      if (responseStatus === "accepted") {
-        for (const line of pr.items || []) {
-          const lineObj = line.toObject ? line.toObject() : line;
-          const allocId = lineObj.allocationId || pr.allocationId;
-          if (pr.procurementSessionId && allocId) {
-            await markAllocationFromSellerResponse({
-              procurementSessionId: pr.procurementSessionId,
-              allocationId: allocId,
-              responseStatus: "accepted",
-              committedQty: Number(lineObj.committedQty || 0),
-            });
-          }
-        }
-      }
-    } else if (pr.procurementSessionId && pr.allocationId) {
+    if (pr.procurementSessionId && pr.allocationId) {
       await markAllocationFromSellerResponse({
         procurementSessionId: pr.procurementSessionId,
         allocationId: pr.allocationId,
@@ -1512,99 +1643,71 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
     if (responseStatus === "rejected") {
       try {
-        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/purchaseRequestService.js"
-        );
-        if (isMultiLine) {
-          await processRejectedLinesForFallback({
-            pr,
-            sellerId,
-            executeRollbackEvent,
-            markAllocationFromSellerResponse,
-            fallbackPurchaseRequestLine,
-          });
-        } else {
-          await executeRollbackEvent({
-            eventType: "SELLER_REJECTED",
-            transactionId: `pr_inventory_release:${String(pr._id)}`,
-            orderId: pr.orderId || null,
+        const { fallbackPurchaseRequest } = await import("../services/purchaseRequestService.js");
+        if (pr.procurementSessionId && pr.allocationId) {
+          await releaseAllocationSellerStock({
+            procurementSessionId: pr.procurementSessionId,
+            allocationId: pr.allocationId,
             purchaseRequestId: pr._id,
-            allocationId: pr.allocationId || null,
+            orderId: pr.orderId || null,
+            eventType: "SELLER_REJECTED",
             reason: "seller_rejected_zero_commit",
             actor: { id: sellerId, type: "seller" },
+            transactionId: `pr_release:${String(pr._id)}:${String(pr.allocationId)}:zero`,
           });
-          await fallbackPurchaseRequest(pr._id);
         }
-      } catch (err) {}
-    } else if (responseStatus === "partial" || isMultiLine) {
+        await fallbackPurchaseRequest(pr._id);
+      } catch (err) {
+        console.warn("[Auto Fallback] Failed after zero-commit reject:", err.message);
+      }
+    } else if (responseStatus === "partial") {
       try {
-        const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
-          "../services/purchaseRequestService.js"
-        );
-        if (isMultiLine) {
-          await processRejectedLinesForFallback({
-            pr,
-            sellerId,
-            executeRollbackEvent,
-            markAllocationFromSellerResponse,
-            fallbackPurchaseRequestLine,
-          });
-        } else {
-          const requestedQty = (pr.items || []).reduce(
-            (sum, line) => sum + Math.max(0, Number(line.shortageQty || line.requestedQty || 0)),
+        const { fallbackPurchaseRequest } = await import("../services/purchaseRequestService.js");
+        const remainingToRetry = Math.max(
+          0,
+          (pr.items || []).reduce(
+            (sum, line) => sum + Math.max(0, Number(line.remainingQty || 0)),
             0,
-          );
-          const remainingToRetry = Math.max(0, requestedQty - committedQtyTotal);
-          if (remainingToRetry > 0) {
-            await executeRollbackEvent({
-              eventType: "SELLER_REJECTED",
-              transactionId: `seller_partial:${String(pr._id)}:${remainingToRetry}`,
-              orderId: pr.orderId || null,
+          ),
+        );
+        if (remainingToRetry > 0) {
+          if (pr.procurementSessionId && pr.allocationId) {
+            await releaseAllocationSellerStock({
+              procurementSessionId: pr.procurementSessionId,
+              allocationId: pr.allocationId,
               purchaseRequestId: pr._id,
-              allocationId: pr.allocationId || null,
+              orderId: pr.orderId || null,
               quantity: remainingToRetry,
+              eventType: "SELLER_REJECTED",
               reason: "seller_partial_uncommitted_release",
               actor: { id: sellerId, type: "seller" },
+              transactionId: `pr_release:${String(pr._id)}:${String(pr.allocationId)}:${remainingToRetry}`,
             });
-            await fallbackPurchaseRequest(pr._id, remainingToRetry);
           }
+          await fallbackPurchaseRequest(pr._id, remainingToRetry);
         }
       } catch (err) {
         console.warn("[Auto Fallback] Failed to trigger fallback on partial response:", err.message);
       }
     }
 
-    // --- STEP 10: AUTOMATIC PICKUP ASSIGNMENT ---
     if (responseStatus === "accepted" || responseStatus === "partial") {
       try {
-        const bestPartner = await pickBestPickupPartner(pr.hubId);
-        if (bestPartner) {
-          await assignPickupToRequest(pr, bestPartner);
-          console.log(`[Step 10] Automatically assigned Pickup Partner ${bestPartner.name} to PR ${pr.requestId}`);
-        } else {
-          pr.status = "pickup_assignment_failed";
-          await savePurchaseRequest();
-          try {
-            const { createNotification } = await import("../services/notificationService.js");
-            const Admin = (await import("../models/admin.js")).default;
-            const admins = await Admin.find({}).select("_id").lean();
-            for (const admin of admins) {
-              await createNotification({
-                recipient: admin._id,
-                recipientModel: "Admin",
-                title: "Pickup Assignment Failed",
-                message: `No pickup partners available for PR ${pr.requestId}.`,
-                type: "system",
-              });
-            }
-          } catch (e) { console.error("[Step 10] Failed to notify admins:", e); }
-        }
+        await maybeAssignPickup(pr);
       } catch (assignErr) {
-        console.warn("[Step 10] Automatic assignment failed:", assignErr.message);
+        console.warn("[PickupAssign] Failed after seller response:", assignErr.message);
       }
     }
 
-    return handleResponse(res, 200, "Seller response saved and pickup request triggered", mapSellerRow(pr.toObject()));
+    const refreshed = await PurchaseRequest.findById(pr._id)
+      .populate("items.productId", "name")
+      .lean();
+    return handleResponse(
+      res,
+      200,
+      "Seller response saved and pickup request triggered",
+      mapSellerRow(refreshed),
+    );
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -1619,11 +1722,11 @@ export const markSellerRequestReady = async (req, res) => {
     const pr = await PurchaseRequest.findOne({ _id: id, vendorId: sellerId }).lean();
     if (!pr) return handleResponse(res, 404, "Purchase request not found");
 
-    if (!["created", "vendor_confirmed", "pickup_assigned"].includes(String(pr.status))) {
+    if (!["created", "seller_confirmed", "vendor_confirmed", "pickup_assigned"].includes(String(pr.status))) {
       return handleResponse(
         res,
         400,
-        "Request must be created/vendor_confirmed before marking ready",
+        "Request must be created or seller-confirmed before marking ready",
       );
     }
 
@@ -1640,7 +1743,7 @@ export const markSellerRequestReady = async (req, res) => {
         notes: String(notes || ""),
       };
       if (String(doc.status) === "created") {
-        doc.status = "vendor_confirmed";
+        doc.status = "seller_confirmed";
       }
     }
     let autoAssigned = false;
@@ -1651,8 +1754,9 @@ export const markSellerRequestReady = async (req, res) => {
         await assignPickupToRequest(doc, partner);
         autoAssigned = true;
       } else {
-        doc.status = "pickup_assignment_failed";
-        await savePurchaseRequest();
+        doc.status = "exception";
+        doc.exceptionReason = "No pickup partners available";
+        await savePurchaseRequest(doc);
         try {
           const { createNotification } = await import("../services/notificationService.js");
           const Admin = (await import("../models/admin.js")).default;
@@ -1669,7 +1773,7 @@ export const markSellerRequestReady = async (req, res) => {
         } catch (e) { console.error("[markReady] Failed to notify admins:", e); }
       }
     } else {
-      await savePurchaseRequest();
+      await savePurchaseRequest(doc);
     }
 
     const updated = await PurchaseRequest.findById(id)
@@ -1723,7 +1827,7 @@ export const confirmSellerHandover = async (req, res) => {
       notes: String(notes || ""),
     };
     pr.pickupOtpVerifiedAt = new Date();
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     return handleResponse(
       res,
@@ -1758,7 +1862,7 @@ export const assignReturnPickup = async (req, res) => {
 
     pr.returnDetails.returnPickupPartnerId = pickupPartnerId;
     pr.status = "return_pickup";
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     return handleResponse(res, 200, "Return pickup partner assigned", pr);
   } catch (error) {
@@ -1779,7 +1883,7 @@ export const markReturnDelivered = async (req, res) => {
 
     pr.returnDetails.returnDeliveredAt = new Date();
     pr.status = "return_delivered";
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     return handleResponse(res, 200, "Return marked as delivered to vendor", pr);
   } catch (error) {
@@ -1800,7 +1904,7 @@ export const confirmVendorReturn = async (req, res) => {
 
     pr.returnDetails.sellerConfirmedReturnAt = new Date();
     pr.status = "seller_confirmed_return";
-    await savePurchaseRequest();
+    await savePurchaseRequest(pr);
 
     // --- RESTORE STOCK ---
     try {

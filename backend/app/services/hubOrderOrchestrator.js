@@ -19,7 +19,9 @@ import {
   persistRankedSellersForItem,
   getUncoveredRemainingQty,
   isInventoryCommittedForAllocation,
-  markInventoryCommittedForAllocation,
+  tryClaimAllocationReservation,
+  revertAllocationReservationClaim,
+  releaseAllReservedAllocations,
   revertAllocation,
 } from "./procurementSessionService.js";
 import { rankSellerAllocations } from "./allocationEngine.js";
@@ -32,7 +34,6 @@ import {
   isMultiSellerAllocationEnabled,
   getProcurementFailureAction,
 } from "./settingsService.js";
-import { markOrderOnHold } from "./workflowFacade.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const toInt = (v) => Math.max(0, Number(v || 0));
@@ -105,13 +106,25 @@ async function commitSellerStockForPrLine({
   procurementSessionId = null,
   allocationId = null,
 }) {
-  if (!selectedSellerProductId || quantity <= 0) return;
+  if (!selectedSellerProductId || quantity <= 0) return { committed: false, reason: "invalid_input" };
 
   if (procurementSessionId && allocationId) {
     const ProcurementSession = (await import("../models/procurementSession.js")).default;
     const session = await ProcurementSession.findById(procurementSessionId).lean();
     if (isInventoryCommittedForAllocation(session, allocationId)) {
-      return;
+      return { committed: false, duplicate: true, reason: "already_reserved" };
+    }
+
+    const claimed = await tryClaimAllocationReservation(
+      procurementSessionId,
+      allocationId,
+      quantity,
+    );
+    if (!claimed) {
+      console.warn(
+        `[commitSellerStock] Blocked duplicate reservation for allocation ${allocationId}`,
+      );
+      return { committed: false, duplicate: true, reason: "claim_failed" };
     }
   }
 
@@ -136,16 +149,20 @@ async function commitSellerStockForPrLine({
     ? `pr_commit:${String(allocationId)}`
     : `pr_commit:${String(selectedSellerProductId)}:${Number(quantity)}`;
 
-  await freezeSellerInventory(
-    selectedSellerProductId,
-    sellerVariantId,
-    quantity,
-    null,
-    idempotencyKey,
-  );
-
-  if (procurementSessionId && allocationId) {
-    await markInventoryCommittedForAllocation(procurementSessionId, allocationId, quantity);
+  try {
+    await freezeSellerInventory(
+      selectedSellerProductId,
+      sellerVariantId,
+      quantity,
+      null,
+      idempotencyKey,
+    );
+    return { committed: true };
+  } catch (err) {
+    if (procurementSessionId && allocationId) {
+      await revertAllocationReservationClaim(procurementSessionId, allocationId);
+    }
+    throw err;
   }
 }
 
@@ -557,7 +574,7 @@ export const createAutoPurchaseRequests = async ({
 
     if (item.selectedSellerProductId) {
       try {
-        await commitSellerStockForPrLine({
+        const commitResult = await commitSellerStockForPrLine({
           selectedSellerProductId: item.selectedSellerProductId,
           masterProduct: item.baseProduct,
           masterProductId: item.productId,
@@ -566,6 +583,15 @@ export const createAutoPurchaseRequests = async ({
           procurementSessionId: procurementSession?._id || null,
           allocationId,
         });
+        if (!commitResult?.committed) {
+          if (procurementSession && allocationId) {
+            await revertAllocation({
+              procurementSessionId: procurementSession._id,
+              allocationId,
+            });
+          }
+          continue;
+        }
       } catch (err) {
         console.warn(
           "[createAutoPurchaseRequests] Seller inventory commit failed, skipping PR:",
@@ -632,13 +658,47 @@ export const createAutoPurchaseRequests = async ({
  * Mark procurement exhausted when no eligible sellers remain in the session.
  */
 async function markProcurementExhausted(pr, session) {
+  if (session) {
+    const hasUncovered = (session.items || []).some(
+      (item) => getUncoveredRemainingQty(session, item.itemKey) > 0,
+    );
+    if (!hasUncovered) return null;
+  }
+
+  const procurementFailureAction = await getProcurementFailureAction();
+  const isAutoCancel = procurementFailureAction === "auto_cancel";
+
+  if (pr.procurementSessionId) {
+    await releaseAllReservedAllocations({
+      procurementSessionId: pr.procurementSessionId,
+      orderId: pr.orderId || null,
+      eventType: isAutoCancel ? "SELLER_REJECTED" : "SYSTEM_COMPENSATION",
+      reason: "procurement_exhausted_pre_failure_release",
+      actor: { type: "system" },
+    });
+  }
+
+  const { updateManyPurchaseRequests } = await import("./purchaseRequestRepository.js");
+  await updateManyPurchaseRequests(
+    {
+      orderId: pr.orderId,
+      status: { $in: ["created", "expired", "seller_confirmed", "seller_rejected", "pickup_assigned"] },
+    },
+    {
+      $set: {
+        status: "closed",
+        exceptionReason: "Procurement exhausted — no eligible sellers remain.",
+      },
+    },
+  );
+
   pr.status = "procurement_failed";
   pr.exceptionReason = "All eligible sellers exhausted.";
   await savePurchaseRequest(pr);
   if (pr.procurementSessionId) {
     const ProcurementSession = (await import("../models/procurementSession.js")).default;
     await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
-      $set: { status: "failed" },
+      $set: { status: isAutoCancel ? "failed" : "on_hold" },
     });
   }
   console.warn(
@@ -648,36 +708,29 @@ async function markProcurementExhausted(pr, session) {
   try {
     const Order = (await import("../models/order.js")).default;
     const order = await Order.findById(pr.orderId);
-    const procurementFailureAction = await getProcurementFailureAction();
     if (order) {
-      if (procurementFailureAction === "auto_cancel") {
-        const { executeRollbackEvent } = await import("./transactionEngine.js");
-        const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
-        await executeRollbackEvent({
-          eventType: "PROCUREMENT_FAILED",
-          transactionId: `procurement_failed:${String(order._id)}`,
-          orderId: order._id,
-          reason: "all_sellers_exhausted_auto_cancel",
-          actor: { type: "system" },
+      const { executeRollbackEvent } = await import("./transactionEngine.js");
+      const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
+
+      await executeRollbackEvent({
+        eventType: "PROCUREMENT_FAILED",
+        transactionId: `procurement_failed:${String(order._id)}:${isAutoCancel ? "cancel" : "hold"}`,
+        orderId: order._id,
+        reason: isAutoCancel
+          ? "all_sellers_exhausted_auto_cancel"
+          : "all_sellers_exhausted_put_on_hold",
+        actor: { type: "system" },
+      });
+
+      const refreshed = await Order.findById(order._id).select("status workflowStatus orderId").lean();
+      if (refreshed) {
+        emitOrderStatusUpdate(refreshed.orderId, {
+          workflowStatus: refreshed.workflowStatus,
+          status: refreshed.status,
         });
-        emitOrderStatusUpdate(order.orderId, { workflowStatus: "CANCELLED", status: "cancelled" });
-      } else {
-        const { executeRollbackEvent } = await import("./transactionEngine.js");
-        await executeRollbackEvent({
-          eventType: "PROCUREMENT_FAILED",
-          transactionId: `procurement_on_hold:${String(order._id)}`,
-          orderId: order._id,
-          reason: "all_sellers_exhausted_put_on_hold",
-          actor: { type: "system" },
-        });
-        if (pr.procurementSessionId) {
-          const ProcurementSession = (await import("../models/procurementSession.js")).default;
-          await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
-            $set: { status: "on_hold" },
-          });
-        }
-        markOrderOnHold(order, { reason: "all_sellers_exhausted_put_on_hold" });
-        await order.save();
+      }
+
+      if (!isAutoCancel) {
         const { createNotification } = await import("./notificationService.js");
         const Admin = (await import("../models/admin.js")).default;
         const admins = await Admin.find({}).select("_id").lean();
@@ -709,12 +762,16 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   if ((pr.items || []).length > 1 && remainingQty === null) {
     let lastResult = null;
     for (const line of pr.items || []) {
+      const row = line.toObject ? line.toObject() : line;
+      const lineStatus = String(row.lineStatus || "pending").toLowerCase();
+      if (lineStatus === "accepted") continue;
+      const retryQty = toInt(row.remainingQty);
+      if (retryQty <= 0) continue;
       lastResult = await fallbackPurchaseRequestLine(
         pr._id,
-        line.productId,
-        line.variantId || null,
-        null,
-        line.allocationId || pr.allocationId || null,
+        row.productId,
+        row.variantId || null,
+        retryQty,
       );
     }
     return lastResult;
@@ -826,7 +883,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
     if (selectedSellerProductId) {
       try {
-        await commitSellerStockForPrLine({
+        const commitResult = await commitSellerStockForPrLine({
           selectedSellerProductId,
           masterProduct,
           masterProductId: productId,
@@ -835,6 +892,15 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
           procurementSessionId: pr.procurementSessionId || null,
           allocationId,
         });
+        if (!commitResult?.committed) {
+          if (pr.procurementSessionId && allocationId) {
+            await revertAllocation({
+              procurementSessionId: pr.procurementSessionId,
+              allocationId,
+            });
+          }
+          continue;
+        }
       } catch (err) {
         console.warn(
           `[fallbackPurchaseRequest] Seller inventory commit failed for ${nextVendorId}:`,
@@ -1011,7 +1077,7 @@ export const fallbackPurchaseRequestLine = async (
 
   if (selectedSellerProductId) {
     try {
-      await commitSellerStockForPrLine({
+      const commitResult = await commitSellerStockForPrLine({
         selectedSellerProductId,
         masterProduct,
         masterProductId: productId,
@@ -1020,6 +1086,13 @@ export const fallbackPurchaseRequestLine = async (
         procurementSessionId: pr.procurementSessionId,
         allocationId,
       });
+      if (!commitResult?.committed) {
+        await revertAllocation({
+          procurementSessionId: pr.procurementSessionId,
+          allocationId,
+        });
+        return null;
+      }
     } catch (err) {
       console.warn(`[fallbackPurchaseRequestLine] Commit failed:`, err.message);
       await revertAllocation({

@@ -46,18 +46,17 @@ const statusVariant = (status) => {
 
 const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
 
-const canRespond = (row) => {
-  const st = normalizeStatus(row?.status);
-  const vendorState = normalizeStatus(row?.vendorResponse?.status || "pending");
-  if (vendorState !== "pending") return false;
-  return ["created", "pickup_assigned"].includes(st);
-};
+const lineKey = (item) =>
+  item?.itemKey ||
+  `${String(item?.productId || "")}::${item?.variantId ? String(item.variantId) : "root"}`;
 
-const canCommitQuantities = (row) => {
+const canRespondLine = (row, item) => {
   const st = normalizeStatus(row?.status);
   const vendorState = normalizeStatus(row?.vendorResponse?.status || "pending");
-  if (vendorState !== "pending") return false;
-  return ["created", "pickup_assigned"].includes(st);
+  const lineStatus = normalizeStatus(item?.lineStatus || "pending");
+  if (lineStatus !== "pending") return false;
+  if (!["created", "pickup_assigned"].includes(st)) return false;
+  return vendorState === "pending" || vendorState === "partial";
 };
 
 const canMarkReady = (row) => {
@@ -125,18 +124,17 @@ const ProcurementRequests = () => {
   }, [rows]);
 
   useEffect(() => {
-    // Default commit = full shortage for each item (seller can reduce for partial supply).
     setCommitMap((prev) => {
       const next = { ...prev };
       for (const row of rows) {
         if (!row?._id) continue;
         if (!next[row._id]) next[row._id] = {};
         for (const item of row.items || []) {
-          const pid = String(item?.productId || "");
-          if (!pid) continue;
-          if (next[row._id][pid] === undefined || next[row._id][pid] === null) {
-            const shortage = Number(item?.shortageQty ?? item?.requiredQty ?? 0);
-            next[row._id][pid] = String(Math.max(0, shortage));
+          const key = lineKey(item);
+          if (!key) continue;
+          if (next[row._id][key] === undefined || next[row._id][key] === null) {
+            const shortage = Number(item?.requestedQty ?? item?.shortageQty ?? item?.requiredQty ?? 0);
+            next[row._id][key] = String(Math.max(0, shortage));
           }
         }
       }
@@ -168,21 +166,77 @@ const ProcurementRequests = () => {
     }
   };
 
-  const buildCommittedItemsPayload = (row) => {
-    return (row.items || [])
-      .map((it) => {
-        const pid = String(it.productId?._id || it.productId || "");
-        const committedQty = Number(it.shortageQty ?? it.requiredQty ?? 0);
-        return { productId: pid, committedQty };
-      })
-      .filter((x) => x.productId);
+  const acceptLine = async (row, item) => {
+    const key = lineKey(item);
+    const productId = String(item?.productId || "");
+    const variantId = item?.variantId || null;
+    const requestedQty = Number(item?.requestedQty ?? item?.shortageQty ?? item?.requiredQty ?? 0);
+    const committedQty = Math.min(
+      requestedQty,
+      Math.max(0, Number(commitMap[row._id]?.[key] ?? requestedQty)),
+    );
+
+    if (committedQty <= 0) {
+      showToast("Enter a committed quantity of at least 1, or reject this product.", "error");
+      return;
+    }
+
+    const action = committedQty >= requestedQty ? "accept_line" : "accept_line";
+    const attachment = String(attachmentMap[row._id] || "").trim();
+    const combinedNotes = [
+      String(notesMap[row._id] || "").trim(),
+      attachment ? `Attachment: ${attachment}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    await act(
+      `${row._id}:${key}:accept`,
+      () =>
+        sellerApi.respondPurchaseRequest(row._id, {
+          action,
+          productId,
+          variantId,
+          committedQty,
+          notes: combinedNotes,
+        }),
+      committedQty >= requestedQty ? "Product accepted" : "Partial quantity committed",
+    );
+  };
+
+  const rejectLine = async (row, item) => {
+    const key = lineKey(item);
+    const productId = String(item?.productId || "");
+    const variantId = item?.variantId || null;
+    const attachment = String(attachmentMap[row._id] || "").trim();
+
+    await act(
+      `${row._id}:${key}:reject`,
+      () =>
+        sellerApi.respondPurchaseRequest(row._id, {
+          action: "reject_line",
+          productId,
+          variantId,
+          rejectionReason: notesMap[row._id] || "Rejected by seller",
+          notes: attachment ? `Attachment: ${attachment}` : "",
+        }),
+      "Product rejected",
+    );
   };
 
   const commitQuantities = async (row) => {
-    const items = buildCommittedItemsPayload(row);
+    const items = (row.items || [])
+      .map((it) => {
+        const key = lineKey(it);
+        const pid = String(it.productId || "");
+        const committedQty = Number(commitMap[row._id]?.[key] ?? it.shortageQty ?? it.requiredQty ?? 0);
+        return { productId: pid, variantId: it.variantId || null, committedQty };
+      })
+      .filter((x) => x.productId);
+
     const committed = items.map((it) => Number(it.committedQty || 0));
     const shortages = (row.items || []).map((it) =>
-      Number(it.shortageQty ?? it.requiredQty ?? 0),
+      Number(it.requestedQty ?? it.shortageQty ?? it.requiredQty ?? 0),
     );
 
     if (committed.every((q) => q <= 0)) {
@@ -303,64 +357,99 @@ const ProcurementRequests = () => {
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {(row.items || []).map((item) => (
+                <div className="mt-3 grid gap-3">
+                  {(row.items || []).map((item) => {
+                    const key = lineKey(item);
+                    const requestedQty = Number(item.requestedQty ?? item.shortageQty ?? item.requiredQty ?? 0);
+                    const lineStatus = normalizeStatus(item.lineStatus || "pending");
+                    const lineRespondable = canRespondLine(row, item);
+
+                    return (
                     <div
-                      key={`${row._id}-${item.productId}`}
-                      className="flex items-center gap-4 rounded-xl bg-slate-50 p-3"
+                      key={`${row._id}-${key}`}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3"
                     >
-                      <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                        {item.mainImage ? (
-                          <img src={item.mainImage} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">
-                            No Image
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+                        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          {item.mainImage ? (
+                            <img src={item.mainImage} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">
+                              No Image
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-black text-slate-900">{item.productName}</p>
+                            <Badge variant={lineStatus === "accepted" ? "success" : lineStatus === "rejected" ? "error" : lineStatus === "partial" ? "warning" : "gray"}>
+                              {lineStatus}
+                            </Badge>
                           </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-black text-slate-900">{item.productName}</p>
-                        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          <span>Qty: <span className="text-indigo-600">{item.requiredQty} {item.unit}</span></span>
-                          <span>Rate: <span className="text-emerald-600">₹{item.unitCost}</span></span>
-                          <span>GST: <span className="text-amber-600">{item.gstRate || 0}% (₹{item.gstAmount || 0})</span></span>
-                          <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-emerald-700">Net Total: ₹{Number((item.unitCost * (item.shortageQty || item.requiredQty)) + (item.gstAmount || 0)).toFixed(2)}</span>
-                          <span>Shortage: <span className="text-rose-500">{item.shortageQty}</span></span>
+                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            <span>Requested: <span className="text-indigo-600">{requestedQty} {item.unit}</span></span>
+                            <span>Committed: <span className="text-emerald-600">{item.committedQty || 0}</span></span>
+                            <span>Remaining: <span className="text-rose-500">{item.remainingQty ?? 0}</span></span>
+                            <span>Rate: <span className="text-emerald-600">₹{item.unitCost}</span></span>
+                          </div>
+                          {lineRespondable && (
+                            <div className="mt-3 flex flex-wrap items-end gap-2">
+                              <div className="w-28">
+                                <Input
+                                  label="Accept Qty"
+                                  value={commitMap[row._id]?.[key] ?? String(requestedQty)}
+                                  onChange={(e) =>
+                                    setCommitMap((prev) => ({
+                                      ...prev,
+                                      [row._id]: {
+                                        ...(prev[row._id] || {}),
+                                        [key]: e.target.value.replace(/\D/g, ""),
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Qty"
+                                />
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  isVerified ? acceptLine(row, item) : showToast("Account pending approval", "error")
+                                }
+                                isLoading={savingId === `${row._id}:${key}:accept`}
+                                disabled={!lineRespondable || !isVerified}
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() =>
+                                  isVerified ? rejectLine(row, item) : showToast("Account pending approval", "error")
+                                }
+                                isLoading={savingId === `${row._id}:${key}:reject`}
+                                disabled={!lineRespondable || !isVerified}
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
-                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                {(row.items || []).length === 1 && (
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
                   <Button
                     onClick={() =>
                       isVerified ? commitQuantities(row) : showToast("Account pending approval", "error")
                     }
                     isLoading={savingId === `${row._id}:commit`}
-                    disabled={!canCommitQuantities(row) || !isVerified}
+                    disabled={!canRespondLine(row, row.items[0]) || !isVerified}
                   >
-                    Accept
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() =>
-                      isVerified ? act(
-                        `${row._id}:reject`,
-                        () =>
-                          sellerApi.respondPurchaseRequest(row._id, {
-                            action: "reject",
-                            rejectionReason: notesMap[row._id] || "Rejected by seller",
-                            notes: String(attachmentMap[row._id] || "").trim()
-                              ? `Attachment: ${String(attachmentMap[row._id] || "").trim()}`
-                              : "",
-                          }),
-                        "Request rejected",
-                      ) : showToast("Account pending approval", "error")
-                    }
-                    disabled={!canRespond(row) || !isVerified}
-                  >
-                    Reject
+                    Accept All
                   </Button>
                   <Button
                     variant="outline"
@@ -379,6 +468,28 @@ const ProcurementRequests = () => {
                     Mark Ready
                   </Button>
                 </div>
+                )}
+
+                {(row.items || []).length > 1 && (
+                <div className="mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      isVerified ? act(
+                        `${row._id}:ready`,
+                        () =>
+                          sellerApi.markPurchaseRequestReady(row._id, {
+                            notes: notesMap[row._id] || "",
+                          }),
+                        "Marked ready for pickup",
+                      ) : showToast("Account pending approval", "error")
+                    }
+                    disabled={!canMarkReady(row) || !isVerified}
+                  >
+                    Mark Ready
+                  </Button>
+                </div>
+                )}
 
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   <Input
