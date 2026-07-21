@@ -122,7 +122,12 @@ export const rankSellerAllocations = async ({
       allocatedQty = Math.min(vendorStock, remainingShortage);
       if (allocatedQty > 0) {
         remainingShortage -= allocatedQty;
-        primaryFilled = true;
+        // Only lock to a single vendor when the full shortage is covered.
+        // Partial fill from vendor A must allow vendor B for the remainder so
+        // procurement matches aggregate seller availability shown to customers.
+        if (remainingShortage <= 0) {
+          primaryFilled = true;
+        }
       }
     }
 
