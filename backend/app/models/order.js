@@ -261,6 +261,7 @@ const orderSchema = new mongoose.Schema(
         "inventory_reserved",
         "procurement_required",
         "ready_for_packing",
+        "on_hold",
       ],
       default: "none",
       index: true,

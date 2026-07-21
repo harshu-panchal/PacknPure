@@ -279,7 +279,7 @@ export const executeCoreOrderFulfillment = async ({
     }
 
     // 8. Inventory Reservation
-    const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId);
+    const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId, newOrder._id);
     if (!reserveResult.ok) {
       if (session) await session.abortTransaction(); // Ensure rollback if in trans
       throw new Error("Stock unavailable: inventory was updated by another request. Please refresh and try again.");

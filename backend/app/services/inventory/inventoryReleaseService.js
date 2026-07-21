@@ -10,6 +10,10 @@ import {
 import { syncProductStock, readProductStockSnapshot } from "./inventorySyncService.js";
 import { logInventoryMovement } from "./inventoryLogger.js";
 import { buildOperationResult } from "./inventoryTransactionService.js";
+import {
+  getExistingInventoryMutation,
+  recordInventoryMutation,
+} from "./inventoryIdempotencyService.js";
 
 const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
   const qty = Math.max(0, Number(availableQty) || 0);
@@ -161,6 +165,13 @@ export const releaseSellerCommit = async ({
   sellerId = null,
   idempotencyKey = null,
 }) => {
+  if (idempotencyKey) {
+    const replay = await getExistingInventoryMutation(idempotencyKey);
+    if (replay?.result && Object.keys(replay.result).length > 0) {
+      return { ...replay.result, skipped: true, idempotencyKey };
+    }
+  }
+
   const qty = assertPositiveQuantity(quantity);
   const product = await loadProduct(productId, session);
   const previousSnapshot = await readProductStockSnapshot(productId, variantId, session);
@@ -214,7 +225,7 @@ export const releaseSellerCommit = async ({
     idempotencyKey,
   });
 
-  return buildOperationResult({
+  const result = buildOperationResult({
     success: true,
     applied: releaseQty > 0,
     action: "release_seller_commit",
@@ -227,6 +238,23 @@ export const releaseSellerCommit = async ({
     reason,
     idempotencyKey,
   });
+
+  if (idempotencyKey && releaseQty > 0) {
+    await recordInventoryMutation({
+      idempotencyKey,
+      action: "release_seller_commit",
+      productId,
+      variantId,
+      sellerId,
+      orderId,
+      quantity: releaseQty,
+      applied: true,
+      result,
+      reason,
+    });
+  }
+
+  return result;
 };
 
 /**

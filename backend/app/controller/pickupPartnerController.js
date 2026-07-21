@@ -464,7 +464,15 @@ export const markAssignmentPicked = async (req, res) => {
     const pickedQty = actualPickedQty !== undefined ? Number(actualPickedQty) : requestedQty;
     const remainingQty = Math.max(0, requestedQty - pickedQty);
 
-    if (pickedQty === 0) {
+    const isMultiLine = (pr.items || []).length > 1;
+    const lineUpdates = Array.isArray(req.body?.items) ? req.body.items : [];
+    const pickedByProduct = new Map(
+      lineUpdates
+        .filter((row) => row?.productId != null)
+        .map((row) => [String(row.productId), Number(row.actualPickedQty ?? row.pickedQty ?? 0)]),
+    );
+
+    if (pickedQty === 0 && !isMultiLine) {
       // Seller failed to provide inventory
       pr.status = "seller_failed";
       pr.pickupOtpCode = undefined;
@@ -499,12 +507,28 @@ export const markAssignmentPicked = async (req, res) => {
     pr.pickupOtpExpiresAt = undefined;
     pr.pickupOtpVerifiedAt = new Date();
     
-    // Update quantities
+    // Update quantities (per line for multi-product PRs)
     if (pr.items && pr.items.length > 0) {
-      pr.items[0].actualPickedQty = pickedQty;
-      pr.items[0].remainingQty = remainingQty;
-      // We keep shortageQty as original requested for backward compat, 
-      // but the accepted actual amount is actualPickedQty.
+      pr.items = pr.items.map((line) => {
+        const lineObj = line.toObject ? line.toObject() : line;
+        const productKey = String(lineObj.productId?._id || lineObj.productId);
+        const lineRequested = Number(lineObj.requestedQty || lineObj.shortageQty || 0);
+        let linePicked = pickedQty;
+        if (isMultiLine) {
+          linePicked = pickedByProduct.has(productKey)
+            ? Number(pickedByProduct.get(productKey))
+            : lineRequested;
+        } else if (actualPickedQty !== undefined) {
+          linePicked = Number(actualPickedQty);
+        }
+        const lineRemaining = Math.max(0, lineRequested - linePicked);
+        return {
+          ...lineObj,
+          actualPickedQty: linePicked,
+          remainingQty: lineRemaining,
+          lineStatus: linePicked <= 0 ? "rejected" : linePicked < lineRequested ? "partial" : "accepted",
+        };
+      });
     }
 
     pr.pickupProof = {
@@ -516,46 +540,47 @@ export const markAssignmentPicked = async (req, res) => {
     };
     await pr.save();
 
-    // Pickup does not transfer inventory ownership — only release unfulfilled commitment.
-    if (remainingQty > 0) {
-      try {
-        const { releaseSellerReservation } = await import("../services/inventoryLifecycleService.js");
-        const { resolveSellerVariantIdSync } = await import("../utils/productHelpers.js");
-        const ProductModel = (await import("../models/product.js")).default;
+    // Pickup does not transfer inventory ownership — only release unfulfilled commitment per line.
+    try {
+      const { fallbackPurchaseRequestLine, fallbackPurchaseRequest } = await import(
+        "../services/hubOrderOrchestrator.js"
+      );
+      const { executeRollbackEvent } = await import("../services/transactionEngine.js");
 
-        for (const item of pr.items) {
-          if (!item.selectedSellerProductId) continue;
-          const sellerProductId = String(item.selectedSellerProductId);
-          let sellerVariantId = null;
-          if (item.variantId) {
-            const [masterProduct, sellerProduct] = await Promise.all([
-              ProductModel.findById(item.productId).select("variants").lean(),
-              ProductModel.findById(sellerProductId).select("variants").lean(),
-            ]);
-            sellerVariantId = resolveSellerVariantIdSync({
-              masterProduct,
-              sellerProduct,
-              masterVariantId: item.variantId,
-            });
-          }
-          await releaseSellerReservation(sellerProductId, sellerVariantId, remainingQty);
-          console.log(
-            `[InventorySync] Released unfulfilled commitment of ${remainingQty} for product ${sellerProductId}`,
+      for (const item of pr.items || []) {
+        const lineObj = item.toObject ? item.toObject() : item;
+        const lineRequested = Number(lineObj.requestedQty || lineObj.shortageQty || 0);
+        const linePicked = Number(lineObj.actualPickedQty || 0);
+        const lineRemaining = Math.max(0, lineRequested - linePicked);
+        if (lineRemaining <= 0 || !lineObj.selectedSellerProductId) continue;
+
+        const itemKey = lineObj.itemKey || `${String(lineObj.productId)}::${lineObj.variantId || "root"}`;
+        await executeRollbackEvent({
+          eventType: "SELLER_REJECTED",
+          transactionId: `pr_inventory_release:${String(pr._id)}:${itemKey}:pickup_partial`,
+          orderId: pr.orderId || null,
+          purchaseRequestId: pr._id,
+          allocationId: lineObj.allocationId || pr.allocationId || null,
+          quantity: lineRemaining,
+          reason: "pickup_partial_unfulfilled",
+          actor: { type: "pickup" },
+        });
+
+        if (isMultiLine) {
+          await fallbackPurchaseRequestLine(
+            pr._id,
+            lineObj.productId,
+            lineObj.variantId || null,
+            lineRemaining,
           );
         }
-      } catch (err) {
-        console.warn("[InventorySync] Failed to release unfulfilled seller commitment:", err.message);
       }
-    }
 
-    // If partial pickup, create fallback for remaining
-    if (remainingQty > 0) {
-      try {
-        const { fallbackPurchaseRequest } = await import("../services/hubOrderOrchestrator.js");
+      if (!isMultiLine && remainingQty > 0) {
         await fallbackPurchaseRequest(pr._id, remainingQty);
-      } catch (err) {
-        console.warn("[Auto Fallback] Failed for remaining qty:", err.message);
       }
+    } catch (err) {
+      console.warn("[InventorySync] Failed pickup partial release/fallback:", err.message);
     }
 
     return handleResponse(res, 200, "Pickup marked successfully", pr);

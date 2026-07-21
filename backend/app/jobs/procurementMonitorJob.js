@@ -7,6 +7,7 @@ import {
 import { createNotificationBatch } from "../services/notificationService.js";
 import { markAllocationTimeout, buildItemKey } from "../services/procurementSessionService.js";
 import { executeRollbackEvent } from "../services/transactionEngine.js";
+import { getPickupTimeoutMs, getHubReceiveTimeoutMs } from "../services/settingsService.js";
 
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 
@@ -99,9 +100,7 @@ const processExpirations = async () => {
 };
 
 const processPickupTimeouts = async () => {
-  const Setting = (await import("../models/setting.js")).default;
-  const settings = await Setting.findOne().lean();
-  const timeoutMs = (settings?.pickupTimeout || 120) * 60 * 1000;
+  const timeoutMs = await getPickupTimeoutMs();
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await PurchaseRequest.find({
@@ -126,9 +125,7 @@ const processPickupTimeouts = async () => {
 };
 
 const processHubReceiveTimeouts = async () => {
-  const Setting = (await import("../models/setting.js")).default;
-  const settings = await Setting.findOne().lean();
-  const timeoutMs = (settings?.hubReceiveTimeout || 180) * 60 * 1000;
+  const timeoutMs = await getHubReceiveTimeoutMs();
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await PurchaseRequest.find({

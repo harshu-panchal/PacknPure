@@ -164,6 +164,9 @@ export const updateSettings = async (req, res) => {
       { new: true, upsert: true },
     );
 
+    const { invalidateSettingsCache } = await import("../services/settingsService.js");
+    invalidateSettingsCache();
+
     return handleResponse(res, 200, "Settings updated successfully", settings);
   } catch (err) {
     return handleResponse(res, 500, err.message);

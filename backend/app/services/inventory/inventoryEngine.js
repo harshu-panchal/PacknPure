@@ -161,8 +161,22 @@ export const rollbackOrderInventory = async ({
 };
 
 // Backward-compatible aliases matching legacy inventoryLifecycleService names
-export const freezeHubInventory = async (productId, variantId, quantity, session = null) => {
-  const result = await reserveHubStock({ productId, variantId, quantity, session });
+export const freezeHubInventory = async (
+  productId,
+  variantId,
+  quantity,
+  session = null,
+  idempotencyKey = null,
+  orderId = null,
+) => {
+  const result = await reserveHubStock({
+    productId,
+    variantId,
+    quantity,
+    session,
+    idempotencyKey,
+    orderId,
+  });
   return result.applied ? result.hubInventory : null;
 };
 

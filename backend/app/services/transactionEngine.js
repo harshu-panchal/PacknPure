@@ -183,6 +183,17 @@ const releasePendingProcurementAllocations = async ({
   return operations;
 };
 
+const resolvePrLineForRollback = (pr, allocationId = null) => {
+  if (!pr?.items?.length) return null;
+  if (allocationId) {
+    const byAlloc = pr.items.find(
+      (row) => String(row.allocationId || "") === String(allocationId),
+    );
+    if (byAlloc) return byAlloc;
+  }
+  return pr.items[0];
+};
+
 const rollbackSingleAllocation = async ({
   rollbackEvent,
   purchaseRequestId,
@@ -195,7 +206,7 @@ const rollbackSingleAllocation = async ({
     : await PurchaseRequest.findOne({ allocationId }).session(session);
   if (!pr) return [];
 
-  const line = pr.items?.[0];
+  const line = resolvePrLineForRollback(pr, allocationId);
   if (!line?.selectedSellerProductId) return [];
 
   const qty =
@@ -206,6 +217,7 @@ const rollbackSingleAllocation = async ({
         : toQty(line.shortageQty);
   if (qty <= 0) return [];
 
+  const lineAllocationId = line.allocationId || pr.allocationId || allocationId;
   const sellerVariantId = await resolveSellerVariantId({
     sellerProductId: line.selectedSellerProductId,
     masterProductId: line.productId,
@@ -221,7 +233,7 @@ const rollbackSingleAllocation = async ({
     orderId: pr.orderId,
     sellerId: pr.vendorId,
     reason: `transaction_engine_${rollbackEvent.toLowerCase()}`,
-    idempotencyKey: `${rollbackEvent}:${String(pr.orderId)}:${String(pr._id)}:${String(pr.allocationId || "none")}`,
+    idempotencyKey: `inv_release:${rollbackEvent}:${String(pr._id)}:${String(lineAllocationId || "none")}:${qty}`,
   });
 
   return [
@@ -230,6 +242,7 @@ const rollbackSingleAllocation = async ({
       productId: String(line.productId),
       sellerProductId: String(line.selectedSellerProductId),
       variantId: String(line.variantId),
+      allocationId: String(lineAllocationId || ""),
       quantity: qty,
       result,
     },

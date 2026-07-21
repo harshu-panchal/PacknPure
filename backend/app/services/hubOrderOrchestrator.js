@@ -27,6 +27,11 @@ import {
   isMultiProductProcurementOrder,
   createSellerGroupedPurchaseRequests,
 } from "./multiProductProcurementService.js";
+import {
+  getSellerResponseTimeoutMinutes,
+  isMultiSellerAllocationEnabled,
+  getProcurementFailureAction,
+} from "./settingsService.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const toInt = (v) => Math.max(0, Number(v || 0));
@@ -266,12 +271,22 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
  * Reserve inventory rows for fully-available orders.
  * Returns false if any reserve check fails (race-safe).
  */
-export const reserveHubInventory = async (allocations, hubId = HUB_ID) => {
+export const reserveHubInventory = async (allocations, hubId = HUB_ID, orderId = null) => {
   const { freezeHubInventory, releaseHubReservation } = await import("./inventoryLifecycleService.js");
   const reservedRows = [];
   for (const row of allocations) {
     if (!row.reserveQty || row.reserveQty <= 0) continue;
-    const updated = await freezeHubInventory(row.productId, row.variantId, row.reserveQty);
+    const idempotencyKey = orderId
+      ? `hub_reserve:${String(orderId)}:${String(row.productId)}:${String(row.variantId || "root")}:${Number(row.reserveQty)}`
+      : null;
+    const updated = await freezeHubInventory(
+      row.productId,
+      row.variantId,
+      row.reserveQty,
+      null,
+      idempotencyKey,
+      orderId,
+    );
     
     if (!updated) {
       // Roll back partial reservations when any line fails (race-safe best effort).
@@ -294,9 +309,7 @@ export const createAutoPurchaseRequests = async ({
   hubId = HUB_ID,
   allowUnassigned = false,
 }) => {
-  const Setting = (await import("../models/setting.js")).default;
-  const settings = await Setting.findOne().lean();
-  const sellerResponseTimeout = settings?.sellerResponseTimeout || 15;
+  const sellerResponseTimeout = await getSellerResponseTimeoutMinutes();
   const normalizeMoney = (value) => Math.max(0, Number(Number(value || 0).toFixed(2)));
   const effectiveCatalogPrice = (sellerProduct, masterVariantId = null, baseProduct = null) => {
     let sellerVar = null;
@@ -353,13 +366,14 @@ export const createAutoPurchaseRequests = async ({
     hubLng,
     variantId = null,
   ) => {
+    const enableMultiSeller = await isMultiSellerAllocationEnabled();
     return rankSellerAllocations({
       baseProduct,
       shortageQty,
       variantId,
       hubLat,
       hubLng,
-      enableMultiSellerAllocation: true,
+      enableMultiSellerAllocation: enableMultiSeller,
     });
   };
 
@@ -665,13 +679,11 @@ async function markProcurementExhausted(pr, session) {
   );
 
   try {
-    const Setting = (await import("../models/setting.js")).default;
     const Order = (await import("../models/order.js")).default;
-    const settings = await Setting.findOne().lean();
     const order = await Order.findById(pr.orderId);
-
+    const procurementFailureAction = await getProcurementFailureAction();
     if (order) {
-      if (settings?.procurementFailureAction === "auto_cancel") {
+      if (procurementFailureAction === "auto_cancel") {
         const { executeRollbackEvent } = await import("./transactionEngine.js");
         const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
         await executeRollbackEvent({
@@ -760,9 +772,7 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   if (qtyToProcure <= 0) return null;
 
-  const Setting2 = (await import("../models/setting.js")).default;
-  const settingsFallback = await Setting2.findOne().lean();
-  const fallbackTimeout = settingsFallback?.sellerResponseTimeout || 15;
+  const fallbackTimeout = await getSellerResponseTimeoutMinutes();
 
   const Product = (await import("../models/product.js")).default;
   const masterProduct = await Product.findById(productId).select("variants").lean();
@@ -970,9 +980,7 @@ export const fallbackPurchaseRequestLine = async (
   }
 
   const Product = (await import("../models/product.js")).default;
-  const Setting2 = (await import("../models/setting.js")).default;
-  const settingsFallback = await Setting2.findOne().lean();
-  const fallbackTimeout = settingsFallback?.sellerResponseTimeout || 15;
+  const fallbackTimeout = await getSellerResponseTimeoutMinutes();
   const masterProduct = await Product.findById(productId).select("variants").lean();
 
   const nextVendorId = eligibleSellers[0];

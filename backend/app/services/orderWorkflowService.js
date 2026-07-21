@@ -152,11 +152,8 @@ const BULL_ADD_TIMEOUT_MS = () =>
 export async function scheduleSellerTimeoutJob(orderId) {
   let delay = DEFAULT_SELLER_TIMEOUT_MS();
   try {
-    const Setting = (await import("../models/setting.js")).default;
-    const settings = await Setting.findOne().lean();
-    if (settings && settings.sellerTimeoutMinutes) {
-      delay = settings.sellerTimeoutMinutes * 60 * 1000;
-    }
+    const { getSellerResponseTimeoutMs } = await import("./settingsService.js");
+    delay = await getSellerResponseTimeoutMs();
   } catch (err) {
     console.warn("[scheduleSellerTimeoutJob] failed to load settings", err.message);
   }

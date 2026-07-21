@@ -1094,8 +1094,8 @@ export const verifyInward = async (req, res) => {
             notes: `QA partially rejected ${rejectedQty} units.`
           };
           try {
-            const { fallbackPurchaseRequest } = await import('../services/hubOrderOrchestrator.js');
-            await fallbackPurchaseRequest(pr._id, rejectedQty);
+            const { fallbackPurchaseRequestLine } = await import('../services/hubOrderOrchestrator.js');
+            await fallbackPurchaseRequestLine(pr._id, productId, item.variantId || null, rejectedQty);
           } catch (e) {
             console.error("[verifyInward] Failed to trigger partial fallback PR:", e);
           }
