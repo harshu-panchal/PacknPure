@@ -616,19 +616,37 @@ export function buildSellerStockStatusQuery(stockStatus) {
 /** Enrich lean product row with normalized catalog stock fields. */
 export function enrichSellerProductRow(product) {
   if (!product || typeof product !== "object") return product;
-  const catalogStock = catalogStockFromProduct(product);
+  const stockView = typeof product.availableQtySeller === "number"
+    ? {
+        grossStock: Number(product.stock ?? product.catalogStock) || 0,
+        committedStock: Number(product.committedStock) || 0,
+        availableQty: Number(product.availableQtySeller) || 0,
+      }
+    : null;
+
+  const resolved = stockView || (() => {
+    const catalogStock = catalogStockFromProduct(product);
+    const committedStock = Array.isArray(product.variants) && product.variants.length > 0
+      ? product.variants.reduce((sum, v) => sum + (Number(v?.committedStock) || 0), 0)
+      : Number(product.committedStock || 0);
+    return {
+      grossStock: catalogStock,
+      committedStock,
+      availableQty: Math.max(0, catalogStock - committedStock),
+    };
+  })();
+
   const supplyPrice = resolveSupplyPriceFromInput(product);
   const variants = mapSellerVariantsForResponse(product.variants);
-  const committedStock = Array.isArray(product.variants) && product.variants.length > 0
-    ? product.variants.reduce((sum, v) => sum + (Number(v?.committedStock) || 0), 0)
-    : Number(product.committedStock || 0);
 
   return {
     ...product,
-    stock: catalogStock,
-    committedStock,
-    catalogStock,
-    availableQtySeller: Math.max(0, catalogStock - committedStock),
+    stock: resolved.grossStock,
+    committedStock: resolved.committedStock,
+    catalogStock: resolved.grossStock,
+    availableQtySeller: resolved.availableQty,
+    totalAvailableQty: resolved.availableQty,
+    totalFulfillmentQty: resolved.availableQty,
     pricingMode: PRICING_MODE_SUPPLY,
     supplyPrice,
     price: supplyPrice,
@@ -802,11 +820,7 @@ export function enrichCustomerProduct(item) {
         ? `${variants.length} options`
         : variants[0]?.name || null;
 
-  const availableQty = variants.length > 0
-    ? Number(variants[0].totalAvailableQty ?? variants[0].stock ?? 0)
-    : (item.totalAvailableQty !== undefined 
-      ? Number(item.totalAvailableQty)
-      : totalVariantStock(variants));
+  const availableQty = Number(item.totalAvailableQty ?? 0);
 
   const hasGstVariant = variants.some((v) => v.gstEnabled === true && (Number(v.gstRate) || 0) > 0);
   const gstEnabled = hasGstVariant || first.gstEnabled;
@@ -839,9 +853,10 @@ export function mapVariantsForResponse(variants = [], priceOverride = null) {
     }
 
     const stock = Number(row.stock);
-    const totalAvailableQty = Number(
-      row.totalAvailableQty ?? row.availableQty ?? row.stock ?? 0,
-    );
+    const totalAvailableQty = Number(row.totalAvailableQty ?? 0);
+    const availableQtyHub = Number(row.availableQtyHub ?? 0);
+    const availableQtySeller = Number(row.availableQtySeller ?? 0);
+    const totalFulfillmentQty = Number(row.totalFulfillmentQty ?? totalAvailableQty);
     let price =
       priceOverride != null && priceOverride > 0
         ? priceOverride
@@ -855,11 +870,16 @@ export function mapVariantsForResponse(variants = [], priceOverride = null) {
       ...row,
       unit: normalizeUnit(row.unit),
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
-      totalAvailableQty: Number.isFinite(totalAvailableQty) && totalAvailableQty >= 0
-        ? totalAvailableQty
-        : Number.isFinite(stock) && stock >= 0
-          ? stock
-          : 0,
+      availableQtyHub: Number.isFinite(availableQtyHub) && availableQtyHub >= 0 ? availableQtyHub : 0,
+      availableQtySeller:
+        Number.isFinite(availableQtySeller) && availableQtySeller >= 0 ? availableQtySeller : 0,
+      totalAvailableQty:
+        Number.isFinite(totalAvailableQty) && totalAvailableQty >= 0 ? totalAvailableQty : 0,
+      totalFulfillmentQty:
+        Number.isFinite(totalFulfillmentQty) && totalFulfillmentQty >= 0 ? totalFulfillmentQty : 0,
+      sellerSupplyBreakdown: Array.isArray(row.sellerSupplyBreakdown)
+        ? row.sellerSupplyBreakdown
+        : [],
       price: price,
       salePrice: salePrice,
     };

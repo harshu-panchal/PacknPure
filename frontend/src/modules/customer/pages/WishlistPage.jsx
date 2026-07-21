@@ -93,8 +93,7 @@ const WishlistPage = () => {
     return products.filter(
       (p) =>
         p.inStock !== false &&
-        ((Number(p.stockQty) || Number(p.stock) || 0) > 0 ||
-          (p.variants || []).some((v) => (Number(v.stock) || 0) > 0)),
+        (Number(p.stockQty ?? p.totalAvailableQty) || 0) > 0,
     ).length;
   }, [products]);
 
@@ -131,8 +130,7 @@ const WishlistPage = () => {
     products.forEach((product) => {
       const inStock =
         product.inStock !== false &&
-        ((Number(product.stockQty) || Number(product.stock) || 0) > 0 ||
-          (product.variants || []).some((v) => (Number(v.stock) || 0) > 0));
+        (Number(product.stockQty ?? product.totalAvailableQty) || 0) > 0;
       const variantCount = product.variants?.length || 0;
       const mustPickVariant = product.hasMultipleVariants && variantCount > 1;
       if (!inStock || mustPickVariant) return;

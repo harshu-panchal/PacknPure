@@ -215,7 +215,7 @@ const SearchPage = () => {
 
   const lowestPriceProducts = useMemo(() => {
     return [...browseProducts]
-      .filter((p) => p.inStock !== false && (Number(p.stock) || 0) > 0)
+      .filter((p) => p.inStock !== false && (Number(p.stockQty ?? p.totalAvailableQty) || 0) > 0)
       .sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0))
       .slice(0, 12);
   }, [browseProducts]);

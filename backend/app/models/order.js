@@ -463,7 +463,7 @@ const orderSchema = new mongoose.Schema(
       {
         domain: {
           type: String,
-          enum: ["fulfillment", "return"],
+          enum: ["fulfillment", "return", "hub", "legacy"],
           default: "fulfillment",
         },
         oldState: String,

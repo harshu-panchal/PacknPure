@@ -303,8 +303,8 @@ const CategoryProductsPage = () => {
         break;
     }
 
-    const inStock = list.filter((p) => p.inStock !== false && (p.stockQty || p.stock || 0) > 0);
-    const oos = list.filter((p) => p.inStock === false || !((p.stockQty || p.stock) > 0));
+    const inStock = list.filter((p) => p.inStock !== false && (Number(p.stockQty ?? p.totalAvailableQty) || 0) > 0);
+    const oos = list.filter((p) => p.inStock === false || !((Number(p.stockQty ?? p.totalAvailableQty) || 0) > 0));
     return [...inStock, ...oos];
   }, [products, sortBy, brandFilter, ratedOnly]);
 

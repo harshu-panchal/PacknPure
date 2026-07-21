@@ -9,7 +9,8 @@ import {
   adjustHubAvailableStock,
   setAdminHubStock,
 } from "../services/inventory/inventoryEngine.js";
-import { getSellerVariantAvailableQty } from "../services/inventoryReadService.js";
+import { getSellerVariantAvailableQty, buildCanonicalStockContext } from "../services/inventoryReadService.js";
+import { normalizeVariantMatchKey } from "../utils/productHelpers.js";
 import {
   totalVariantStock,
   resolveVariantIndex,
@@ -76,6 +77,14 @@ export const getHubInventory = async (req, res) => {
       .lean();
     const productMap = new Map(products.map((p) => [String(p._id), p]));
     const productIdStrs = products.map((p) => String(p._id));
+
+    let canonicalProductViews = new Map();
+    try {
+      const canonicalCtx = await buildCanonicalStockContext(productIdStrs);
+      canonicalProductViews = canonicalCtx.productViews;
+    } catch (err) {
+      console.warn("[getHubInventory] canonical stock context:", err.message);
+    }
 
     const sellerListings = await Product.find({
       ownerType: "seller",
@@ -173,12 +182,15 @@ export const getHubInventory = async (req, res) => {
       const variants = listVariantsForStockPicker(product || { variants: [] });
       const sellerRows = productToSellerListings.get(String(row.productId)) || [];
 
+      const canonicalView = canonicalProductViews.get(String(row.productId));
+
       const variantInventory = variants.map((v) => {
         const metricKey = keyOf(row.productId, v.variantId);
         const orderMetric = orderVariantMetrics.get(metricKey) || {};
         const transitMetric = prTransitByVariant.get(metricKey) || {};
+        const canonicalVariant = canonicalView?.variantByKey?.get(normalizeVariantMatchKey(v.name));
 
-        let sa = 0;
+        let sellerAvailable = 0;
         let sc = 0;
         for (const sellerListing of sellerRows) {
           const variantStock = getSellerVariantAvailableQty(
@@ -186,11 +198,14 @@ export const getHubInventory = async (req, res) => {
             v.variantId,
             v.name,
           );
-          sa += variantStock.grossStock;
+          sellerAvailable += variantStock.availableQty;
           sc += variantStock.committedStock;
         }
 
-        const ha = toQty(v.stock);
+        const ha = canonicalVariant?.stock ?? toQty(v.stock);
+        const availableQtyHub = canonicalVariant?.availableQtyHub ?? ha;
+        const availableQtySeller = canonicalVariant?.availableQtySeller ?? sellerAvailable;
+        const totalAvailableQty = canonicalVariant?.totalAvailableQty ?? (availableQtyHub + availableQtySeller);
         const hr = toQty(orderMetric.hr);
         const qaPending = toQty(transitMetric.qaPending);
         const qaAccepted = toQty(orderMetric.qaAccepted);
@@ -204,9 +219,15 @@ export const getHubInventory = async (req, res) => {
           index: v.index,
           name: v.name,
           unit: v.unit,
+          stock: ha,
+          availableQtyHub,
+          availableQtySeller,
+          totalAvailableQty,
+          totalFulfillmentQty: totalAvailableQty,
+          sellerSupplyBreakdown: canonicalVariant?.sellerSupplyBreakdown || [],
           ha,
           hr,
-          sa,
+          sa: sellerAvailable,
           sc,
           transit,
           qaPending,
@@ -254,6 +275,12 @@ export const getHubInventory = async (req, res) => {
         sellerId: product?.sellerId?._id || product?.sellerId || null,
         sellerName: product?.sellerId?.shopName || product?.sellerId?.name || "N/A",
         hubStockQuantity: availableQty,
+        stock: canonicalView?.stock ?? availableQty,
+        availableQtyHub: canonicalView?.availableQtyHub ?? availableQty,
+        availableQtySeller: canonicalView?.availableQtySeller ?? variantTotals.sa,
+        totalAvailableQty: canonicalView?.totalAvailableQty ?? (availableQty + variantTotals.sa),
+        totalFulfillmentQty: canonicalView?.totalFulfillmentQty ?? (availableQty + variantTotals.sa),
+        sellerSupplyBreakdown: canonicalView?.sellerSupplyBreakdown || [],
         reservedQty: Number(row.reservedQty || 0),
         minimumStockAlert: reorderLevel,
         lastPurchaseCost: Number(row.lastPurchaseCost || 0),

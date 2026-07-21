@@ -62,10 +62,10 @@ import {
 } from "../services/customerVisibilityService.js";
 import { adjustSellerStock, setAdminHubStock } from "../services/inventory/inventoryEngine.js";
 import {
-  buildProductListStockContext,
-  getAdminProductStockView,
+  buildCanonicalStockContext,
   getHubAvailableQty,
-  getSellerProductStockView,
+  applyCanonicalStockToMasterProduct,
+  applyCanonicalStockToSellerListing,
 } from "../services/inventoryReadService.js";
 
 function isCustomerVisibilityRequest(req) {
@@ -399,21 +399,15 @@ export const getProducts = async (req, res) => {
       hubId: DEFAULT_HUB_ID,
     }).lean();
 
-    let hubMap = new Map();
-    let hubReservedMap = new Map();
-    let sellerStockMap = new Map();
-    let variantStockMap = new Map();
+    let canonicalCtx = { productViews: new Map(), hubMap: new Map(), hubReservedMap: new Map() };
     if (masterProductIdsForStock.length > 0) {
       try {
-        const stockCtx = await buildProductListStockContext(masterProductIdsForStock);
-        hubMap = stockCtx.hubMap;
-        hubReservedMap = stockCtx.hubReservedMap;
-        sellerStockMap = stockCtx.sellerStockMap;
-        variantStockMap = stockCtx.variantStockMap;
+        canonicalCtx = await buildCanonicalStockContext(masterProductIdsForStock);
       } catch (err) {
         console.error("[getProducts] stock context error:", err.message);
       }
     }
+    const { productViews: canonicalProductViews } = canonicalCtx;
 
     const masterIds = products.map(p => p.masterProductId).filter(Boolean);
     const masterProducts = masterIds.length > 0 ? await Product.find({ _id: { $in: masterIds } }).select('price salePrice variants gstEnabled gstRate').lean() : [];
@@ -436,18 +430,16 @@ export const getProducts = async (req, res) => {
 
     const productsWithSource = products.map((p) => {
       const pIdStr = String(p._id);
-      const hubQty = hubMap.get(pIdStr) ?? 0;
+      const masterIdStr = p.ownerType === "admin" ? pIdStr : String(p.masterProductId || "");
+      const canonicalView = canonicalProductViews.get(masterIdStr);
 
       if (p.ownerType === "admin") {
-        const mappedSellerData = sellerStockMap.get(pIdStr) || { stock: 0, cost: p.purchasePrice || 0 };
-        const mappedSellerStock = mappedSellerData.stock;
-        const fulfillableQty = hubQty + mappedSellerStock;
         const hubRow = hubRowsForResult.find((r) => String(r.productId) === pIdStr);
         const dynamicPrice =
           hubRow?.sellPrice && hubRow.sellPrice > 0 ? hubRow.sellPrice : p.salePrice || p.price;
         const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
 
-        const sellerSupplyBreakdown = sellerSupplyBreakdownMap.get(pIdStr) || [];
+        const sellerSupplyBreakdown = sellerSupplyBreakdownMap.get(pIdStr) || canonicalView?.sellerSupplyBreakdown || [];
         const linkedSellerCount = sellerSupplyBreakdown.length;
         const activeSellerCount = sellerSupplyBreakdown.filter(
           (row) => row.status === "active",
@@ -456,48 +448,31 @@ export const getProducts = async (req, res) => {
           (row) => row.needsAdminReview,
         ).length;
 
-        const hubReserved = hubReservedMap.get(pIdStr) ?? 0;
-        const mappedSellerCommitted = mappedSellerData.committed ?? 0;
-
-        const variantsWithSellerStock = (p.variants || []).map((v) => {
-          const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
-          if (row.ratingDistribution instanceof Map) {
-            row.ratingDistribution = Object.fromEntries(row.ratingDistribution);
-          }
-          const vName = normalizeVariantMatchKey(row.name);
-          const sellerStockForV = variantStockMap.get(`${pIdStr}_${vName}`) || 0;
-          // row.stock is Hub variant stock (synced by reserveHubInventory)
-          row.totalAvailableQty = Math.max(0, Number(row.stock) || 0) + sellerStockForV;
-          return row;
-        });
-
         const pRatingDist = p.ratingDistribution instanceof Map 
           ? Object.fromEntries(p.ratingDistribution) 
           : p.ratingDistribution;
 
-        return {
-          ...p,
+        const stocked = applyCanonicalStockToMasterProduct(p, canonicalView, {
           ratingDistribution: pRatingDist,
           price: p.price,
           salePrice: hasVariants ? p.salePrice || p.price : dynamicPrice,
-          // Hub procurement cost — admin-set only; do not replace with seller supply quotes.
           purchasePrice: Number(p.purchasePrice) || 0,
-          vendorMinSupplyPrice: mappedSellerData.cost,
-          stock: hubQty,
-          catalogStock: hubQty,
-          availableQtyHub: hubQty,
-          reservedQtyHub: hubReserved,
-          availableQtySeller: mappedSellerStock,
-          committedQtySeller: mappedSellerCommitted,
-          totalAvailableQty: fulfillableQty,
-          totalFulfillmentQty: fulfillableQty,
-          variants: mapVariantsForResponse(variantsWithSellerStock),
+          vendorMinSupplyPrice: canonicalView?.vendorMinSupplyPrice || Number(p.purchasePrice) || 0,
           fulfillmentSource:
-            hubQty > 0 ? "hub" : mappedSellerStock > 0 ? "procure" : "out_of_stock",
+            (canonicalView?.availableQtyHub || 0) > 0
+              ? "hub"
+              : (canonicalView?.availableQtySeller || 0) > 0
+                ? "procure"
+                : "out_of_stock",
           sellerSupplyBreakdown,
           linkedSellerCount,
           activeSellerCount,
           pendingSellerReviewCount,
+        });
+
+        return {
+          ...stocked,
+          variants: mapVariantsForResponse(stocked.variants),
         };
       }
 
@@ -507,34 +482,23 @@ export const getProducts = async (req, res) => {
       const customerPrice = masterProduct
         ? masterProduct.salePrice || masterProduct.price
         : p.salePrice || p.price;
-      const sellerListingStock = catalogStockFromProduct(p);
-      const hubQtyForSeller = p.masterProductId
-        ? hubMap.get(String(p.masterProductId)) ?? 0
-        : 0;
-      const hubReservedForSeller = p.masterProductId
-        ? hubReservedMap.get(String(p.masterProductId)) ?? 0
-        : 0;
-      const sellerStockView = getSellerProductStockView(p);
-      const sellerCommittedStock = sellerStockView.committedStock;
-
       const supplyPrice = resolveSupplyPriceFromInput(p);
+      const masterCanonical = canonicalProductViews.get(String(p.masterProductId || ""));
 
-      const variantsWithMasterPrice = (p.variants || []).map((v) => {
-        const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
+      const stocked = applyCanonicalStockToSellerListing(p, masterCanonical);
+
+      const variantsWithMasterPrice = (stocked.variants || []).map((row) => {
         if (masterProduct && Array.isArray(masterProduct.variants)) {
-            const rowKey = normalizeVariantMatchKey(row.name);
-            const mv = masterProduct.variants.find(
-              (m) => normalizeVariantMatchKey(m.name) === rowKey,
-            );
-           if (mv) {
-               row.masterSalePrice = mv.salePrice || mv.price;
-               row.masterGstEnabled = mv.gstEnabled || masterProduct.gstEnabled;
-               row.masterGstRate = mv.gstRate || masterProduct.gstRate || 0;
-           }
+          const rowKey = normalizeVariantMatchKey(row.name);
+          const mv = masterProduct.variants.find(
+            (m) => normalizeVariantMatchKey(m.name) === rowKey,
+          );
+          if (mv) {
+            row.masterSalePrice = mv.salePrice || mv.price;
+            row.masterGstEnabled = mv.gstEnabled || masterProduct.gstEnabled;
+            row.masterGstRate = mv.gstRate || masterProduct.gstRate || 0;
+          }
         }
-          const vName = normalizeVariantMatchKey(row.name);
-          const sellerStockForV = variantStockMap.get(`${pIdStr}_${vName}`) || 0;
-        row.stock = Math.max(0, Number(row.stock) || 0) + sellerStockForV;
         return row;
       });
 
@@ -543,7 +507,7 @@ export const getProducts = async (req, res) => {
         : p.ratingDistribution;
 
       return {
-        ...p,
+        ...stocked,
         ratingDistribution: pRatingDist,
         price: customerPrice || p.price,
         salePrice: customerPrice || p.salePrice,
@@ -552,17 +516,9 @@ export const getProducts = async (req, res) => {
         masterGstRate: masterProduct ? (masterProduct.gstRate || 0) : 0,
         supplyPrice,
         purchasePrice: supplyPrice,
-        availableQtyHub: hubQtyForSeller,
-        reservedQtyHub: hubReservedForSeller,
-        availableQtySeller: sellerListingStock,
-        committedQtySeller: sellerCommittedStock,
-        committedStock: sellerCommittedStock,
-        stock: sellerListingStock,
-        catalogStock: sellerListingStock,
-        sellerListingStock,
-        totalAvailableQty: sellerListingStock,
+        sellerListingStock: stocked.availableQtySeller,
         variants: mapVariantsForResponse(variantsWithMasterPrice),
-        fulfillmentSource: sellerListingStock > 0 ? "direct" : "out_of_stock",
+        fulfillmentSource: stocked.availableQtySeller > 0 ? "direct" : "out_of_stock",
         needsAdminReview: Boolean(p.adminReview?.pending),
         sellerUpdateTypes: p.adminReview?.types || [],
         sellerUpdateSummary: p.adminReview?.summary || null,
@@ -1488,19 +1444,21 @@ export const updateProduct = async (req, res) => {
 
     let responseProduct = finalProduct;
     if (finalProduct?.ownerType === "admin") {
-      const hubRow = await HubInventory.findOne({
-        hubId: DEFAULT_HUB_ID,
-        productId: finalProduct._id,
-      }).lean();
-      const hubQty = hubQtyFromInventoryRow(hubRow);
       const plain =
         typeof finalProduct.toObject === "function" ? finalProduct.toObject() : { ...finalProduct };
-      responseProduct = {
-        ...plain,
-        stock: hubQty,
-        catalogStock: hubQty,
-        availableQtyHub: hubQty,
-      };
+      try {
+        const canonicalCtx = await buildCanonicalStockContext([String(finalProduct._id)]);
+        const canonicalView = canonicalCtx.productViews.get(String(finalProduct._id));
+        responseProduct = applyCanonicalStockToMasterProduct(plain, canonicalView);
+      } catch (err) {
+        const hubQty = await getHubAvailableQty(finalProduct._id);
+        responseProduct = {
+          ...plain,
+          stock: hubQty,
+          catalogStock: hubQty,
+          availableQtyHub: hubQty,
+        };
+      }
     } else if (finalProduct?.ownerType === "seller") {
       const plain =
         typeof finalProduct.toObject === "function" ? finalProduct.toObject() : { ...finalProduct };
@@ -1568,111 +1526,68 @@ async function mapSingleProductForCustomerCatalog(productLean) {
       hubId: DEFAULT_HUB_ID,
       productId: p._id,
     }).lean();
-    const hubQty = hubQtyFromInventoryRow(hubRow);
-
-    let mappedSellerCost = Number(p.purchasePrice) || 0;
-    let stockView;
-    let variantStockMap = new Map();
-    try {
-      stockView = await getAdminProductStockView(p);
-      const stockCtx = await buildProductListStockContext([pIdStr]);
-      variantStockMap = stockCtx.variantStockMap;
-
-      const sellerDocs = await Product.find({
-        masterProductId: pIdStr,
-        ownerType: "seller",
-        status: "active",
-      })
-        .select("purchasePrice")
-        .lean();
-      const minPurchase = sellerDocs
-        .map((s) => Number(s.purchasePrice))
-        .filter((price) => price > 0);
-      if (minPurchase.length > 0) {
-        mappedSellerCost = Math.min(...minPurchase);
-      }
-    } catch (err) {
-      console.warn("[getProductById] seller stock read:", err.message);
-      stockView = {
-        sellerAvailableQty: 0,
-        sellerGrossQty: 0,
-        totalFulfillableQty: hubQty,
-        hubReservedQty: 0,
-      };
-    }
-
-    const fulfillableQty = stockView.totalFulfillableQty;
-    const customerCartQty = hubQty + stockView.sellerGrossQty;
     const dynamicPrice =
       hubRow?.sellPrice && hubRow.sellPrice > 0
         ? hubRow.sellPrice
         : p.salePrice || p.price;
     const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
 
-    const variantsWithTotalStock = (p.variants || []).map((v) => {
-      const vName = normalizeVariantMatchKey(v.name);
-      const sellerAvailableStock = Math.max(0, Number(variantStockMap.get(`${pIdStr}_${vName}`) || 0));
-      const adminStock = Math.max(0, Number(v.stock) || 0);
-      const grossStock = adminStock + sellerAvailableStock;
-      return {
-        ...v,
-        adminStock,
-        hubStock: adminStock,
-        sellerStock: sellerAvailableStock,
-        sellerAvailableStock,
-        stock: grossStock,
-        totalAvailableQty: grossStock,
-      };
-    });
+    let canonicalView = null;
+    let mappedSellerCost = Number(p.purchasePrice) || 0;
+    try {
+      const canonicalCtx = await buildCanonicalStockContext([pIdStr]);
+      canonicalView = canonicalCtx.productViews.get(pIdStr);
+      if (canonicalView?.vendorMinSupplyPrice > 0) {
+        mappedSellerCost = canonicalView.vendorMinSupplyPrice;
+      }
+    } catch (err) {
+      console.warn("[getProductById] canonical stock read:", err.message);
+    }
 
-    return {
-      ...p,
+    const stocked = applyCanonicalStockToMasterProduct(p, canonicalView, {
       price: p.price,
       salePrice: hasVariants ? p.salePrice || p.price : dynamicPrice,
       purchasePrice: Number(p.purchasePrice) || 0,
       vendorMinSupplyPrice: mappedSellerCost,
-      stock: customerCartQty,
-      catalogStock: hubQty,
-      availableQtyHub: hubQty,
-      availableQtySeller: stockView.sellerGrossQty,
-      sellerFulfillableQty: fulfillableQty,
-      totalAvailableQty: customerCartQty,
-      totalFulfillmentQty: fulfillableQty,
-      variants: mapVariantsForResponse(variantsWithTotalStock),
       fulfillmentSource:
-        hubQty > 0 ? "hub" : stockView.sellerGrossQty > 0 ? "procure" : "out_of_stock",
+        (canonicalView?.availableQtyHub || 0) > 0
+          ? "hub"
+          : (canonicalView?.availableQtySeller || 0) > 0
+            ? "procure"
+            : "out_of_stock",
+    });
+
+    return {
+      ...stocked,
+      variants: mapVariantsForResponse(stocked.variants),
     };
   }
 
   const masterId = p.masterProductId?._id || p.masterProductId;
   let masterProduct = null;
+  let masterCanonical = null;
   if (masterId) {
-    masterProduct = await Product.findById(masterId).select("price salePrice").lean();
+    masterProduct = await Product.findById(masterId).select("price salePrice variants gstEnabled gstRate").lean();
+    try {
+      const canonicalCtx = await buildCanonicalStockContext([String(masterId)]);
+      masterCanonical = canonicalCtx.productViews.get(String(masterId));
+    } catch (err) {
+      console.warn("[getProductById] seller master stock read:", err.message);
+    }
   }
   const customerPrice = masterProduct
     ? masterProduct.salePrice || masterProduct.price
     : p.salePrice || p.price;
-  const sellerStockView = getSellerProductStockView(p);
-  const sellerListingStock = sellerStockView.availableQty;
-  let hubQtyForSeller = 0;
-  let reservedQtyHubForSeller = 0;
-  let committedStockForSeller = sellerStockView.committedStock;
-  if (masterId) {
-    hubQtyForSeller = await getHubAvailableQty(masterId);
-  }
+
+  const stocked = applyCanonicalStockToSellerListing(p, masterCanonical);
 
   return {
-    ...p,
+    ...stocked,
     price: customerPrice || p.price,
     salePrice: customerPrice || p.salePrice,
-    availableQtyHub: hubQtyForSeller,
-    availableQtySeller: sellerListingStock,
-    stock: sellerListingStock,
-    catalogStock: sellerListingStock,
-    sellerListingStock,
-    totalAvailableQty: sellerListingStock,
-    variants: mapVariantsForResponse(p.variants),
-    fulfillmentSource: sellerListingStock > 0 ? "direct" : "out_of_stock",
+    sellerListingStock: stocked.availableQtySeller,
+    variants: mapVariantsForResponse(stocked.variants),
+    fulfillmentSource: stocked.availableQtySeller > 0 ? "direct" : "out_of_stock",
   };
 }
 

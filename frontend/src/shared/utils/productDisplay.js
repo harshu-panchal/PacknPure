@@ -74,28 +74,8 @@ function resolveFulfillmentLabel(source) {
 
 function resolveStockQty(p, variants) {
   const totalAvailableQty = Number(p.totalAvailableQty);
-  if (Number.isFinite(totalAvailableQty)) return totalAvailableQty;
-
-  const availableQtyHub = Number(p.availableQtyHub);
-  const availableQtySeller = Number(p.availableQtySeller);
-  if (Number.isFinite(availableQtyHub) || Number.isFinite(availableQtySeller)) {
-    return Math.max(
-      0,
-      (Number.isFinite(availableQtyHub) ? availableQtyHub : 0) +
-        (Number.isFinite(availableQtySeller) ? availableQtySeller : 0),
-    );
-  }
-
-  const catalogStock = Number(p.catalogStock);
-  if (Number.isFinite(catalogStock)) return catalogStock;
-
-  const stock = Number(p.stock);
-  if (Number.isFinite(stock)) return stock;
-
-  if (variants.length) {
-    return variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
-  }
-  return null;
+  if (Number.isFinite(totalAvailableQty) && totalAvailableQty >= 0) return totalAvailableQty;
+  return 0;
 }
 
 export function normalizeCustomerProduct(p) {
@@ -151,11 +131,7 @@ export function normalizeCustomerProduct(p) {
       subcategoryName,
       fulfillmentLabel,
       stockQty,
-      inStock:
-        p.inStock !== false &&
-        ((Number(p.stock) || 0) > 0 ||
-          variants.some((v) => (Number(v.stock) || 0) > 0) ||
-          (stockQty != null && stockQty > 0)),
+      inStock: stockQty > 0,
       variants,
     };
   }
@@ -181,9 +157,7 @@ export function normalizeCustomerProduct(p) {
     variantCount: 0,
     hasMultipleVariants: false,
     variantLabel,
-    inStock:
-      p.inStock !== false &&
-      ((Number(p.stock) || 0) > 0 || (stockQty != null && stockQty > 0)),
+    inStock: stockQty > 0,
     variants: [],
   };
 }

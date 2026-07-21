@@ -36,8 +36,7 @@ const WishlistProductRow = ({ product }) => {
 
   const inStock =
     product.inStock !== false &&
-    ((Number(product.stockQty) || Number(product.stock) || 0) > 0 ||
-      (product.variants || []).some((v) => (Number(v.stock) || 0) > 0));
+    (Number(product.stockQty ?? product.totalAvailableQty) || 0) > 0;
 
   const variantCount = product.variants?.length || 0;
   const mustPickVariant =

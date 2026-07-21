@@ -23,39 +23,20 @@ export function getVariantPricing(v) {
 }
 
 function readRawVariantStock(v) {
-  return Math.max(
-    0,
-    Number(
-      v?.totalAvailableQty ??
-        v?.availableQty ??
-        v?.stockQty ??
-        v?.stock ??
-        0,
-    ) || 0,
-  );
+  return Math.max(0, Number(v?.totalAvailableQty ?? 0) || 0);
 }
 
 export function getVariantStockBreakdown(v) {
-  const hasSplit =
-    v?.adminStock != null || v?.hubStock != null || v?.sellerStock != null;
-
-  if (hasSplit) {
-    const admin = Math.max(
-      0,
-      Number(v?.adminStock ?? v?.hubStock ?? 0) || 0,
-    );
-    const seller = Math.max(0, Number(v?.sellerStock ?? 0) || 0);
-    const total = admin + seller;
-    return {
-      admin,
-      seller,
-      total,
-      hasSplit: true,
-    };
-  }
-
   const total = readRawVariantStock(v);
-  return { admin: total, seller: 0, total, hasSplit: false };
+  const admin = Math.max(0, Number(v?.availableQtyHub ?? 0) || 0);
+  const seller = Math.max(0, Number(v?.availableQtySeller ?? 0) || 0);
+  const hasSplit = admin > 0 || seller > 0;
+  return {
+    admin,
+    seller,
+    total: total || admin + seller,
+    hasSplit,
+  };
 }
 
 export function formatVariantStockLabel(v) {
@@ -104,16 +85,7 @@ export function resolveCartStockQty(product, variantId = null) {
     return getVariantStock(variant);
   }
 
-  return Math.max(
-    0,
-    Number(
-      product.stockQty ??
-        product.totalAvailableQty ??
-        product.availableQty ??
-        product.stock ??
-        0,
-    ) || 0,
-  );
+  return Math.max(0, Number(product.totalAvailableQty ?? product.stockQty ?? 0) || 0);
 }
 
 export function applySelectedVariant(product, variant) {

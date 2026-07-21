@@ -6,9 +6,10 @@ import {
   deductSellerInventory,
 } from "../inventory/inventoryEngine.js";
 import {
-  getHubAvailableQty,
   getSellerProductStockView,
+  buildCanonicalStockContext,
 } from "../inventoryReadService.js";
+import { normalizeVariantMatchKey } from "../../utils/productHelpers.js";
 
 const toQty = (v) => Math.max(0, Number(v || 0));
 
@@ -33,28 +34,44 @@ export class AdminInventoryProvider extends InventoryProvider {
         };
 
         const products = await Product.find(query).limit(parseInt(limit)).lean();
-        const formattedResults = await Promise.all(
-          products.map(async (p) => {
-            const hubAvailable = await getHubAvailableQty(p._id);
+        const canonicalCtx = await buildCanonicalStockContext(products.map((p) => p._id));
+        const formattedResults = products.map((p) => {
+            const view = canonicalCtx.productViews.get(String(p._id));
             const baseResult = {
               _id: p._id,
               name: p.name,
               image: p.images?.[0]?.url || p.mainImage || "",
               gstEnabled: p.gstEnabled,
               gstRate: p.gstRate,
-              availableQty: hubAvailable,
+              stock: view?.stock ?? 0,
+              availableQty: view?.totalAvailableQty ?? 0,
+              availableQtyHub: view?.availableQtyHub ?? 0,
+              availableQtySeller: view?.availableQtySeller ?? 0,
+              totalAvailableQty: view?.totalAvailableQty ?? 0,
+              totalFulfillmentQty: view?.totalFulfillmentQty ?? 0,
+              hubAvailableQty: view?.availableQtyHub ?? 0,
             };
 
             if (p.variants && p.variants.length > 0) {
-              return p.variants.map((v) => ({
-                ...baseResult,
-                variantId: v._id,
-                variantName: v.name,
-                sku: v.sku,
-                barcode: v.barcode,
-                price: v.salePrice || v.price || 0,
-                availableQty: toQty(v.stock),
-              }));
+              return p.variants.map((v) => {
+                const vv = view?.variantByKey?.get(normalizeVariantMatchKey(v.name));
+                return {
+                  ...baseResult,
+                  variantId: v._id,
+                  variantName: v.name,
+                  sku: v.sku,
+                  barcode: v.barcode,
+                  price: v.salePrice || v.price || 0,
+                  stock: vv?.stock ?? toQty(v.stock),
+                  availableQty: vv?.totalAvailableQty ?? 0,
+                  availableQtyHub: vv?.availableQtyHub ?? 0,
+                  availableQtySeller: vv?.availableQtySeller ?? 0,
+                  totalAvailableQty: vv?.totalAvailableQty ?? 0,
+                  totalFulfillmentQty: vv?.totalFulfillmentQty ?? 0,
+                  hubAvailableQty: vv?.availableQtyHub ?? 0,
+                  sellerSupplyBreakdown: vv?.sellerSupplyBreakdown ?? [],
+                };
+              });
             }
             return [{
               ...baseResult,
@@ -64,8 +81,7 @@ export class AdminInventoryProvider extends InventoryProvider {
               barcode: p.sku,
               price: p.salePrice || p.basePrice || p.price || 0,
             }];
-          }),
-        );
+          });
         const flatResults = formattedResults.flat();
 
         const exactMatch = flatResults.find(r => r.barcode === search);
@@ -112,7 +128,11 @@ export class SellerInventoryProvider extends InventoryProvider {
                 image: p.images?.[0]?.url || p.mainImage || "",
                 gstEnabled: p.gstEnabled,
                 gstRate: p.gstRate,
+                stock: stockView.grossStock,
                 availableQty: stockView.availableQty,
+                availableQtySeller: stockView.availableQty,
+                totalAvailableQty: stockView.availableQty,
+                totalFulfillmentQty: stockView.availableQty,
             };
 
             if (p.variants && p.variants.length > 0) {
@@ -123,7 +143,11 @@ export class SellerInventoryProvider extends InventoryProvider {
                     sku: p.variants[idx]?.sku,
                     barcode: p.variants[idx]?.barcode,
                     price: p.variants[idx]?.salePrice || p.variants[idx]?.price || p.variants[idx]?.purchasePrice || 0,
+                    stock: v.grossStock,
                     availableQty: v.availableQty,
+                    availableQtySeller: v.availableQty,
+                    totalAvailableQty: v.availableQty,
+                    totalFulfillmentQty: v.availableQty,
                 }));
             }
             return [{

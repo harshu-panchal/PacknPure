@@ -26,7 +26,8 @@ function getSellPrice(productDoc, variant) {
   return { sale: 0, mrp: 0 };
 }
 
-import { getCustomerFulfillableQty } from "../services/inventoryReadService.js";
+import { getCustomerFulfillableQty, buildCanonicalStockContext } from "../services/inventoryReadService.js";
+import { normalizeVariantMatchKey } from "../utils/productHelpers.js";
 
 async function getAvailableStock(productDoc, variant) {
   const variantId = variant ? (variant._id || variant.id) : null;
@@ -40,13 +41,58 @@ async function getAvailableStock(productDoc, variant) {
 
 async function enrichCartStock(cartDoc) {
   if (!cartDoc || !Array.isArray(cartDoc.items)) return cartDoc;
-  for (const item of cartDoc.items) {
-    if (item.productId && Array.isArray(item.productId.variants)) {
-      for (const v of item.productId.variants) {
-        v.stock = await getAvailableStock(item.productId, v);
-      }
+
+  const masterIds = [
+    ...new Set(
+      cartDoc.items
+        .map((item) => {
+          const p = item.productId;
+          if (!p) return null;
+          return String(p.masterProductId || p._id);
+        })
+        .filter(Boolean),
+    ),
+  ];
+
+  let productViews = new Map();
+  if (masterIds.length > 0) {
+    try {
+      const ctx = await buildCanonicalStockContext(masterIds);
+      productViews = ctx.productViews;
+    } catch (err) {
+      console.warn("[cart] canonical stock enrich failed:", err.message);
     }
   }
+
+  for (const item of cartDoc.items) {
+    const p = item.productId;
+    if (!p || typeof p !== "object") continue;
+    const mid = String(p.masterProductId || p._id);
+    const view = productViews.get(mid);
+    if (!view) continue;
+
+    if (Array.isArray(p.variants)) {
+      for (const v of p.variants) {
+        const vKey = normalizeVariantMatchKey(v.name);
+        const vv = view.variantByKey.get(vKey);
+        if (!vv) continue;
+        v.stock = vv.stock;
+        v.availableQtyHub = vv.availableQtyHub;
+        v.availableQtySeller = vv.availableQtySeller;
+        v.totalAvailableQty = vv.totalAvailableQty;
+        v.totalFulfillmentQty = vv.totalFulfillmentQty;
+        v.sellerSupplyBreakdown = vv.sellerSupplyBreakdown;
+      }
+    }
+
+    p.stock = view.stock;
+    p.catalogStock = view.availableQtyHub;
+    p.availableQtyHub = view.availableQtyHub;
+    p.availableQtySeller = view.availableQtySeller;
+    p.totalAvailableQty = view.totalAvailableQty;
+    p.totalFulfillmentQty = view.totalFulfillmentQty;
+  }
+
   return cartDoc;
 }
 

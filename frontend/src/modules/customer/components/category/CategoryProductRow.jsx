@@ -27,7 +27,7 @@ const CategoryProductRow = ({ product }) => {
   const quantity = cartItem?.quantity || 0;
   const wishlisted = isInWishlist(productId);
 
-  const inStock = product.inStock !== false && (Number(product.stock) || 0) > 0;
+  const inStock = product.inStock !== false && (Number(product.stockQty ?? product.totalAvailableQty) || 0) > 0;
   const hasVariants = (product.variants?.length || 0) > 0;
   const mustPickVariant = hasVariants && (product.hasMultipleVariants || product.variants.length > 1);
 
