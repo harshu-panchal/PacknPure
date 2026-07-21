@@ -4,6 +4,7 @@ import HubInventory from "../models/hubInventory.js";
 import Seller from "../models/seller.js";
 import handleResponse from "../utils/helper.js";
 import { resolveOrderItemVariantLabel } from "../utils/orderItemHelpers.js";
+import { getInventoryReportRow } from "../services/inventoryReadService.js";
 
 /**
  * Utility to convert array of objects to CSV string
@@ -137,23 +138,31 @@ export const exportVendorPayoutsReport = async (req, res) => {
 export const exportInventoryReport = async (req, res) => {
   try {
     const inventory = await HubInventory.find()
-      .populate("productId", "name sku unit")
+      .populate("productId", "name sku unit variants")
       .lean();
 
-    const reportData = inventory.map(item => ({
-      ProductName: item.productId?.name || "Unknown",
-      SKU: item.productId?.sku || "N/A",
-      Unit: item.productId?.unit || "Pieces",
-      AvailableQty: item.availableQty || 0,
-      ReservedQty: item.reservedQty || 0,
-      TotalQty: (item.availableQty || 0) + (item.reservedQty || 0),
-      AverageCost: (item.avgPurchaseCost || 0).toFixed(2),
-      SellingPrice: (item.sellPrice || 0).toFixed(2),
-      Status: item.status || "Unknown"
-    }));
+    const reportData = await Promise.all(
+      inventory.map(async (item) => {
+        const stockRow = await getInventoryReportRow(item, item.productId || null);
+        return {
+          ProductName: item.productId?.name || "Unknown",
+          SKU: item.productId?.sku || "N/A",
+          Unit: item.productId?.unit || "Pieces",
+          AvailableQty: stockRow.availableQty,
+          ReservedQty: stockRow.reservedQty,
+          TotalQty: stockRow.availableQty + stockRow.reservedQty,
+          SellerAvailableQty: stockRow.sellerAvailableQty,
+          TotalFulfillableQty: stockRow.totalFulfillableQty,
+          AverageCost: (item.avgPurchaseCost || 0).toFixed(2),
+          SellingPrice: (item.sellPrice || 0).toFixed(2),
+          Status: item.status || "Unknown",
+        };
+      }),
+    );
 
     const csv = jsonToCsv(reportData, [
-      "ProductName", "SKU", "Unit", "AvailableQty", "ReservedQty", "TotalQty", "AverageCost", "SellingPrice", "Status"
+      "ProductName", "SKU", "Unit", "AvailableQty", "ReservedQty", "TotalQty",
+      "SellerAvailableQty", "TotalFulfillableQty", "AverageCost", "SellingPrice", "Status",
     ]);
 
     res.setHeader("Content-Type", "text/csv");

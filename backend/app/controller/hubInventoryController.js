@@ -9,6 +9,7 @@ import {
   adjustHubAvailableStock,
   setAdminHubStock,
 } from "../services/inventory/inventoryEngine.js";
+import { getSellerVariantAvailableQty } from "../services/inventoryReadService.js";
 import {
   totalVariantStock,
   resolveVariantIndex,
@@ -180,15 +181,13 @@ export const getHubInventory = async (req, res) => {
         let sa = 0;
         let sc = 0;
         for (const sellerListing of sellerRows) {
-          const sellerVar = (sellerListing.variants || []).find(
-            (sv) =>
-              String(sv._id || "") === String(v.variantId || "") ||
-              String(sv.name || "").trim().toLowerCase() === String(v.name || "").trim().toLowerCase(),
+          const variantStock = getSellerVariantAvailableQty(
+            sellerListing,
+            v.variantId,
+            v.name,
           );
-          if (sellerVar) {
-            sa += toQty(sellerVar.stock);
-            sc += toQty(sellerVar.committedStock);
-          }
+          sa += variantStock.grossStock;
+          sc += variantStock.committedStock;
         }
 
         const ha = toQty(v.stock);

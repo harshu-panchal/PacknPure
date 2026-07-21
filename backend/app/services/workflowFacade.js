@@ -157,6 +157,8 @@ export const findAndTransitionOrder = async ({
   filter,
   toState,
   assign = {},
+  unset = {},
+  inc = {},
   options = {},
   populate = [],
   session = null,
@@ -164,14 +166,24 @@ export const findAndTransitionOrder = async ({
   let query = Order.findOne(filter);
   if (session) query = query.session(session);
   for (const path of populate) {
-    query = query.populate(path);
+    if (typeof path === "string") query = query.populate(path);
+    else query = query.populate(path);
   }
   const order = await query;
   if (!order) return null;
   transitionOrder(order, toState, options);
   Object.assign(order, assign);
+  for (const [key, delta] of Object.entries(inc)) {
+    order[key] = (Number(order[key]) || 0) + Number(delta);
+  }
   if (session) await order.save({ session });
   else await order.save();
+  if (Object.keys(unset).length > 0) {
+    await Order.updateOne({ _id: order._id }, { $unset: unset });
+    for (const key of Object.keys(unset)) {
+      order.set(key, undefined);
+    }
+  }
   return order;
 };
 

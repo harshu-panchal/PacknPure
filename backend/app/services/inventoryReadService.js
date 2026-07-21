@@ -63,7 +63,7 @@ export const getCustomerFulfillableQty = async ({
   const [hubAvailable, masterProduct, sellerProducts] = await Promise.all([
     getHubAvailableQty(masterProductId, hubId),
     Product.findById(masterProductId).select("variants").lean(),
-    Product.find({ masterProductId, ownerType: "seller", isActive: true })
+    Product.find({ masterProductId, ownerType: "seller", status: "active" })
       .select("variants stock committedStock")
       .lean(),
   ]);
@@ -91,7 +91,7 @@ export const getAdminProductStockView = async (masterProduct, hubId = DEFAULT_HU
   const sellerProducts = await Product.find({
     masterProductId: productId,
     ownerType: "seller",
-    isActive: true,
+    status: "active",
   })
     .select("variants stock committedStock")
     .lean();
@@ -165,7 +165,7 @@ export const getHubInventoryRowView = async ({
     const sellerProducts = await Product.find({
       masterProductId: String(masterProduct._id || productId),
       ownerType: "seller",
-      isActive: true,
+      status: "active",
     })
       .select("variants stock committedStock")
       .lean();
@@ -185,5 +185,110 @@ export const getHubInventoryRowView = async ({
     sellerAvailableQty: sellerAvailable,
     sellerCommittedQty: sellerCommitted,
     totalFulfillableQty: hubAvailable + sellerAvailable,
+  };
+};
+
+/**
+ * Batch stock context for product list endpoints (replaces inline aggregations).
+ */
+export const buildProductListStockContext = async (masterProductIds, hubId = DEFAULT_HUB_ID) => {
+  const ids = [...new Set(masterProductIds.map((id) => String(id)).filter(Boolean))];
+  const hubRows = await HubInventory.find({ productId: { $in: ids }, hubId }).lean();
+  const hubMap = new Map();
+  const hubReservedMap = new Map();
+  for (const row of hubRows) {
+    const key = String(row.productId);
+    hubMap.set(key, toQty(row.availableQty));
+    hubReservedMap.set(key, toQty(row.reservedQty));
+  }
+
+  const masterProducts = await Product.find({ _id: { $in: ids } }).select("variants").lean();
+  const masterById = new Map(masterProducts.map((m) => [String(m._id), m]));
+
+  const sellerProducts = await Product.find({
+    masterProductId: { $in: ids },
+    ownerType: "seller",
+    status: "active",
+  })
+    .select("masterProductId variants stock committedStock purchasePrice")
+    .lean();
+
+  const sellerStockMap = new Map();
+  const variantStockMap = new Map();
+
+  for (const sp of sellerProducts) {
+    const mid = String(sp.masterProductId);
+    const master = masterById.get(mid);
+    const view = getSellerProductStockView(sp);
+    const prev = sellerStockMap.get(mid) || { stock: 0, committed: 0, cost: Infinity };
+    sellerStockMap.set(mid, {
+      stock: prev.stock + view.availableQty,
+      committed: prev.committed + view.committedStock,
+      cost: Math.min(prev.cost, Number(sp.purchasePrice) || Infinity),
+    });
+
+    if (Array.isArray(sp.variants) && sp.variants.length > 0) {
+      for (const v of sp.variants) {
+        const vName = normalizeVariantMatchKey(v.name);
+        const variantAvailable = getSellerAvailableQty(sp, v._id, master);
+        const key = `${mid}_${vName}`;
+        variantStockMap.set(key, (variantStockMap.get(key) || 0) + variantAvailable);
+      }
+    } else {
+      const available = getSellerAvailableQty(sp, null, master);
+      const key = `${mid}_root`;
+      variantStockMap.set(key, (variantStockMap.get(key) || 0) + available);
+    }
+  }
+
+  return { hubMap, hubReservedMap, sellerStockMap, variantStockMap };
+};
+
+/**
+ * Canonical seller variant available for hub inventory screen.
+ */
+export const getSellerVariantAvailableQty = (sellerListing, variantId, variantName, masterProduct) => {
+  const sellerVar = (sellerListing?.variants || []).find(
+    (sv) =>
+      String(sv._id || "") === String(variantId || "") ||
+      normalizeVariantMatchKey(sv.name) === normalizeVariantMatchKey(variantName || ""),
+  );
+  if (!sellerVar) return { availableQty: 0, committedStock: 0, grossStock: 0 };
+  const grossStock = toQty(sellerVar.stock);
+  const committedStock = toQty(sellerVar.committedStock);
+  return {
+    grossStock,
+    committedStock,
+    availableQty: Math.max(0, grossStock - committedStock),
+  };
+};
+
+/**
+ * Report row for inventory export.
+ */
+export const getInventoryReportRow = async (hubRow, product = null, hubId = DEFAULT_HUB_ID) => {
+  const productId = String(hubRow.productId?._id || hubRow.productId);
+  const stockView = product
+    ? await getHubInventoryRowView({
+        productId,
+        hubAvailableQty: toQty(hubRow.availableQty),
+        hubReservedQty: toQty(hubRow.reservedQty),
+        masterProduct: product,
+        hubId,
+      })
+    : {
+        hubAvailableQty: toQty(hubRow.availableQty),
+        hubReservedQty: toQty(hubRow.reservedQty),
+        sellerAvailableQty: 0,
+        sellerCommittedQty: 0,
+        totalFulfillableQty: toQty(hubRow.availableQty),
+      };
+
+  return {
+    availableQty: stockView.hubAvailableQty,
+    reservedQty: stockView.hubReservedQty,
+    sellerAvailableQty: stockView.sellerAvailableQty,
+    sellerCommittedQty: stockView.sellerCommittedQty,
+    totalFulfillableQty: stockView.totalFulfillableQty,
   };
 };

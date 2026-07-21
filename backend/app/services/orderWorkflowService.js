@@ -300,8 +300,8 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
         attempt: 1,
         lastBroadcastAt: now,
       },
-      expiresAt: undefined,
     },
+    unset: { expiresAt: 1 },
     options: { actor: { role: "seller" }, reason: "seller_accepted" },
     populate: ["customer", { path: "seller", select: "shopName address name location serviceRadius" }],
   });
@@ -349,24 +349,22 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
 export async function sellerRejectAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
-  const order = await Order.findOneAndUpdate(
-    {
+  const order = await findAndTransitionOrder({
+    filter: {
       orderId,
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
       sellerPendingExpiresAt: { $gt: now },
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "seller",
-        cancelReason: "Rejected by seller",
-      },
+    toState: WORKFLOW_STATUS.CANCELLED,
+    assign: {
+      cancelledBy: "seller",
+      cancelReason: "Rejected by seller",
+      status: "cancelled",
     },
-    { new: true },
-  );
+    options: { actor: { role: "seller" }, reason: "seller_rejected" },
+  });
 
   if (!order) {
     const err = new Error("Order not available to reject");
@@ -392,8 +390,8 @@ export async function startHubDeliverySearchAtomic(orderId) {
   const now = new Date();
   const deliveryMs = await getDeliveryTimeoutMs();
 
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowVersion: { $gte: 2 },
       hubFlowEnabled: true,
@@ -402,24 +400,20 @@ export async function startHubDeliverySearchAtomic(orderId) {
         $in: [WORKFLOW_STATUS.CREATED, WORKFLOW_STATUS.SELLER_ACCEPTED],
       },
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_SEARCH),
-        sellerAcceptedAt: now,
-        deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
-        deliverySearchMeta: {
-          radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
-          attempt: 1,
-          lastBroadcastAt: now,
-        },
+    toState: WORKFLOW_STATUS.DELIVERY_SEARCH,
+    assign: {
+      sellerAcceptedAt: now,
+      deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
+      deliverySearchMeta: {
+        radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
+        attempt: 1,
+        lastBroadcastAt: now,
       },
-      $unset: { expiresAt: 1 },
     },
-    { new: true },
-  )
-    .populate("customer", "name phone")
-    .populate("seller", "shopName address name location serviceRadius");
+    unset: { expiresAt: 1 },
+    options: { actor: { role: "system" }, reason: "hub_delivery_search" },
+    populate: ["customer", { path: "seller", select: "shopName address name location serviceRadius" }],
+  });
 
   if (!updated) {
     const err = new Error("Order not ready for delivery dispatch");
@@ -504,8 +498,8 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
   }
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
@@ -513,18 +507,15 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
       deliverySearchExpiresAt: { $gt: now },
       skippedBy: { $nin: [deliveryOid] },
     },
-    {
-      $set: {
-        deliveryBoy: deliveryOid,
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_ASSIGNED),
-        assignedAt: now,
-        deliveryRiderStep: 1,
-      },
-      $inc: { assignmentVersion: 1 },
+    toState: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+    assign: {
+      deliveryBoy: deliveryOid,
+      assignedAt: now,
+      deliveryRiderStep: 1,
     },
-    { new: true },
-  );
+    inc: { assignmentVersion: 1 },
+    options: { actor: { role: "delivery" }, reason: "delivery_accepted" },
+  });
 
   if (!updated) {
     const o = await Order.findOne({ orderId }).lean();
@@ -624,22 +615,20 @@ export async function processSellerTimeoutJob({ orderId }) {
     return;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "system",
-        cancelReason: "Seller timeout (60s)",
-      },
+    toState: WORKFLOW_STATUS.CANCELLED,
+    assign: {
+      cancelledBy: "system",
+      cancelReason: "Seller timeout (60s)",
+      status: "cancelled",
     },
-    { new: true },
-  );
+    options: { actor: { role: "system" }, reason: "seller_timeout" },
+  });
 
   if (!updated) return;
 
@@ -680,23 +669,20 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
     const deliveryMs = await getDeliveryTimeoutMs();
     const nextExpiry = new Date(now.getTime() + deliveryMs);
 
-    await Order.findOneAndUpdate(
-      {
-        orderId,
-        workflowVersion: { $gte: 2 },
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-      },
-      {
-        $set: {
-          deliverySearchExpiresAt: nextExpiry,
-          deliverySearchMeta: {
-            radiusMeters: nextRadius,
-            attempt: currentAttempt + 1,
-            lastBroadcastAt: now,
-          },
-        },
-      },
-    );
+    const orderToRetry = await Order.findOne({
+      orderId,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+    });
+    if (!orderToRetry) return;
+
+    orderToRetry.deliverySearchExpiresAt = nextExpiry;
+    orderToRetry.deliverySearchMeta = {
+      radiusMeters: nextRadius,
+      attempt: currentAttempt + 1,
+      lastBroadcastAt: now,
+    };
+    await orderToRetry.save();
 
     await scheduleDeliveryTimeoutJob(orderId, currentAttempt + 1);
 
@@ -714,22 +700,20 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
     return;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "system",
-        cancelReason: "No delivery partner (timeout)",
-      },
+    toState: WORKFLOW_STATUS.CANCELLED,
+    assign: {
+      cancelledBy: "system",
+      cancelReason: "No delivery partner (timeout)",
+      status: "cancelled",
     },
-    { new: true },
-  );
+    options: { actor: { role: "system" }, reason: "delivery_timeout" },
+  });
 
   if (!updated) return;
 
@@ -767,22 +751,20 @@ export async function customerCancelV2(customerId, orderId, reason) {
     throw err;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       customer: customerId,
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "customer",
-        cancelReason: reason || "Cancelled by customer",
-      },
+    toState: WORKFLOW_STATUS.CANCELLED,
+    assign: {
+      cancelledBy: "customer",
+      cancelReason: reason || "Cancelled by customer",
+      status: "cancelled",
     },
-    { new: true },
-  );
+    options: { actor: { role: "customer", id: customerId }, reason: "customer_cancelled" },
+  });
 
   if (!updated) {
     const err = new Error("Unable to cancel");
@@ -863,22 +845,19 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
   }
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
       deliveryBoy: deliveryId,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.PICKUP_READY,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.PICKUP_READY),
-        pickupReadyAt: now,
-        deliveryRiderStep: 2,
-      },
+    toState: WORKFLOW_STATUS.PICKUP_READY,
+    assign: {
+      pickupReadyAt: now,
+      deliveryRiderStep: 2,
     },
-    { new: true },
-  );
+    options: { actor: { role: "delivery", id: deliveryId }, reason: "arrived_at_store" },
+  });
 
   if (!updated) {
     const err = new Error("Could not mark arrived at store");
@@ -954,23 +933,20 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
   }
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       workflowStatus: { $in: [...prePickup] },
       deliveryBoy: deliveryId,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.OUT_FOR_DELIVERY),
-        pickupConfirmedAt: now,
-        outForDeliveryAt: now,
-        deliveryRiderStep: 3,
-      },
+    toState: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+    assign: {
+      pickupConfirmedAt: now,
+      outForDeliveryAt: now,
+      deliveryRiderStep: 3,
     },
-    { new: true },
-  );
+    options: { actor: { role: "delivery", id: deliveryId }, reason: "pickup_confirmed" },
+  });
 
   if (!updated) {
     const err = new Error("Pickup confirm failed");
@@ -1169,25 +1145,27 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   );
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
+  const updated = await findAndTransitionOrder({
+    filter: {
       orderId,
       $or: [
         { workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY },
-        { status: "out_for_delivery" }, // legacy fallback
+        { status: "out_for_delivery" },
       ],
       deliveryBoy: deliveryId,
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.DELIVERED,
-        status: "delivered",
-        deliveredAt: now,
-        deliveryRiderStep: 5,
-      },
+    toState: WORKFLOW_STATUS.DELIVERED,
+    assign: {
+      deliveredAt: now,
+      deliveryRiderStep: 5,
+      status: "delivered",
     },
-    { new: true },
-  );
+    options: {
+      actor: { role: "delivery", id: deliveryId },
+      reason: "delivered",
+      otp: { required: true, verified: true },
+    },
+  });
 
     if (!updated) {
       const err = new Error("Could not finalize delivery");

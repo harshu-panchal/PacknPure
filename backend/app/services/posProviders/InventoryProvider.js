@@ -1,11 +1,16 @@
 import Product from "../../models/product.js";
-import HubInventory from "../../models/hubInventory.js";
 import {
   deductHubInventory,
   restoreHubAvailableInventory,
   restoreSellerInventory,
   deductSellerInventory,
 } from "../inventory/inventoryEngine.js";
+import {
+  getHubAvailableQty,
+  getSellerProductStockView,
+} from "../inventoryReadService.js";
+
+const toQty = (v) => Math.max(0, Number(v || 0));
 
 // Base Interface Pattern
 class InventoryProvider {
@@ -28,44 +33,43 @@ export class AdminInventoryProvider extends InventoryProvider {
         };
 
         const products = await Product.find(query).limit(parseInt(limit)).lean();
-        const productIds = products.map(p => p._id);
-        const hubStocks = await HubInventory.find({ productId: { $in: productIds } }).lean();
-
-        // Admin sees hub stock
-        const formattedResults = products.map(p => {
-            const hubStock = hubStocks.find(h => String(h.productId) === String(p._id));
+        const formattedResults = await Promise.all(
+          products.map(async (p) => {
+            const hubAvailable = await getHubAvailableQty(p._id);
             const baseResult = {
-                _id: p._id,
-                name: p.name,
-                image: p.images?.[0]?.url || p.mainImage || "",
-                gstEnabled: p.gstEnabled,
-                gstRate: p.gstRate,
-                availableQty: hubStock ? Math.max(0, hubStock.availableQty || hubStock.quantity - (hubStock.reservedQty || hubStock.reserved || 0)) : 0,
+              _id: p._id,
+              name: p.name,
+              image: p.images?.[0]?.url || p.mainImage || "",
+              gstEnabled: p.gstEnabled,
+              gstRate: p.gstRate,
+              availableQty: hubAvailable,
             };
 
             if (p.variants && p.variants.length > 0) {
-                return p.variants.map(v => ({
-                    ...baseResult,
-                    variantId: v._id,
-                    variantName: v.name,
-                    sku: v.sku,
-                    barcode: v.barcode,
-                    price: v.salePrice || v.price || 0,
-                    availableQty: Math.max(0, (v.stock || 0) - (v.committedStock || 0)) // Variant hub stock approximation
-                }));
+              return p.variants.map((v) => ({
+                ...baseResult,
+                variantId: v._id,
+                variantName: v.name,
+                sku: v.sku,
+                barcode: v.barcode,
+                price: v.salePrice || v.price || 0,
+                availableQty: toQty(v.stock),
+              }));
             }
             return [{
-                ...baseResult,
-                variantId: null,
-                variantName: null,
-                sku: p.sku,
-                barcode: p.sku,
-                price: p.salePrice || p.basePrice || p.price || 0
+              ...baseResult,
+              variantId: null,
+              variantName: null,
+              sku: p.sku,
+              barcode: p.sku,
+              price: p.salePrice || p.basePrice || p.price || 0,
             }];
-        }).flat();
+          }),
+        );
+        const flatResults = formattedResults.flat();
 
-        const exactMatch = formattedResults.find(r => r.barcode === search);
-        return exactMatch ? [exactMatch] : formattedResults.slice(0, parseInt(limit));
+        const exactMatch = flatResults.find(r => r.barcode === search);
+        return exactMatch ? [exactMatch] : flatResults.slice(0, parseInt(limit));
     }
 
     async deductStock(productId, variantId, quantity, session) {
@@ -100,26 +104,26 @@ export class SellerInventoryProvider extends InventoryProvider {
 
         const products = await Product.find(query).limit(parseInt(limit)).lean();
 
-        // Seller only sees their own stock
-        const formattedResults = products.map(p => {
+        const formattedResults = products.map((p) => {
+            const stockView = getSellerProductStockView(p);
             const baseResult = {
                 _id: p._id,
                 name: p.name,
                 image: p.images?.[0]?.url || p.mainImage || "",
                 gstEnabled: p.gstEnabled,
                 gstRate: p.gstRate,
-                availableQty: Math.max(0, p.stock || 0) // Natively from product
+                availableQty: stockView.availableQty,
             };
 
             if (p.variants && p.variants.length > 0) {
-                return p.variants.map(v => ({
+                return stockView.variants.map((v, idx) => ({
                     ...baseResult,
-                    variantId: v._id,
+                    variantId: p.variants[idx]?._id,
                     variantName: v.name,
-                    sku: v.sku,
-                    barcode: v.barcode,
-                    price: v.salePrice || v.price || v.purchasePrice || 0,
-                    availableQty: Math.max(0, (v.stock || 0) - (v.committedStock || 0))
+                    sku: p.variants[idx]?.sku,
+                    barcode: p.variants[idx]?.barcode,
+                    price: p.variants[idx]?.salePrice || p.variants[idx]?.price || p.variants[idx]?.purchasePrice || 0,
+                    availableQty: v.availableQty,
                 }));
             }
             return [{
@@ -128,7 +132,7 @@ export class SellerInventoryProvider extends InventoryProvider {
                 variantName: null,
                 sku: p.sku,
                 barcode: p.sku,
-                price: p.salePrice || p.basePrice || p.price || p.purchasePrice || 0
+                price: p.salePrice || p.basePrice || p.price || p.purchasePrice || 0,
             }];
         }).flat();
 

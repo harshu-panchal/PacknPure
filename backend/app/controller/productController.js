@@ -61,6 +61,12 @@ import {
   getNearbySellerIdsForCustomer,
 } from "../services/customerVisibilityService.js";
 import { adjustSellerStock, setAdminHubStock } from "../services/inventory/inventoryEngine.js";
+import {
+  buildProductListStockContext,
+  getAdminProductStockView,
+  getHubAvailableQty,
+  getSellerProductStockView,
+} from "../services/inventoryReadService.js";
 
 function isCustomerVisibilityRequest(req) {
   // If explicitly searching master catalog, it's not a location-bound customer request
@@ -380,122 +386,32 @@ export const getProducts = async (req, res) => {
       .limit(limit)
       .lean();
 
-    const masterProductIds = [
-      ...products.map((p) => p._id),
-      ...products.map((p) => p.masterProductId).filter(Boolean),
+    const masterProductIdsForStock = [
+      ...new Set(
+        products
+          .map((p) => (p.ownerType === "admin" ? p._id : p.masterProductId))
+          .filter(Boolean)
+          .map(String),
+      ),
     ];
     const hubRowsForResult = await HubInventory.find({
-      productId: { $in: masterProductIds },
+      productId: { $in: masterProductIdsForStock },
       hubId: DEFAULT_HUB_ID,
     }).lean();
 
-    const hubMap = new Map();
-    const hubReservedMap = new Map();
-    hubRowsForResult.forEach((r) => {
-      if (r.productId) {
-        hubMap.set(String(r.productId), hubQtyFromInventoryRow(r));
-        hubReservedMap.set(String(r.productId), Number(r.reservedQty) || 0);
-      }
-    });
-
-    const productIdsForAgg = products.map((p) => String(p._id)).filter(id => mongoose.Types.ObjectId.isValid(id));
-    
+    let hubMap = new Map();
+    let hubReservedMap = new Map();
     let sellerStockMap = new Map();
     let variantStockMap = new Map();
-    if (productIdsForAgg.length > 0) {
+    if (masterProductIdsForStock.length > 0) {
       try {
-        const sellerStockSummary = await Product.aggregate([
-          {
-            $match: {
-              masterProductId: { $in: productIdsForAgg.map(id => new mongoose.Types.ObjectId(id)) },
-              ownerType: "seller",
-              status: "active",
-            },
-          },
-          {
-            $group: {
-              _id: "$masterProductId",
-              totalSellerStock: {
-                $sum: {
-                  $cond: {
-                    if: { $and: [{ $isArray: "$variants" }, { $gt: [{ $size: "$variants" }, 0] }] },
-                    then: {
-                      $max: [0, {
-                        $reduce: {
-                          input: "$variants",
-                          initialValue: 0,
-                          in: { $add: ["$$value", { $ifNull: ["$$this.stock", 0] }] }
-                        }
-                      }]
-                    },
-                    else: { 
-                      $max: [0, { $ifNull: ["$stock", 0] }] 
-                    }
-                  }
-                }
-              },
-              totalSellerCommitted: {
-                $sum: {
-                  $cond: {
-                    if: { $and: [{ $isArray: "$variants" }, { $gt: [{ $size: "$variants" }, 0] }] },
-                    then: {
-                      $reduce: {
-                        input: "$variants",
-                        initialValue: 0,
-                        in: { $add: ["$$value", { $ifNull: ["$$this.committedStock", 0] }] }
-                      }
-                    },
-                    else: { $ifNull: ["$committedStock", 0] }
-                  }
-                }
-              },
-              minPurchasePrice: { $min: "$purchasePrice" },
-              avgPurchasePrice: { $avg: "$purchasePrice" }
-            },
-          },
-        ]);
-        sellerStockSummary.forEach(s => {
-          if (s._id) {
-            sellerStockMap.set(String(s._id), {
-              stock: Number(s.totalSellerStock || 0),
-              committed: Number(s.totalSellerCommitted || 0),
-              cost: Number(s.minPurchasePrice || s.avgPurchasePrice || 0)
-            });
-          }
-        });
-
-        const variantStockSummary = await Product.aggregate([
-          {
-            $match: {
-              masterProductId: { $in: productIdsForAgg.map(id => new mongoose.Types.ObjectId(id)) },
-              ownerType: "seller",
-              status: "active",
-            },
-          },
-          { $unwind: "$variants" },
-          {
-            $group: {
-              _id: {
-                masterProductId: "$masterProductId",
-                variantName: { $toLower: { $trim: { input: "$variants.name" } } }
-              },
-              variantSellerStock: {
-                $sum: { $max: [0, { $ifNull: ["$variants.stock", 0] }] }
-              }
-            }
-          }
-        ]);
-
-        variantStockSummary.forEach(s => {
-          if (s._id && s._id.masterProductId && s._id.variantName) {
-            variantStockMap.set(
-              `${String(s._id.masterProductId)}_${normalizeVariantMatchKey(s._id.variantName)}`,
-              Number(s.variantSellerStock || 0),
-            );
-          }
-        });
+        const stockCtx = await buildProductListStockContext(masterProductIdsForStock);
+        hubMap = stockCtx.hubMap;
+        hubReservedMap = stockCtx.hubReservedMap;
+        sellerStockMap = stockCtx.sellerStockMap;
+        variantStockMap = stockCtx.variantStockMap;
       } catch (err) {
-        console.error("[getProducts] Aggregation Error:", err.message);
+        console.error("[getProducts] stock context error:", err.message);
       }
     }
 
@@ -598,10 +514,8 @@ export const getProducts = async (req, res) => {
       const hubReservedForSeller = p.masterProductId
         ? hubReservedMap.get(String(p.masterProductId)) ?? 0
         : 0;
-      // Sum committedStock across all variants for this seller product
-      const sellerCommittedStock = Array.isArray(p.variants) && p.variants.length > 0
-        ? p.variants.reduce((sum, v) => sum + Math.max(0, Number(v.committedStock) || 0), 0)
-        : Math.max(0, Number(p.committedStock) || 0);
+      const sellerStockView = getSellerProductStockView(p);
+      const sellerCommittedStock = sellerStockView.committedStock;
 
       const supplyPrice = resolveSupplyPriceFromInput(p);
 
@@ -1656,103 +1570,39 @@ async function mapSingleProductForCustomerCatalog(productLean) {
     }).lean();
     const hubQty = hubQtyFromInventoryRow(hubRow);
 
-    let mappedSellerStock = 0;
     let mappedSellerCost = Number(p.purchasePrice) || 0;
-    let variantSellerGrossMap = new Map();
-    let variantSellerAvailableMap = new Map();
-    let totalSellerGross = 0;
-    let totalSStock = 0;
-
+    let stockView;
+    let variantStockMap = new Map();
     try {
+      stockView = await getAdminProductStockView(p);
+      const stockCtx = await buildProductListStockContext([pIdStr]);
+      variantStockMap = stockCtx.variantStockMap;
+
       const sellerDocs = await Product.find({
         masterProductId: pIdStr,
         ownerType: "seller",
         status: "active",
-      }).select("variants stock committedStock purchasePrice").lean();
-
-      let minPurchase = null;
-
-      for (const sDoc of sellerDocs) {
-        if (sDoc.purchasePrice > 0) {
-          if (minPurchase === null || sDoc.purchasePrice < minPurchase) {
-            minPurchase = sDoc.purchasePrice;
-          }
-        }
-
-        const variantGrossSum = Array.isArray(sDoc.variants)
-          ? sDoc.variants.reduce(
-              (acc, v) => acc + Math.max(0, Number(v.stock) || 0),
-              0,
-            )
-          : 0;
-        const variantAvailableSum = Array.isArray(sDoc.variants)
-          ? sDoc.variants.reduce(
-              (acc, v) =>
-                acc +
-                Math.max(
-                  0,
-                  Number(v.stock) || 0,
-                ),
-              0,
-            )
-          : 0;
-        const rootGross = Math.max(0, Number(sDoc.stock) || 0);
-        const rootAvailable = Math.max(
-          0,
-          rootGross,
-        );
-        const docGross = variantGrossSum > 0 ? variantGrossSum : rootGross;
-        const docAvailable =
-          variantAvailableSum > 0 ? variantAvailableSum : rootAvailable;
-        totalSellerGross += docGross;
-        totalSStock += docAvailable;
-
-        if (Array.isArray(sDoc.variants) && sDoc.variants.length > 0) {
-          sDoc.variants.forEach((v) => {
-            const vName = normalizeVariantMatchKey(v.name);
-            const gross = Math.max(0, Number(v.stock) || 0);
-            const available = Math.max(
-              0,
-              gross,
-            );
-            variantSellerGrossMap.set(
-              vName,
-              (variantSellerGrossMap.get(vName) || 0) + gross,
-            );
-            variantSellerAvailableMap.set(
-              vName,
-              (variantSellerAvailableMap.get(vName) || 0) + available,
-            );
-          });
-        } else if (Array.isArray(p.variants) && p.variants.length === 1) {
-          // If seller has no variants but master has exactly 1 variant, assume seller's root stock belongs to it
-          const vName = normalizeVariantMatchKey(p.variants[0].name);
-          const gross = Math.max(0, Number(sDoc.stock) || 0);
-          const available = Math.max(
-            0,
-            gross,
-          );
-          variantSellerGrossMap.set(
-            vName,
-            (variantSellerGrossMap.get(vName) || 0) + gross,
-          );
-          variantSellerAvailableMap.set(
-            vName,
-            (variantSellerAvailableMap.get(vName) || 0) + available,
-          );
-        }
-      }
-
-      mappedSellerStock = totalSellerGross;
-      if (minPurchase !== null) {
-        mappedSellerCost = minPurchase;
+      })
+        .select("purchasePrice")
+        .lean();
+      const minPurchase = sellerDocs
+        .map((s) => Number(s.purchasePrice))
+        .filter((price) => price > 0);
+      if (minPurchase.length > 0) {
+        mappedSellerCost = Math.min(...minPurchase);
       }
     } catch (err) {
-      console.warn("[getProductById] seller stock aggregation:", err.message);
+      console.warn("[getProductById] seller stock read:", err.message);
+      stockView = {
+        sellerAvailableQty: 0,
+        sellerGrossQty: 0,
+        totalFulfillableQty: hubQty,
+        hubReservedQty: 0,
+      };
     }
 
-    const fulfillableQty = hubQty + totalSStock;
-    const customerCartQty = hubQty + totalSellerGross;
+    const fulfillableQty = stockView.totalFulfillableQty;
+    const customerCartQty = hubQty + stockView.sellerGrossQty;
     const dynamicPrice =
       hubRow?.sellPrice && hubRow.sellPrice > 0
         ? hubRow.sellPrice
@@ -1761,18 +1611,14 @@ async function mapSingleProductForCustomerCatalog(productLean) {
 
     const variantsWithTotalStock = (p.variants || []).map((v) => {
       const vName = normalizeVariantMatchKey(v.name);
-      const sellerStock = Math.max(0, Number(variantSellerGrossMap.get(vName) || 0));
-      const sellerAvailableStock = Math.max(
-        0,
-        Number(variantSellerAvailableMap.get(vName) || 0),
-      );
+      const sellerAvailableStock = Math.max(0, Number(variantStockMap.get(`${pIdStr}_${vName}`) || 0));
       const adminStock = Math.max(0, Number(v.stock) || 0);
-      const grossStock = adminStock + sellerStock;
+      const grossStock = adminStock + sellerAvailableStock;
       return {
         ...v,
         adminStock,
         hubStock: adminStock,
-        sellerStock,
+        sellerStock: sellerAvailableStock,
         sellerAvailableStock,
         stock: grossStock,
         totalAvailableQty: grossStock,
@@ -1788,13 +1634,13 @@ async function mapSingleProductForCustomerCatalog(productLean) {
       stock: customerCartQty,
       catalogStock: hubQty,
       availableQtyHub: hubQty,
-      availableQtySeller: totalSellerGross,
+      availableQtySeller: stockView.sellerGrossQty,
       sellerFulfillableQty: fulfillableQty,
       totalAvailableQty: customerCartQty,
       totalFulfillmentQty: fulfillableQty,
       variants: mapVariantsForResponse(variantsWithTotalStock),
       fulfillmentSource:
-        hubQty > 0 ? "hub" : mappedSellerStock > 0 ? "procure" : "out_of_stock",
+        hubQty > 0 ? "hub" : stockView.sellerGrossQty > 0 ? "procure" : "out_of_stock",
     };
   }
 
@@ -1806,16 +1652,13 @@ async function mapSingleProductForCustomerCatalog(productLean) {
   const customerPrice = masterProduct
     ? masterProduct.salePrice || masterProduct.price
     : p.salePrice || p.price;
-  const sellerListingStock = catalogStockFromProduct(p);
+  const sellerStockView = getSellerProductStockView(p);
+  const sellerListingStock = sellerStockView.availableQty;
   let hubQtyForSeller = 0;
   let reservedQtyHubForSeller = 0;
-  let committedStockForSeller = p.committedStock || 0;
+  let committedStockForSeller = sellerStockView.committedStock;
   if (masterId) {
-    const hubRow = await HubInventory.findOne({
-      hubId: DEFAULT_HUB_ID,
-      productId: masterId,
-    }).lean();
-    hubQtyForSeller = hubQtyFromInventoryRow(hubRow);
+    hubQtyForSeller = await getHubAvailableQty(masterId);
   }
 
   return {
