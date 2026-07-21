@@ -151,7 +151,7 @@ describe("Pickup Partner Authentication", () => {
         select: jest.fn().mockResolvedValue(null),
       });
       await verifyPickupPartnerOtp(req, res);
-      expect(mockHandleResponse).toHaveBeenCalledWith(res, 400, "Invalid or expired OTP");
+      expect(mockHandleResponse).toHaveBeenCalledWith(res, 400, "Invalid OTP");
     });
 
     it("returns 400 for expired OTP", async () => {
@@ -160,7 +160,7 @@ describe("Pickup Partner Authentication", () => {
         select: jest.fn().mockResolvedValue(null),
       });
       await verifyPickupPartnerOtp(req, res);
-      expect(mockHandleResponse).toHaveBeenCalledWith(res, 400, "Invalid or expired OTP");
+      expect(mockHandleResponse).toHaveBeenCalledWith(res, 400, "Invalid OTP");
     });
 
     it("returns 200 with token for valid OTP on existing partner", async () => {

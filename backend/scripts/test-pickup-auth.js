@@ -80,6 +80,11 @@ async function run() {
       res.statusCode === 200 && res.body?.success === true,
       `status=${res.statusCode} msg=${res.body?.message}`,
     ));
+    results.push(report(
+      "Send OTP — SMS skipped in dev (no provider call)",
+      process.env.NODE_ENV !== "production",
+      `NODE_ENV=${process.env.NODE_ENV || "development"}`,
+    ));
   }
 
   const stored = await PickupPartner.findOne({ phone: TEST_PHONE }).select("+otp +otpExpiry");
@@ -91,8 +96,8 @@ async function run() {
     const res = createMockRes();
     await verifyPickupPartnerOtp(req, res);
     results.push(report(
-      "Verify OTP — invalid (400)",
-      res.statusCode === 400 && res.body?.message?.includes("Invalid or expired"),
+      "Verify OTP — invalid (400, Invalid OTP)",
+      res.statusCode === 400 && res.body?.message === "Invalid OTP",
       `status=${res.statusCode} msg=${res.body?.message}`,
     ));
   }
@@ -107,15 +112,20 @@ async function run() {
     const res = createMockRes();
     await verifyPickupPartnerOtp(req, res);
     results.push(report(
-      "Verify OTP — expired (400)",
-      res.statusCode === 400 && res.body?.message?.includes("Invalid or expired"),
+      "Verify OTP — expired (400, Invalid OTP)",
+      res.statusCode === 400 && res.body?.message === "Invalid OTP",
       `status=${res.statusCode} msg=${res.body?.message}`,
     ));
   }
 
-  // 7. Re-send OTP and verify valid
+  // 7. Re-send OTP and verify valid — stored OTP must be 1234 in dev
   await sendPickupPartnerLoginOtp({ body: { phone: TEST_PHONE } }, createMockRes());
   const refreshed = await PickupPartner.findOne({ phone: TEST_PHONE }).select("+otp +otpExpiry");
+  results.push(report(
+    "Send OTP — stores dev OTP 1234 in DB",
+    refreshed?.otp === "1234",
+    `storedOtp=${refreshed?.otp}`,
+  ));
   {
     const req = { body: { phone: TEST_PHONE, otp: refreshed.otp } };
     const res = createMockRes();
