@@ -3,6 +3,21 @@ import Modal from "@shared/components/ui/Modal";
 import Badge from "@shared/components/ui/Badge";
 import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline";
 import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
+import PurchaseRequestLineItems from "./PurchaseRequestLineItems";
+
+const lineStatusLabel = (status) => {
+  const s = String(status || "pending").toLowerCase();
+  if (s === "accepted") return "Accepted";
+  if (s === "partial") return "Partial";
+  if (s === "rejected") return "Rejected";
+  return "Pending";
+};
+
+const requestedQty = (item) =>
+  Number(item?.requestedQty ?? item?.shortageQty ?? item?.requiredQty ?? item?.quantity ?? 0);
+
+const totalRequestedQty = (items = []) =>
+  items.reduce((sum, item) => sum + requestedQty(item), 0);
 
 const Section = ({ title, children }) => (
   <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
@@ -68,7 +83,10 @@ const PurchaseRequestDetailModal = ({ isOpen, onClose, row, loading = false }) =
               { label: "Subtotal", value: `₹${formatInr(row.subtotal ?? row.unitCost * row.quantity)}` },
               { label: "GST", value: `₹${formatInr(row.gstTotal ?? row.gstAmount)}` },
               { label: "Grand total", value: `₹${formatInr(row.totalCost)}`, highlight: true },
-              { label: "Qty", value: row.quantity },
+              {
+                label: "Total qty",
+                value: items.length ? totalRequestedQty(items) : row.quantity,
+              },
             ].map((stat) => (
               <div
                 key={stat.label}
@@ -89,28 +107,39 @@ const PurchaseRequestDetailModal = ({ isOpen, onClose, row, loading = false }) =
           </div>
 
           <Section title="Line items">
-            <div className="overflow-x-auto">
+            {items.length > 0 ? (
+              <PurchaseRequestLineItems items={items} showStatus />
+            ) : null}
+            <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase text-slate-400 border-b border-slate-200">
                     <th className="pb-2 pr-3">Product</th>
-                    <th className="pb-2 pr-3">Qty</th>
+                    <th className="pb-2 pr-3">Variant</th>
+                    <th className="pb-2 pr-3">Requested</th>
+                    <th className="pb-2 pr-3">Accepted</th>
+                    <th className="pb-2 pr-3">Remaining</th>
+                    <th className="pb-2 pr-3">Status</th>
                     <th className="pb-2 pr-3">Unit cost</th>
-                    <th className="pb-2 pr-3">GST</th>
                     <th className="pb-2">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, i) => (
-                    <tr key={item.productId || i} className="border-b border-slate-100 last:border-0">
+                    <tr key={item.itemKey || item.productId || i} className="border-b border-slate-100 last:border-0">
                       <td className="py-2.5 pr-3 font-medium text-slate-800">
                         {item.productName || row.product}
                       </td>
-                      <td className="py-2.5 pr-3">{item.quantity ?? item.shortageQty}</td>
-                      <td className="py-2.5 pr-3">₹{formatInr(item.unitCost)}</td>
-                      <td className="py-2.5 pr-3">
-                        {item.gstRate ? `${item.gstRate}% · ` : ""}₹{formatInr(item.gstAmount)}
+                      <td className="py-2.5 pr-3 text-slate-500 text-xs">
+                        {item.variantId ? String(item.variantId).slice(-8) : "—"}
                       </td>
+                      <td className="py-2.5 pr-3">{requestedQty(item)}</td>
+                      <td className="py-2.5 pr-3">{Number(item.committedQty || 0)}</td>
+                      <td className="py-2.5 pr-3">{Number(item.remainingQty ?? 0)}</td>
+                      <td className="py-2.5 pr-3 capitalize text-xs">
+                        {lineStatusLabel(item.lineStatus)}
+                      </td>
+                      <td className="py-2.5 pr-3">₹{formatInr(item.unitCost)}</td>
                       <td className="py-2.5 font-semibold">₹{formatInr(item.totalCost)}</td>
                     </tr>
                   ))}

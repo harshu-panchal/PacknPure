@@ -8,6 +8,14 @@ import {
   HiOutlineCheckCircle,
 } from "react-icons/hi2";
 import { formatPrDate, formatInr } from "@shared/utils/purchaseRequestFormat";
+import PurchaseRequestLineItems from "./PurchaseRequestLineItems";
+
+const lineQtyTotal = (items = []) =>
+  (Array.isArray(items) ? items : []).reduce(
+    (sum, item) =>
+      sum + Number(item?.requestedQty ?? item?.shortageQty ?? item?.requiredQty ?? item?.quantity ?? 0),
+    0,
+  );
 
 const phaseBadgeVariant = (phase) => {
   if (phase === "in_delivery") return "info";
@@ -69,11 +77,12 @@ const PurchaseRequestListPanel = ({
         )}
       </td>
       {showProductColumn && (
-        <td className="px-3 py-3 align-top">
-          <p className="text-xs font-semibold text-slate-800">{pr.product || pr.productName || "—"}</p>
-          {pr.items?.length > 1 && (
-            <p className="text-[10px] text-slate-400">+{pr.items.length - 1} more item(s)</p>
-          )}
+        <td className="px-3 py-3 align-top min-w-[180px]">
+          <PurchaseRequestLineItems
+            items={pr.items?.length ? pr.items : pr.product ? [{ productName: pr.product, shortageQty: pr.quantity, lineStatus: "pending" }] : []}
+            compact
+            showStatus
+          />
         </td>
       )}
       <td className="px-3 py-3 align-top">
@@ -85,7 +94,7 @@ const PurchaseRequestListPanel = ({
         )}
       </td>
       <td className="px-3 py-3 align-top text-xs font-bold text-slate-800">
-        {pr.quantity ?? "—"}
+        {pr.items?.length ? lineQtyTotal(pr.items) : pr.quantity ?? "—"}
       </td>
       <td className="px-3 py-3 align-top text-xs text-slate-700">
         ₹{Number(pr.unitCost || 0).toLocaleString("en-IN")}
@@ -127,7 +136,7 @@ const PurchaseRequestListPanel = ({
         <thead>
           <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
             <th className="px-3 py-2">PR ID</th>
-            {showProductColumn && <th className="px-3 py-2">Product</th>}
+            {showProductColumn && <th className="px-3 py-2">Products</th>}
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Qty</th>
             <th className="px-3 py-2">Unit ₹</th>

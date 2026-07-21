@@ -8,6 +8,7 @@ import {
   SupplyInfoModal,
 } from "../components/supply/SupplyActionModals";
 import PurchaseRequestDetailModal from "../components/PurchaseRequestDetailModal";
+import PurchaseRequestLineItems from "../components/PurchaseRequestLineItems";
 import { adminApi } from "../services/adminApi";
 import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
 
@@ -84,7 +85,11 @@ const PurchaseRequestsPage = () => {
       return (
         String(row.requestId || "").toLowerCase().includes(q) ||
         String(row.vendorName || "").toLowerCase().includes(q) ||
-        String(row.product || "").toLowerCase().includes(q)
+        String(row.product || "").toLowerCase().includes(q) ||
+        (Array.isArray(row.items) &&
+          row.items.some((item) =>
+            String(item.productName || "").toLowerCase().includes(q),
+          ))
       );
     });
   }, [rows, statusFilter, search]);
@@ -297,12 +302,13 @@ const PurchaseRequestsPage = () => {
           },
           {
             key: "product",
-            label: "Product",
+            label: "Products",
             render: (row) => (
-              <div>
-                <p className="text-sm font-medium text-slate-800">{row.product}</p>
-                <p className="text-xs text-slate-500">Qty {row.quantity}</p>
-              </div>
+              <PurchaseRequestLineItems
+                items={row.items}
+                compact={Array.isArray(row.items) && row.items.length <= 2}
+                showStatus
+              />
             ),
           },
           {
@@ -310,9 +316,12 @@ const PurchaseRequestsPage = () => {
             label: "Pricing",
             render: (row) => (
               <div className="text-sm">
-                <p className="font-semibold text-slate-800">₹{formatInr(row.unitCost)} / unit</p>
+                <p className="font-semibold text-slate-800">
+                  Total ₹{formatInr(row.totalCost)}
+                </p>
                 <p className="text-xs text-slate-500">
-                  GST ₹{formatInr(row.gstTotal ?? row.gstAmount)} · Total ₹{formatInr(row.totalCost)}
+                  {(row.items || []).length} product{(row.items || []).length === 1 ? "" : "s"}
+                  {" · "}GST ₹{formatInr(row.gstTotal ?? row.gstAmount)}
                 </p>
               </div>
             ),
