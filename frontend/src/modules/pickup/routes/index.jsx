@@ -1,5 +1,6 @@
 import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import "../styles/pickup-theme.css";
 import Auth from "../pages/Auth";
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";

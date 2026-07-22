@@ -3,16 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@core/context/AuthContext";
 import { toast } from "sonner";
 import { pickupApi } from "../services/pickupApi";
-import { 
-  Phone, 
-  ArrowRight, 
-  ShieldCheck, 
-  Package, 
+import {
+  ArrowRight,
+  Package,
   Smartphone,
   CheckCircle2,
-  ChevronLeft
+  ChevronLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  PickupButton,
+  PickupInput,
+  PickupOtpInput,
+} from "../components/ui";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -49,18 +52,18 @@ const Auth = () => {
       const res = await pickupApi.verifyOtp({ phone, otp: otp.trim() });
       const token = res?.data?.result?.token;
       const partner = res?.data?.result?.partner || {};
-      
+
       if (!token) {
         toast.error("Invalid response from server");
         return;
       }
-      
+
       login({
         ...partner,
         token,
         role: "pickup_partner",
       });
-      
+
       toast.success("Welcome, Pickup Partner!");
       navigate("/pickup/dashboard");
     } catch (error) {
@@ -71,119 +74,128 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-['Outfit']">
-      {/* Decorative Elements */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-sky-100/40 rounded-full blur-[100px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-slate-200/40 rounded-full blur-[80px]" />
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 to-teal-50/30 px-4 py-8 pickup-safe-top">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-teal-100/50 blur-[80px]" />
+        <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/40 blur-[60px]" />
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md relative z-10"
+        transition={{ duration: 0.4 }}
+        className="relative z-10 w-full max-w-md"
       >
-        <div className="bg-white rounded-[40px] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.06)] border border-white p-10 overflow-hidden relative">
-          {/* Header Section */}
-          <div className="flex flex-col items-center text-center space-y-4 mb-10">
-            <div className="h-20 w-20 bg-slate-900 rounded-[30px] flex items-center justify-center text-white shadow-xl rotate-3">
-              <Package size={36} />
+        <div className="overflow-hidden rounded-3xl border border-white/80 bg-white p-6 shadow-[var(--pickup-shadow-lg)] sm:rounded-[2rem] sm:p-8">
+          <div className="mb-8 flex flex-col items-center text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-lg shadow-teal-600/30 sm:h-20 sm:w-20 sm:rounded-3xl">
+              <Package size={32} />
             </div>
-            <div className="space-y-1">
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-                PICKUP PORTAL
-              </h1>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Partner Authentication
-              </p>
-            </div>
+            <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+              Pickup Partner
+            </h1>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              PacknPure Logistics
+            </p>
           </div>
 
           <AnimatePresence mode="wait">
             {step === "phone" ? (
               <motion.div
                 key="phone-step"
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.25 }}
+                className="space-y-5"
               >
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Mobile Number</label>
-                  <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors">
-                      <Smartphone size={18} />
-                    </div>
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      placeholder="Enter 10-digit number"
-                      className="w-full bg-slate-50 border-none rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-900 outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-slate-900 transition-all"
-                    />
-                  </div>
-                </div>
+                <PickupInput
+                  label="Mobile Number"
+                  icon={Smartphone}
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) =>
+                    setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
+                  }
+                  placeholder="10-digit number"
+                  hint="We'll send a one-time verification code"
+                />
 
-                <button
+                <PickupButton
+                  fullWidth
+                  size="lg"
+                  loading={loading}
+                  iconRight={ArrowRight}
                   onClick={handleSendOtp}
-                  disabled={loading}
-                  className="w-full bg-slate-900 text-white rounded-2xl py-4 text-xs font-black uppercase tracking-[2px] shadow-xl shadow-slate-200 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
-                  {loading ? "SENDING CODE..." : "SEND VERIFICATION"}
-                  <ArrowRight size={16} />
-                </button>
+                  Send Code
+                </PickupButton>
 
-                <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
-                  By continuing, you agree to our <br />
-                  <span className="text-slate-900">Partner Terms & Conditions</span>
+                <p className="text-center text-[10px] font-medium leading-relaxed text-slate-400">
+                  By continuing, you agree to our{" "}
+                  <span className="font-bold text-slate-600">Partner Terms</span>
                 </p>
               </motion.div>
             ) : (
               <motion.div
                 key="otp-step"
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.25 }}
+                className="space-y-5"
               >
-                <button 
-                  onClick={() => setStep("phone")}
-                  className="flex items-center gap-2 text-slate-400 hover:text-slate-900 transition-colors mb-4"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("phone");
+                    setOtp("");
+                  }}
+                  className="flex min-h-[40px] items-center gap-2 text-slate-400 transition-colors hover:text-slate-700"
                 >
                   <ChevronLeft size={16} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Back to Phone</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                    Change number
+                  </span>
                 </button>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 text-center block w-full">
-                    Enter Verification Code
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="000 000"
-                      className="w-full bg-slate-50 border-none rounded-2xl px-4 py-4 text-center text-xl font-black text-slate-900 tracking-[0.5em] outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-slate-900 transition-all"
-                    />
-                  </div>
-                  <p className="text-center text-[10px] font-bold text-slate-500 uppercase">
-                    Verification code sent to +91 {phone}
+                <div className="space-y-3 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Enter verification code
+                  </p>
+                  <PickupOtpInput
+                    value={otp}
+                    onChange={setOtp}
+                    length={6}
+                    disabled={loading}
+                  />
+                  <p className="text-[10px] font-semibold text-slate-500">
+                    Sent to +91 {phone}
                   </p>
                 </div>
 
-                <button
+                <PickupButton
+                  fullWidth
+                  size="lg"
+                  variant="dark"
+                  loading={loading}
+                  iconRight={CheckCircle2}
                   onClick={handleVerifyOtp}
-                  disabled={loading}
-                  className="w-full bg-slate-900 text-white rounded-2xl py-4 text-xs font-black uppercase tracking-[2px] shadow-xl shadow-slate-200 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+                  disabled={otp.length < 4}
                 >
-                  {loading ? "VERIFYING..." : "ACCESS DASHBOARD"}
-                  <CheckCircle2 size={16} />
-                </button>
+                  Verify & Continue
+                </PickupButton>
 
                 <div className="text-center">
-                  <button className="text-[10px] font-bold text-slate-400 hover:text-slate-900 uppercase tracking-widest transition-colors">
-                    Didn't receive code? Resend
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={loading}
+                    className="min-h-[40px] text-[10px] font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-teal-600 disabled:opacity-50"
+                  >
+                    Resend code
                   </button>
                 </div>
               </motion.div>
@@ -191,16 +203,12 @@ const Auth = () => {
           </AnimatePresence>
         </div>
 
-        {/* Branding Footer */}
-        <div className="mt-8 flex items-center justify-center gap-4 text-slate-300">
-          <div className="h-[1px] w-8 bg-slate-200" />
-          <span className="text-[10px] font-black uppercase tracking-[4px]">Verified Logistics</span>
-          <div className="h-[1px] w-8 bg-slate-200" />
-        </div>
+        <p className="mt-6 text-center text-[10px] font-black uppercase tracking-[0.3em] text-slate-300">
+          Verified Logistics
+        </p>
       </motion.div>
     </div>
   );
 };
 
 export default Auth;
-

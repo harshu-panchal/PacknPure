@@ -1,26 +1,31 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
+import { useSlideTrack } from "../hooks/useSlideTrack";
+import { cn } from "../utils/cn";
+
+const THUMB = 44;
+const PAD = 6;
 
 /**
- * Slide-to-confirm control used in Pickup Partner flow.
+ * Responsive slide-to-confirm control for Pickup Partner flow.
  */
 const SlideToAction = ({
   label = "Slide to confirm",
   disabled = false,
   loading = false,
   onConfirm,
-  colorClass = "bg-slate-900",
+  colorClass = "bg-teal-600",
 }) => {
-  const trackRef = useRef(null);
+  const { trackRef, maxTravel } = useSlideTrack(THUMB, PAD);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const maxTravel = 220;
 
   const clamp = (value) => Math.max(0, Math.min(maxTravel, value));
 
   const finish = async (finalOffset) => {
-    if (finalOffset >= maxTravel * 0.85) {
+    const threshold = maxTravel * 0.85;
+    if (maxTravel > 0 && finalOffset >= threshold) {
       setOffset(maxTravel);
       try {
         await onConfirm?.();
@@ -33,7 +38,7 @@ const SlideToAction = ({
   };
 
   const onPointerDown = (e) => {
-    if (disabled || loading) return;
+    if (disabled || loading || maxTravel <= 0) return;
     setDragging(true);
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
@@ -42,7 +47,7 @@ const SlideToAction = ({
     if (!dragging || disabled || loading) return;
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setOffset(clamp(e.clientX - rect.left - 28));
+    setOffset(clamp(e.clientX - rect.left - THUMB / 2 - PAD));
   };
 
   const onPointerUp = () => {
@@ -54,16 +59,20 @@ const SlideToAction = ({
   return (
     <div
       ref={trackRef}
-      className={`relative h-14 w-full overflow-hidden rounded-2xl ${colorClass} select-none ${
-        disabled || loading ? "opacity-50" : ""
-      }`}
+      className={cn(
+        "relative h-14 w-full min-w-0 select-none overflow-hidden rounded-2xl",
+        colorClass,
+        (disabled || loading) && "opacity-50",
+      )}
+      role="group"
+      aria-label={label}
     >
-      <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] font-black uppercase tracking-[0.2em] text-white/80">
-        {loading ? "Processing..." : label}
+      <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-[10px] font-black uppercase tracking-[0.15em] text-white/85 sm:text-[11px] sm:tracking-[0.2em]">
+        {loading ? "Processing…" : label}
       </p>
       <motion.button
         type="button"
-        className="absolute top-1.5 left-1.5 z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-slate-900 shadow-lg touch-none"
+        className="absolute top-1.5 left-1.5 z-10 flex h-11 w-11 touch-none items-center justify-center rounded-xl bg-white text-slate-900 shadow-lg"
         style={{ x: offset }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

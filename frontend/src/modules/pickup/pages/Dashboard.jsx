@@ -6,7 +6,6 @@ import {
   Package,
   CheckCircle,
   Truck,
-  LogOut,
   RefreshCw,
   Clock,
   Store,
@@ -14,11 +13,33 @@ import {
   Navigation,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline";
 import { formatPrDate } from "@shared/utils/purchaseRequestFormat";
 import ParcelPhotoCapture from "../components/ParcelPhotoCapture";
 import SlideToAction from "../components/SlideToAction";
 import InAppNavMap from "../components/InAppNavMap";
+import {
+  PickupPageHeader,
+  PickupChip,
+  PickupCard,
+  PickupEmptyState,
+  PickupErrorState,
+  PickupTimeline,
+  PickupStepIndicator,
+  PickupBottomSheet,
+  PickupButton,
+  PickupInput,
+  AssignmentCardSkeleton,
+  StatsSkeleton,
+} from "../components/ui";
+
+const PICKUP_STEPS = [
+  { id: "nav", label: "Navigate" },
+  { id: "arrive", label: "Arrive" },
+  { id: "photos", label: "Photos" },
+  { id: "otp-gen", label: "OTP" },
+  { id: "otp-verify", label: "Verify" },
+  { id: "confirm", label: "Confirm" },
+];
 
 const getCurrentPosition = () =>
   new Promise((resolve, reject) => {
@@ -50,21 +71,36 @@ const emptyStepState = () => ({
   otpVerified: false,
 });
 
+const getStepIndex = (flow, rowStatus) => {
+  if (rowStatus === "picked") return 0;
+  if (rowStatus === "hub_delivered") return PICKUP_STEPS.length - 1;
+  const step = flow.step;
+  if (step === "assigned" || step === "navigating") return 0;
+  if (step === "reached") return 1;
+  if (step === "images") return 2;
+  if (step === "otp_generated") return 3;
+  if (flow.otpGenerated && !flow.otpVerified) return 4;
+  if (flow.otpVerified) return 5;
+  return 0;
+};
+
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState("active");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState("");
   const [notesById, setNotesById] = useState({});
   const [hubImagesById, setHubImagesById] = useState({});
   const [pickedQtyById, setPickedQtyById] = useState({});
   const [uploadingId, setUploadingId] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [profile, setProfile] = useState(null);
   const [liveLoc, setLiveLoc] = useState(null);
   const [flowById, setFlowById] = useState({});
   const [navTargetId, setNavTargetId] = useState(null);
+  const [cancelRow, setCancelRow] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   const patchFlow = (id, patch) => {
     setFlowById((prev) => ({
@@ -75,25 +111,17 @@ const Dashboard = () => {
 
   const getFlow = (id) => flowById[id] || emptyStepState();
 
-  const fetchProfile = async () => {
-    try {
-      const res = await pickupApi.getMyProfile();
-      if (res?.data?.success) setProfile(res.data.result);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const fetchAssignments = async () => {
     try {
       setLoading(true);
-      fetchProfile();
+      setLoadError(false);
       const res = await pickupApi.getAssignments({ status: statusFilter });
       const items = res?.data?.result?.items || [];
       setRows(Array.isArray(items) ? items : []);
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to load assignments");
       setRows([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -154,7 +182,8 @@ const Dashboard = () => {
         const cur = next[row._id] || emptyStepState();
         let step = cur.step;
         if (row.pickupOtpVerified) step = "otp_verified";
-        else if (row.pickupOtpGenerated) step = cur.images?.length ? "otp_generated" : step;
+        else if (row.pickupOtpGenerated)
+          step = cur.images?.length ? "otp_generated" : step;
         next[row._id] = {
           ...cur,
           otpGenerated: Boolean(row.pickupOtpGenerated || cur.otpGenerated),
@@ -184,11 +213,35 @@ const Dashboard = () => {
     const picked = rows.filter((r) => r.status === "picked").length;
     const delivered = rows.filter((r) => r.status === "hub_delivered").length;
     return [
-      { label: "Assigned", value: assigned, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
-      { label: "Picked", value: picked, icon: Package, color: "text-sky-600", bg: "bg-sky-50" },
-      { label: "Done", value: delivered, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
+      {
+        label: "Assigned",
+        value: assigned,
+        icon: Clock,
+        color: "text-amber-600",
+        bg: "bg-amber-50",
+      },
+      {
+        label: "Picked",
+        value: picked,
+        icon: Package,
+        color: "text-teal-600",
+        bg: "bg-teal-50",
+      },
+      {
+        label: "Done",
+        value: delivered,
+        icon: CheckCircle,
+        color: "text-emerald-600",
+        bg: "bg-emerald-50",
+      },
     ];
   }, [rows]);
+
+  const filterLabels = {
+    active: "Active",
+    all: "All",
+    hub_delivered: "Done",
+  };
 
   const onNavigate = (row) => {
     setNavTargetId(row._id);
@@ -349,13 +402,20 @@ const Dashboard = () => {
     }
   };
 
-  const onCancelPickup = async (row) => {
-    const reason = window.prompt("Reason for cancellation?");
-    if (!reason) return;
+  const onCancelPickup = async () => {
+    if (!cancelRow) return;
+    if (!cancelReason.trim()) {
+      toast.error("Please provide a reason");
+      return;
+    }
     try {
-      setActionLoadingId(row._id);
-      await pickupApi.cancelPickupAssignment(row._id, { notes: reason });
-      toast.success("Assignment cancelled successfully");
+      setActionLoadingId(cancelRow._id);
+      await pickupApi.cancelPickupAssignment(cancelRow._id, {
+        notes: cancelReason.trim(),
+      });
+      toast.success("Assignment cancelled");
+      setCancelRow(null);
+      setCancelReason("");
       await fetchAssignments();
     } catch (error) {
       toast.error(error?.response?.data?.message || "Cancellation failed");
@@ -412,84 +472,76 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-lg">
-              <Truck size={20} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
-                Pickup Center
-              </h1>
-              <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                {user?.name || "Partner"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              type="button"
-              onClick={fetchAssignments}
-              className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-            >
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-full p-2 text-rose-500 hover:bg-rose-50"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-0 bg-slate-50">
+      <PickupPageHeader
+        title="Pickup Center"
+        subtitle={user?.name || "Partner"}
+        icon={Truck}
+        actions={
+          <button
+            type="button"
+            onClick={fetchAssignments}
+            aria-label="Refresh assignments"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100"
+          >
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+          </button>
+        }
+      />
 
-      <main className="mx-auto max-w-2xl space-y-5 px-3 py-5 sm:px-4 sm:py-6">
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          {stats.map((stat) => (
-            <div key={stat.label} className={`${stat.bg} rounded-2xl p-3`}>
-              <stat.icon className={`${stat.color} mb-1`} size={16} />
-              <p className="text-lg font-black text-slate-900">{stat.value}</p>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
-                {stat.label}
-              </p>
-            </div>
-          ))}
-        </div>
+      <main className="pickup-safe-x mx-auto max-w-2xl space-y-4 py-4 sm:space-y-5 sm:py-5">
+        {loading && rows.length === 0 ? (
+          <StatsSkeleton />
+        ) : (
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {stats.map((stat) => (
+              <PickupCard
+                key={stat.label}
+                padding="sm"
+                className={`${stat.bg} border-0 shadow-none`}
+              >
+                <stat.icon className={`${stat.color} mb-1`} size={16} />
+                <p className="text-lg font-black text-slate-900 sm:text-xl">
+                  {stat.value}
+                </p>
+                <p className="truncate text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">
+                  {stat.label}
+                </p>
+              </PickupCard>
+            ))}
+          </div>
+        )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {["active", "all", "hub_delivered"].map((key) => (
-            <button
+            <PickupChip
               key={key}
-              type="button"
+              active={statusFilter === key}
               onClick={() => setStatusFilter(key)}
-              className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-widest ${
-                statusFilter === key
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-200 bg-white text-slate-500"
-              }`}
             >
-              {key === "hub_delivered" ? "Done" : key}
-            </button>
+              {filterLabels[key]}
+            </PickupChip>
           ))}
         </div>
 
         <div className="space-y-4">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {loading && rows.length === 0 ? (
-              <div className="rounded-3xl bg-white p-8 text-center text-sm font-bold text-slate-400">
-                Loading assignments...
-              </div>
+              <>
+                <AssignmentCardSkeleton />
+                <AssignmentCardSkeleton />
+              </>
+            ) : loadError && rows.length === 0 ? (
+              <PickupErrorState
+                message="Could not load your assignments. Check your connection."
+                onRetry={fetchAssignments}
+              />
             ) : rows.length === 0 ? (
-              <div className="rounded-3xl border border-slate-100 bg-white p-8 text-center">
-                <Package className="mx-auto mb-2 text-slate-300" size={28} />
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                  No assignments
-                </p>
-              </div>
+              <PickupEmptyState
+                icon={Package}
+                title="No assignments"
+                description="New pickup tasks will appear here when assigned."
+              />
             ) : (
               rows.map((row) => {
                 const flow = getFlow(row._id);
@@ -507,70 +559,84 @@ const Dashboard = () => {
                 const showMap =
                   navTargetId === row._id ||
                   flow.navigating ||
-                  ["navigating", "reached", "images", "otp_generated", "otp_verified"].includes(
-                    flow.step,
-                  );
+                  [
+                    "navigating",
+                    "reached",
+                    "images",
+                    "otp_generated",
+                    "otp_verified",
+                  ].includes(flow.step);
 
-                const reached = ["reached", "images", "otp_generated", "otp_verified", "confirmed"].includes(
-                  flow.step,
-                );
+                const reached = [
+                  "reached",
+                  "images",
+                  "otp_generated",
+                  "otp_verified",
+                  "confirmed",
+                ].includes(flow.step);
                 const hasImages = flow.images.length >= 1;
                 const canGenerateOtp = reached && hasImages && !flow.otpGenerated;
                 const canEnterOtp = flow.otpGenerated && !flow.otpVerified;
                 const canConfirm = flow.otpVerified;
+                const stepIndex = getStepIndex(flow, row.status);
 
                 return (
                   <motion.div
                     key={row._id}
                     layout
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-sm sm:rounded-[28px]"
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    <div className="space-y-4 p-3 sm:p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                            <Store size={18} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-slate-900">
-                              {row.vendor?.name || "Seller"}
-                            </p>
-                            <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                              #{row.requestId} · {row.status?.replace(/_/g, " ")}
-                            </p>
-                            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                              Assigned {formatPrDate(row.pickupAssignedAt || row.createdAt)}
-                            </p>
-                          </div>
+                    <PickupCard padding="md" className="space-y-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                          <Store size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-black text-slate-900">
+                            {row.vendor?.name || "Seller"}
+                          </p>
+                          <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            #{row.requestId} · {row.status?.replace(/_/g, " ")}
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+                            Assigned {formatPrDate(row.pickupAssignedAt || row.createdAt)}
+                          </p>
                         </div>
                       </div>
 
-                      {/* STEP 1 — Navigate always visible for assigned / picked */}
+                      {row.status === "pickup_assigned" && (
+                        <PickupStepIndicator
+                          steps={PICKUP_STEPS}
+                          currentStep={stepIndex}
+                        />
+                      )}
+
                       {(row.status === "pickup_assigned" || row.status === "picked") && (
-                        <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-3">
+                        <PickupCard variant="tinted" padding="sm" className="space-y-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                                Step 1 · Navigate
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-teal-700">
+                                Navigate
                               </p>
                               <p className="text-xs font-semibold text-slate-600">
                                 {flow.navigating || navTargetId === row._id
-                                  ? "Navigating…"
-                                  : `Open in-app route to ${targetLabel}`}
+                                  ? "Follow the route below"
+                                  : `Route to ${targetLabel}`}
                               </p>
                             </div>
-                            <button
-                              type="button"
+                            <PickupButton
+                              size="sm"
+                              icon={Navigation}
                               onClick={() => onNavigate(row)}
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-sky-200 active:scale-[0.98] sm:w-auto"
+                              className="w-full sm:w-auto"
                             >
-                              <Navigation size={16} />
                               Navigate
-                            </button>
+                            </PickupButton>
                           </div>
-                        </div>
+                        </PickupCard>
                       )}
 
                       {showMap && (
@@ -579,35 +645,37 @@ const Dashboard = () => {
                           targetLoc={targetLoc}
                           targetLabel={targetLabel}
                           phaseLabel={
-                            flow.navigating && !reached
-                              ? "Navigating…"
-                              : undefined
+                            flow.navigating && !reached ? "En route…" : undefined
                           }
                         />
                       )}
 
                       {row.status === "pickup_assigned" && (
                         <>
-                          {/* Qty controls */}
                           <div className="space-y-2">
                             <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                              Items to Pickup
+                              Items to pickup
                             </h4>
                             {(row.products || []).map((p, idx) => (
                               <div
                                 key={idx}
-                                className="flex flex-wrap items-center justify-between gap-2"
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2"
                               >
-                                <p className="text-xs font-semibold text-slate-700">
+                                <p className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">
                                   {p.name || "Product"}
                                 </p>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-slate-400">Target: {p.qty}</span>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="text-[10px] text-slate-400">
+                                    Qty {p.qty}
+                                  </span>
                                   <input
                                     type="number"
                                     min="0"
                                     max={p.qty}
-                                    value={pickedQtyById[row._id]?.[p.productId] ?? p.qty}
+                                    aria-label={`Picked quantity for ${p.name}`}
+                                    value={
+                                      pickedQtyById[row._id]?.[p.productId] ?? p.qty
+                                    }
                                     onChange={(e) =>
                                       setPickedQtyById((prev) => ({
                                         ...prev,
@@ -615,20 +683,22 @@ const Dashboard = () => {
                                           ...prev[row._id],
                                           [p.productId]: Math.min(
                                             p.qty,
-                                            Math.max(0, parseInt(e.target.value) || 0),
+                                            Math.max(
+                                              0,
+                                              parseInt(e.target.value, 10) || 0,
+                                            ),
                                           ),
                                         },
                                       }))
                                     }
-                                    className="w-16 rounded-lg border-none bg-slate-100 px-2 py-1 text-center text-xs font-black"
+                                    className="w-14 rounded-lg border-none bg-white px-2 py-1.5 text-center text-xs font-black ring-1 ring-slate-100"
                                   />
                                 </div>
                               </div>
                             ))}
                           </div>
 
-                          <input
-                            type="text"
+                          <PickupInput
                             placeholder="Notes (optional)"
                             value={notesById[row._id] || ""}
                             onChange={(e) =>
@@ -637,37 +707,30 @@ const Dashboard = () => {
                                 [row._id]: e.target.value,
                               }))
                             }
-                            className="w-full rounded-2xl border-none bg-slate-50 px-4 py-3 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-slate-900"
+                            inputClassName="text-xs font-semibold"
                           />
 
-                          {/* STEP 2 — Reached seller */}
                           {!reached && (
-                            <div className="space-y-2 rounded-2xl border border-amber-100 bg-amber-50/70 p-3">
+                            <PickupCard
+                              padding="sm"
+                              className="space-y-2 border-amber-100 bg-amber-50/80"
+                            >
                               <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-                                Step 2 · Arrive at seller
+                                Arrive at seller
                               </p>
                               <SlideToAction
-                                label="Slide · I have reached seller"
+                                label="Slide · Reached seller"
                                 colorClass="bg-amber-600"
                                 loading={actionLoadingId === `${row._id}:reached`}
                                 onConfirm={() => onReachedSeller(row)}
                               />
-                              <button
-                                type="button"
-                                onClick={() => onReachedSeller(row)}
-                                disabled={!!actionLoadingId}
-                                className="w-full rounded-xl bg-white py-3 text-[10px] font-black uppercase tracking-widest text-amber-700 border border-amber-200"
-                              >
-                                I have reached seller
-                              </button>
-                            </div>
+                            </PickupCard>
                           )}
 
-                          {/* STEP 3 — Images (only after reached) */}
                           {reached && !flow.otpGenerated && (
-                            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                            <PickupCard padding="sm" className="space-y-3">
                               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                Step 3 · Parcel images
+                                Parcel photos
                               </p>
                               <ParcelPhotoCapture
                                 images={flow.images}
@@ -677,7 +740,9 @@ const Dashboard = () => {
                                   onAddImages(row._id, files, source || "gallery")
                                 }
                                 onRemove={(index) => {
-                                  const images = flow.images.filter((_, i) => i !== index);
+                                  const images = flow.images.filter(
+                                    (_, i) => i !== index,
+                                  );
                                   patchFlow(row._id, {
                                     images,
                                     step: images.length ? "images" : "reached",
@@ -687,26 +752,27 @@ const Dashboard = () => {
                                   onReplaceImage(row._id, index, file, source)
                                 }
                               />
-                            </div>
+                            </PickupCard>
                           )}
 
-                          {/* STEP 4 — Generate OTP (only after images, hide after generated) */}
                           {canGenerateOtp && (
-                            <div className="space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3">
+                            <PickupCard
+                              padding="sm"
+                              className="space-y-2 border-indigo-100 bg-indigo-50/70"
+                            >
                               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">
-                                Step 4 · Generate OTP
+                                Generate OTP
                               </p>
                               <SlideToAction
-                                label="Slide to Generate OTP"
+                                label="Slide to generate OTP"
                                 colorClass="bg-indigo-600"
                                 disabled={!hasImages}
                                 loading={actionLoadingId === `${row._id}:otp`}
                                 onConfirm={() => onGenerateOtp(row)}
                               />
-                            </div>
+                            </PickupCard>
                           )}
 
-                          {/* Show uploaded thumbs after OTP generated */}
                           {flow.otpGenerated && flow.images.length > 0 && (
                             <div className="grid grid-cols-4 gap-2">
                               {flow.images.map((img, i) => (
@@ -714,20 +780,22 @@ const Dashboard = () => {
                                   key={i}
                                   src={img.url}
                                   alt=""
-                                  className="aspect-square rounded-xl object-cover border border-slate-100"
+                                  className="aspect-square rounded-xl border border-slate-100 object-cover"
                                 />
                               ))}
                             </div>
                           )}
 
-                          {/* STEP 5 — Enter + verify OTP */}
                           {canEnterOtp && (
-                            <div className="space-y-3 rounded-2xl border border-violet-100 bg-violet-50/70 p-3">
+                            <PickupCard
+                              padding="sm"
+                              className="space-y-3 border-violet-100 bg-violet-50/70"
+                            >
                               <p className="text-[10px] font-black uppercase tracking-widest text-violet-700">
-                                Step 5 · Verify OTP
+                                Verify OTP
                               </p>
-                              <p className="text-xs font-semibold text-slate-600">
-                                Ask the seller for the OTP, then enter it below.
+                              <p className="text-xs font-medium text-slate-600">
+                                Ask the seller for the OTP.
                               </p>
                               <div className="relative">
                                 <KeyRound
@@ -737,55 +805,63 @@ const Dashboard = () => {
                                 <input
                                   type="text"
                                   inputMode="numeric"
-                                  placeholder="ENTER SELLER OTP"
+                                  placeholder="Seller OTP"
                                   value={flow.otp}
                                   onChange={(e) =>
                                     patchFlow(row._id, {
-                                      otp: e.target.value.replace(/\D/g, "").slice(0, 4),
+                                      otp: e.target.value
+                                        .replace(/\D/g, "")
+                                        .slice(0, 4),
                                     })
                                   }
-                                  className="w-full rounded-2xl border-none bg-white py-3 pl-10 pr-4 text-sm font-black tracking-[0.5em] text-slate-900 placeholder:tracking-widest placeholder:text-slate-300 focus:ring-2 focus:ring-violet-500"
+                                  className="w-full min-w-0 rounded-2xl border-none bg-white py-3 pl-10 pr-4 text-sm font-black tracking-[0.35em] text-slate-900 placeholder:tracking-normal placeholder:text-slate-300 focus:ring-2 focus:ring-violet-500"
                                 />
                               </div>
-                              <button
-                                type="button"
+                              <PickupButton
+                                fullWidth
                                 onClick={() => onVerifyOtp(row)}
                                 disabled={
                                   actionLoadingId === `${row._id}:verify` ||
                                   String(flow.otp || "").length < 4
                                 }
-                                className="w-full rounded-2xl bg-violet-600 py-3.5 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50"
+                                loading={actionLoadingId === `${row._id}:verify`}
+                                className="bg-violet-600 hover:bg-violet-700"
                               >
-                                {actionLoadingId === `${row._id}:verify`
-                                  ? "Verifying…"
-                                  : "Verify OTP"}
-                              </button>
-                            </div>
+                                Verify OTP
+                              </PickupButton>
+                            </PickupCard>
                           )}
 
-                          {/* STEP 6 — Confirm pickup (only after OTP verified) */}
                           {canConfirm && (
-                            <div className="space-y-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                            <PickupCard
+                              padding="sm"
+                              className="space-y-2 border-emerald-100 bg-emerald-50/70"
+                            >
                               <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                                Step 6 · Confirm pickup
+                                Confirm pickup
                               </p>
                               <SlideToAction
-                                label="Slide to Confirm Pickup"
+                                label="Slide to confirm pickup"
                                 colorClass="bg-slate-900"
                                 loading={actionLoadingId === row._id}
                                 onConfirm={() => onMarkPicked(row)}
                               />
-                            </div>
+                            </PickupCard>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => onCancelPickup(row)}
+                          <PickupButton
+                            variant="ghost"
+                            fullWidth
+                            size="sm"
+                            onClick={() => {
+                              setCancelRow(row);
+                              setCancelReason("");
+                            }}
                             disabled={!!actionLoadingId}
-                            className="w-full rounded-2xl bg-slate-100 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500"
+                            className="text-slate-500"
                           >
-                            Cancel Assignment
-                          </button>
+                            Cancel assignment
+                          </PickupButton>
                         </>
                       )}
 
@@ -802,7 +878,9 @@ const Dashboard = () => {
                             onRemove={(index) =>
                               setHubImagesById((prev) => ({
                                 ...prev,
-                                [row._id]: (prev[row._id] || []).filter((_, i) => i !== index),
+                                [row._id]: (prev[row._id] || []).filter(
+                                  (_, i) => i !== index,
+                                ),
                               }))
                             }
                             onReplace={async (index, file, source) => {
@@ -822,7 +900,7 @@ const Dashboard = () => {
                             }}
                           />
                           <SlideToAction
-                            label="Slide complete hub delivery"
+                            label="Slide · Hub delivered"
                             colorClass="bg-emerald-600"
                             disabled={(hubImagesById[row._id] || []).length < 1}
                             loading={actionLoadingId === row._id}
@@ -832,23 +910,23 @@ const Dashboard = () => {
                       )}
 
                       {row.status === "hub_delivered" && (
-                        <div className="rounded-2xl bg-slate-50 p-3 text-center">
-                          <p className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            <CheckCircle size={12} className="text-emerald-500" />
-                            Assignment Completed
+                        <div className="rounded-2xl bg-emerald-50 py-3 text-center">
+                          <p className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                            <CheckCircle size={14} />
+                            Completed
                           </p>
                         </div>
                       )}
 
                       {row.timeline?.length > 0 && (
                         <div className="border-t border-slate-100 pt-4">
-                          <p className="mb-2 text-xs font-bold uppercase text-slate-500">
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                             Trip history
                           </p>
-                          <PurchaseRequestTimeline timeline={row.timeline} compact />
+                          <PickupTimeline timeline={row.timeline} compact />
                         </div>
                       )}
-                    </div>
+                    </PickupCard>
                   </motion.div>
                 );
               })
@@ -856,6 +934,45 @@ const Dashboard = () => {
           </AnimatePresence>
         </div>
       </main>
+
+      <PickupBottomSheet
+        open={Boolean(cancelRow)}
+        onClose={() => {
+          setCancelRow(null);
+          setCancelReason("");
+        }}
+        title="Cancel assignment"
+      >
+        <p className="mb-4 text-sm text-slate-500">
+          Please provide a reason for cancelling this pickup.
+        </p>
+        <PickupInput
+          label="Reason"
+          placeholder="e.g. Seller unavailable"
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+        />
+        <div className="mt-4 flex gap-3">
+          <PickupButton
+            variant="secondary"
+            fullWidth
+            onClick={() => {
+              setCancelRow(null);
+              setCancelReason("");
+            }}
+          >
+            Back
+          </PickupButton>
+          <PickupButton
+            variant="danger"
+            fullWidth
+            loading={actionLoadingId === cancelRow?._id}
+            onClick={onCancelPickup}
+          >
+            Confirm cancel
+          </PickupButton>
+        </div>
+      </PickupBottomSheet>
     </div>
   );
 };

@@ -1,12 +1,13 @@
 import React, { useRef, useState } from "react";
-import { Camera, ImagePlus, RotateCcw, Trash2, X } from "lucide-react";
+import { Camera, ImagePlus, RotateCcw, Trash2 } from "lucide-react";
+import { cn } from "../utils/cn";
+import { PickupSkeleton } from "./ui";
 
-const ACCEPTED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-const MAX_IMAGES = 4;
+export const ACCEPTED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+export const MAX_IMAGES = 4;
 
 /**
- * Mandatory parcel photos: separate Camera vs Gallery pickers.
- * Supports 1–4 images with preview / remove / retake / replace + upload progress.
+ * Parcel photo capture with camera/gallery, preview, replace, and upload progress.
  */
 const ParcelPhotoCapture = ({
   images = [],
@@ -23,14 +24,16 @@ const ParcelPhotoCapture = ({
   const replaceCameraRef = useRef(null);
   const replaceGalleryRef = useRef(null);
   const [replaceIndex, setReplaceIndex] = useState(null);
-  const [replaceMode, setReplaceMode] = useState("camera");
+  const [loadedImages, setLoadedImages] = useState({});
 
   const remaining = Math.max(0, MAX_IMAGES - images.length);
   const canAdd = !disabled && remaining > 0 && !uploading;
 
   const filterFiles = (fileList) => {
     const files = Array.from(fileList || []);
-    return files.filter((f) => ACCEPTED.includes(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name));
+    return files.filter(
+      (f) => ACCEPTED.includes(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name),
+    );
   };
 
   const handleAdd = (fileList, limit, source) => {
@@ -41,7 +44,6 @@ const ParcelPhotoCapture = ({
 
   const openReplace = (index, mode) => {
     setReplaceIndex(index);
-    setReplaceMode(mode);
     setTimeout(() => {
       if (mode === "camera") replaceCameraRef.current?.click();
       else replaceGalleryRef.current?.click();
@@ -49,30 +51,46 @@ const ParcelPhotoCapture = ({
   };
 
   return (
-    <div className={`space-y-3 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
+    <div
+      className={cn(
+        "min-w-0 space-y-3",
+        disabled && "pointer-events-none opacity-50",
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
           {label} <span className="text-rose-500">*</span>
         </p>
-        <p className="text-[10px] font-bold text-slate-400">
+        <p className="shrink-0 text-[10px] font-bold text-slate-400">
           {images.length}/{MAX_IMAGES}
         </p>
       </div>
 
       {images.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-4">
           {images.map((img, index) => (
             <div
               key={`${img.url}-${index}`}
-              className="relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
+              className="relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
             >
-              <img src={img.url} alt={`Parcel ${index + 1}`} className="h-full w-full object-cover" />
-              <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/75 to-transparent p-2">
+              {!loadedImages[index] && (
+                <PickupSkeleton className="absolute inset-0 rounded-2xl" />
+              )}
+              <img
+                src={img.url}
+                alt={`Parcel ${index + 1}`}
+                className={cn(
+                  "h-full w-full object-cover transition-opacity",
+                  loadedImages[index] ? "opacity-100" : "opacity-0",
+                )}
+                onLoad={() => setLoadedImages((p) => ({ ...p, [index]: true }))}
+              />
+              <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2">
                 {img.source === "camera" && (
                   <button
                     type="button"
                     onClick={() => openReplace(index, "camera")}
-                    className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-white/95 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-900"
+                    className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-lg bg-white/95 px-1 py-1.5 text-[9px] font-black uppercase tracking-wide text-slate-900"
                   >
                     <RotateCcw size={10} /> Retake
                   </button>
@@ -80,15 +98,15 @@ const ParcelPhotoCapture = ({
                 <button
                   type="button"
                   onClick={() => openReplace(index, "gallery")}
-                  className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-white/95 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-900"
+                  className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-lg bg-white/95 px-1 py-1.5 text-[9px] font-black uppercase tracking-wide text-slate-900"
                 >
                   <ImagePlus size={10} /> Replace
                 </button>
                 <button
                   type="button"
                   onClick={() => onRemove?.(index)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500 text-white"
-                  aria-label="Remove"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500 text-white"
+                  aria-label={`Remove photo ${index + 1}`}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -99,11 +117,11 @@ const ParcelPhotoCapture = ({
       )}
 
       {canAdd && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 xs:grid-cols-2">
           <button
             type="button"
             onClick={() => cameraRef.current?.click()}
-            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-slate-600 active:scale-[0.99]"
+            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-3 py-4 text-teal-700 transition-colors active:scale-[0.99] hover:border-teal-300"
           >
             <Camera size={22} />
             <span className="text-[10px] font-black uppercase tracking-widest">Camera</span>
@@ -111,7 +129,7 @@ const ParcelPhotoCapture = ({
           <button
             type="button"
             onClick={() => galleryRef.current?.click()}
-            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-slate-600 active:scale-[0.99]"
+            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-slate-600 transition-colors active:scale-[0.99] hover:border-slate-300"
           >
             <ImagePlus size={22} />
             <span className="text-[10px] font-black uppercase tracking-widest">Gallery</span>
@@ -123,10 +141,10 @@ const ParcelPhotoCapture = ({
       )}
 
       {uploading && (
-        <div className="space-y-1">
+        <div className="space-y-1.5" role="status" aria-live="polite">
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full rounded-full bg-indigo-600 transition-all"
+              className="h-full rounded-full bg-teal-600 transition-all duration-300"
               style={{ width: `${Math.max(8, uploadProgress)}%` }}
             />
           </div>
@@ -142,7 +160,6 @@ const ParcelPhotoCapture = ({
         </p>
       )}
 
-      {/* Camera: single capture */}
       <input
         ref={cameraRef}
         type="file"
@@ -154,7 +171,6 @@ const ParcelPhotoCapture = ({
           e.target.value = "";
         }}
       />
-      {/* Gallery: multi select */}
       <input
         ref={galleryRef}
         type="file"
@@ -200,4 +216,3 @@ const ParcelPhotoCapture = ({
 };
 
 export default ParcelPhotoCapture;
-export { MAX_IMAGES, ACCEPTED };
