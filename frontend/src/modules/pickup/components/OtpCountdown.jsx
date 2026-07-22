@@ -40,14 +40,16 @@ const OtpCountdown = ({ expiresAt, onExpired, className }) => {
       role="status"
       aria-live="polite"
       className={cn(
-        "flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold",
-        urgent ? "bg-rose-50 text-rose-700" : "bg-violet-50 text-violet-700",
+        "flex items-center justify-center gap-2 rounded-2xl px-3.5 py-2.5 text-xs font-bold shadow-[var(--pickup-shadow-xs)] ring-1",
+        urgent
+          ? "bg-rose-50 text-rose-700 ring-rose-100"
+          : "bg-teal-50/90 text-teal-800 ring-teal-100",
         className,
       )}
     >
-      <Clock size={14} aria-hidden />
+      <Clock size={14} aria-hidden className={urgent ? "text-rose-500" : "text-teal-600"} />
       {secondsLeft > 0 ? (
-        <span>
+        <span className="tabular-nums tracking-wide">
           OTP expires in {m}:{String(s).padStart(2, "0")}
         </span>
       ) : (

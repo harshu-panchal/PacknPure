@@ -40,7 +40,7 @@ const PickupOtpInput = ({
 
   return (
     <div
-      className={cn("flex justify-center gap-1.5 xs:gap-2 sm:gap-2.5", className)}
+      className={cn("flex justify-center gap-2 sm:gap-2.5", className)}
       onPaste={handlePaste}
     >
       {digits.map((d, i) => (
@@ -57,10 +57,12 @@ const PickupOtpInput = ({
           onKeyDown={(e) => handleKeyDown(i, e)}
           onFocus={(e) => e.target.select()}
           className={cn(
-            "h-12 w-10 min-w-0 flex-1 max-w-[48px] rounded-xl bg-slate-50 text-center text-lg font-black text-slate-900",
-            "outline-none ring-1 ring-slate-100 transition-all focus:ring-2 focus:ring-teal-600",
-            "sm:h-14 sm:w-12 sm:max-w-[56px] sm:rounded-2xl sm:text-xl",
+            "h-12 w-10 min-w-0 flex-1 max-w-[50px] rounded-2xl bg-slate-50/90 text-center text-lg font-black text-slate-900",
+            "outline-none ring-1 ring-slate-200/80 shadow-[var(--pickup-shadow-xs)] transition-all duration-200",
+            "focus:bg-white focus:ring-2 focus:ring-teal-500 focus:shadow-[0_0_0_4px_rgba(20,184,166,0.14)]",
+            "sm:h-14 sm:w-12 sm:max-w-[56px] sm:text-xl",
             disabled && "opacity-50",
+            d.trim() && "ring-teal-200 bg-teal-50/40",
           )}
           aria-label={`Digit ${i + 1}`}
         />

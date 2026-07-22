@@ -7,20 +7,30 @@ const OfflineBanner = ({ online, queueLen, syncing, onSync }) => {
 
   return (
     <div
-      className={`pickup-safe-x mx-auto max-w-2xl px-3 pt-2 ${online ? "" : "sticky top-0 z-40"}`}
+      className={`pickup-safe-x mx-auto max-w-2xl px-3 pt-2.5 ${online ? "" : "sticky top-0 z-40"}`}
       role="status"
       aria-live="polite"
     >
       <div
-        className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold ${
-          online ? "bg-amber-50 text-amber-800" : "bg-slate-900 text-white"
+        className={`flex items-center justify-between gap-3 rounded-2xl px-3.5 py-3 text-xs font-semibold shadow-[var(--pickup-shadow-xs)] ${
+          online
+            ? "border border-amber-100 bg-amber-50/95 text-amber-900"
+            : "border border-white/10 bg-slate-950 text-white"
         }`}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <WifiOff size={14} aria-hidden />
-          {!online
-            ? "You're offline — viewing cached data; sync when connected"
-            : `${queueLen} queued action(s) — tap Sync to retry`}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+              online ? "bg-amber-100 text-amber-700" : "bg-white/10 text-teal-300"
+            }`}
+          >
+            <WifiOff size={14} aria-hidden />
+          </span>
+          <span className="leading-snug">
+            {!online
+              ? "You're offline — viewing cached data; sync when connected"
+              : `${queueLen} queued action(s) — tap Sync to retry`}
+          </span>
         </div>
         {online && queueLen > 0 && (
           <PickupButton

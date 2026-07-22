@@ -19,39 +19,57 @@ const PickupTimeline = ({ timeline = [], compact = false, className }) => {
       {events.map((event, idx) => {
         const isLast = idx === events.length - 1;
         return (
-          <li key={`${event.key}-${idx}`} className="relative flex gap-3 pb-4 last:pb-0">
+          <li key={`${event.key}-${idx}`} className="relative flex gap-3.5 pb-5 last:pb-0">
             {!isLast && (
               <span
-                className="absolute left-[7px] top-4 h-full w-px bg-gradient-to-b from-teal-200 to-slate-200"
+                className="absolute left-[9px] top-5 h-[calc(100%-8px)] w-[2px] rounded-full bg-gradient-to-b from-teal-300 via-teal-100 to-slate-100"
                 aria-hidden
               />
             )}
             <span
               className={cn(
-                "relative z-10 mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-2 ring-white",
-                isLast ? "bg-teal-600 shadow-[0_0_0_3px_rgba(13,148,136,0.2)]" : "bg-slate-300",
+                "relative z-10 mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full",
+                isLast
+                  ? "bg-teal-600 shadow-[0_0_0_4px_rgba(13,148,136,0.18)] ring-2 ring-white"
+                  : "bg-white ring-2 ring-slate-200",
               )}
-            />
-            <div className="min-w-0 flex-1">
+            >
+              {isLast ? (
+                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              ) : (
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1 pt-0.5">
               <p
                 className={cn(
-                  "font-semibold text-slate-900",
+                  "font-bold tracking-tight text-slate-900",
                   compact ? "text-xs" : "text-sm",
+                  isLast && "text-teal-800",
                 )}
               >
                 {event.label}
               </p>
-              <p className={cn("text-slate-500", compact ? "text-[11px]" : "text-xs")}>
+              <p
+                className={cn(
+                  "mt-0.5 font-medium text-slate-400",
+                  compact ? "text-[11px]" : "text-xs",
+                )}
+              >
                 {formatPrDate(event.at)}
               </p>
               {event.partner ? (
-                <p className="mt-0.5 text-[11px] text-slate-600">Partner: {event.partner}</p>
+                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                  Partner: {event.partner}
+                </p>
               ) : null}
               {event.notes ? (
-                <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{event.notes}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                  {event.notes}
+                </p>
               ) : null}
               {event.reason ? (
-                <p className="mt-0.5 text-[11px] text-rose-600">{event.reason}</p>
+                <p className="mt-1 text-[11px] font-semibold text-rose-600">{event.reason}</p>
               ) : null}
             </div>
           </li>

@@ -273,7 +273,7 @@ const InAppNavMap = ({
   return (
     <div className="space-y-3">
       <div
-        className="relative h-[280px] w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-md sm:h-[340px] sm:rounded-3xl"
+        className="relative h-[280px] w-full min-w-0 overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-slate-100 shadow-[var(--pickup-shadow-md)] ring-1 ring-black/[0.03] sm:h-[340px] sm:rounded-[1.6rem]"
         data-lenis-prevent
         data-lenis-prevent-touch="true"
       >

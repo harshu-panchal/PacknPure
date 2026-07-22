@@ -69,10 +69,10 @@ const ParcelPhotoCapture = ({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
           {label} <span className="text-rose-500">*</span>
         </p>
-        <p className="shrink-0 text-[10px] font-bold text-slate-400">
+        <p className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500">
           {images.length}/{MAX_IMAGES}
         </p>
       </div>
@@ -82,7 +82,7 @@ const ParcelPhotoCapture = ({
           {images.map((img, index) => (
             <div
               key={`${img.url}-${index}`}
-              className="relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
+              className="relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100 shadow-[var(--pickup-shadow-xs)] ring-1 ring-black/5"
             >
               {!loadedImages[index] && (
                 <PickupSkeleton className="absolute inset-0 rounded-2xl" />
@@ -133,7 +133,7 @@ const ParcelPhotoCapture = ({
             type="button"
             onClick={() => cameraRef.current?.click()}
             aria-label="Take photo with camera"
-            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-3 py-4 text-teal-700 transition-colors active:scale-[0.99] hover:border-teal-300"
+            className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-200/90 bg-gradient-to-b from-teal-50/80 to-white px-3 py-4 text-teal-700 shadow-[var(--pickup-shadow-xs)] transition-all active:scale-[0.98] hover:border-teal-300 hover:shadow-md"
           >
             <Camera size={22} />
             <span className="text-[10px] font-black uppercase tracking-widest">Camera</span>
@@ -142,7 +142,7 @@ const ParcelPhotoCapture = ({
             type="button"
             onClick={() => galleryRef.current?.click()}
             aria-label="Choose photos from gallery"
-            className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-slate-600 transition-colors active:scale-[0.99] hover:border-slate-300"
+            className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200/90 bg-gradient-to-b from-slate-50 to-white px-3 py-4 text-slate-600 shadow-[var(--pickup-shadow-xs)] transition-all active:scale-[0.98] hover:border-slate-300 hover:shadow-md"
           >
             <ImagePlus size={22} />
             <span className="text-[10px] font-black uppercase tracking-widest">Gallery</span>
@@ -155,9 +155,9 @@ const ParcelPhotoCapture = ({
 
       {uploading && (
         <div className="space-y-1.5" role="status" aria-live="polite">
-          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
             <div
-              className="h-full rounded-full bg-teal-600 transition-all duration-300"
+              className="h-full rounded-full bg-gradient-to-r from-teal-500 to-teal-600 transition-all duration-300 shadow-sm"
               style={{ width: `${Math.max(8, uploadProgress)}%` }}
             />
           </div>

@@ -13,7 +13,7 @@ const PickupBottomSheet = ({ open, onClose, title, children, className }) => (
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+          className="absolute inset-0 bg-slate-900/55 backdrop-blur-[6px]"
           onClick={onClose}
         />
         <motion.div
@@ -23,17 +23,17 @@ const PickupBottomSheet = ({ open, onClose, title, children, className }) => (
           initial={{ y: "100%", opacity: 0.9 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: "100%", opacity: 0.9 }}
-          transition={{ type: "spring", damping: 28, stiffness: 320 }}
+          transition={{ type: "spring", damping: 30, stiffness: 340 }}
           className={cn(
-            "relative z-10 w-full max-w-md rounded-t-[2rem] bg-white p-5 shadow-2xl sm:rounded-[2rem] sm:p-6",
-            "max-h-[90dvh] overflow-y-auto",
+            "relative z-10 w-full max-w-md rounded-t-[1.75rem] bg-white p-5 shadow-[var(--pickup-shadow-lg)] sm:rounded-[1.75rem] sm:p-6",
+            "max-h-[90dvh] overflow-y-auto border border-slate-100/80",
             "pb-[max(1.25rem,env(safe-area-inset-bottom))]",
             className,
           )}
         >
-          <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+          <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-slate-200/90 sm:hidden" />
           {(title || onClose) && (
-            <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="mb-5 flex items-start justify-between gap-3">
               {title && (
                 <h2
                   id="pickup-sheet-title"
@@ -46,7 +46,7 @@ const PickupBottomSheet = ({ open, onClose, title, children, className }) => (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 active:scale-95"
                   aria-label="Close"
                 >
                   <X size={18} />

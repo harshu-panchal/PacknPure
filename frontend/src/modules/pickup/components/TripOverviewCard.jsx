@@ -26,20 +26,20 @@ const TripOverviewCard = ({ trip, hubName }) => {
 
   return (
     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-      <PickupCard padding="md" className="space-y-4 border-teal-100 bg-gradient-to-br from-white to-teal-50/40">
+      <PickupCard padding="md" className="space-y-4 border-teal-100/80 bg-gradient-to-br from-white via-white to-teal-50/50 shadow-[var(--pickup-shadow-md)]">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-teal-600">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-teal-600">
               Active trip
             </p>
-            <p className="truncate text-lg font-black text-slate-900">{destName}</p>
+            <p className="mt-0.5 truncate text-lg font-black tracking-tight text-slate-900">{destName}</p>
             <p className="text-[10px] font-semibold text-slate-500">
               {mode === "hub" ? "Hub delivery" : `Seller ${trip.currentIndex} of ${trip.sellersTotal}`}
             </p>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="text-2xl font-black text-teal-600">{progressPct}%</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Progress</p>
+          <div className="shrink-0 rounded-2xl bg-teal-600/10 px-3 py-2 text-right ring-1 ring-teal-200/50">
+            <p className="text-2xl font-black tabular-nums text-teal-700">{progressPct}%</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-teal-600/70">Progress</p>
           </div>
         </div>
 

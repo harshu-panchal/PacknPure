@@ -125,9 +125,9 @@ const Profile = () => {
   };
 
   return (
-    <div className="min-h-0 bg-slate-50">
-      <div className="relative overflow-hidden rounded-b-[2rem] bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 px-4 pb-10 pt-[max(2.5rem,env(safe-area-inset-top))] text-white shadow-xl pickup-safe-x">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(45,212,191,0.15),transparent_50%)]" />
+    <div className="min-h-0">
+      <div className="relative overflow-hidden rounded-b-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 px-4 pb-11 pt-[max(2.5rem,env(safe-area-inset-top))] text-white shadow-[var(--pickup-shadow-lg)] pickup-safe-x">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(45,212,191,0.22),transparent_55%)]" />
         <div className="relative z-10 mx-auto flex max-w-md flex-col items-center">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-2 border-white/20 bg-white/10 backdrop-blur-md sm:h-24 sm:w-24 sm:rounded-3xl">
             <User size={36} className="text-white/90" />

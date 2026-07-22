@@ -10,22 +10,24 @@ const PickupEmptyState = ({
 }) => (
   <div
     className={cn(
-      "flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center sm:rounded-3xl",
+      "flex flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate-200/90",
+      "bg-gradient-to-b from-white to-slate-50/80 px-6 py-12 text-center shadow-[var(--pickup-shadow-xs)]",
+      "sm:rounded-[1.75rem]",
       className,
     )}
   >
     {Icon && (
-      <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-300">
-        <Icon size={28} />
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-teal-50 to-slate-50 text-teal-600/50 ring-1 ring-teal-100/80 shadow-inner">
+        <Icon size={30} strokeWidth={1.75} />
       </div>
     )}
-    <p className="text-xs font-black uppercase tracking-widest text-slate-500">{title}</p>
+    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-600">{title}</p>
     {description && (
-      <p className="mt-2 max-w-xs text-xs font-medium leading-relaxed text-slate-400">
+      <p className="mt-2.5 max-w-xs text-sm font-medium leading-relaxed text-slate-400">
         {description}
       </p>
     )}
-    {action && <div className="mt-4">{action}</div>}
+    {action && <div className="mt-5">{action}</div>}
   </div>
 );
 

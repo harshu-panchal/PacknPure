@@ -91,27 +91,27 @@ const Auth = () => {
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 to-teal-50/30 px-4 py-8 pickup-safe-top">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 via-white to-teal-50/40 px-4 py-8 pickup-safe-top">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-teal-100/50 blur-[80px]" />
-        <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/40 blur-[60px]" />
+        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-teal-200/40 blur-[90px]" />
+        <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/50 blur-[70px]" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 w-full max-w-md"
       >
-        <div className="overflow-hidden rounded-3xl border border-white/80 bg-white p-6 shadow-[var(--pickup-shadow-lg)] sm:rounded-[2rem] sm:p-8">
+        <div className="overflow-hidden rounded-[1.75rem] border border-white/90 bg-white/95 p-6 shadow-[var(--pickup-shadow-lg)] backdrop-blur-sm sm:rounded-[2rem] sm:p-8">
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-lg shadow-teal-600/30 sm:h-20 sm:w-20 sm:rounded-3xl">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-800 text-white shadow-[var(--pickup-shadow-glow)] sm:h-20 sm:w-20 sm:rounded-3xl">
               <Package size={32} aria-hidden />
             </div>
             <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
               Pickup Partner
             </h1>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-teal-700/60">
               PacknPure Logistics
             </p>
           </div>

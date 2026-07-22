@@ -159,7 +159,7 @@ const AssignmentCard = function AssignmentCard({
 
       case WORKFLOW_PHASE.OTP_GENERATED:
         return (
-          <PickupCard padding="sm" className="space-y-3 border-violet-100 bg-violet-50/70">
+          <PickupCard padding="sm" className="space-y-3 border-teal-100/80 bg-gradient-to-br from-teal-50/80 to-white">
             <p className="text-[10px] font-black uppercase tracking-widest text-violet-700">
               Verify OTP
             </p>
@@ -193,7 +193,7 @@ const AssignmentCard = function AssignmentCard({
                         otp: e.target.value.replace(/\D/g, "").slice(0, 4),
                       })
                     }
-                    className="w-full min-w-0 rounded-2xl border-none bg-white py-3 pl-10 pr-4 text-sm font-black tracking-[0.35em] text-slate-900 placeholder:tracking-normal placeholder:text-slate-300 focus:ring-2 focus:ring-violet-500"
+                    className="w-full min-w-0 rounded-2xl border-none bg-white py-3.5 pl-10 pr-4 text-sm font-black tracking-[0.35em] text-slate-900 shadow-[var(--pickup-shadow-xs)] placeholder:tracking-normal placeholder:text-slate-300 ring-1 ring-teal-100 focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
                 <PickupButton
@@ -205,7 +205,7 @@ const AssignmentCard = function AssignmentCard({
                     otpExpired
                   }
                   loading={actionLoadingId === `${row._id}:verify`}
-                  className="bg-violet-600 hover:bg-violet-700"
+                  className="bg-gradient-to-b from-teal-500 to-teal-700 shadow-[var(--pickup-shadow-glow)] hover:from-teal-400 hover:to-teal-600"
                 >
                   Verify OTP
                 </PickupButton>
@@ -304,20 +304,20 @@ const AssignmentCard = function AssignmentCard({
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{ duration: 0.25 }}
     >
-      <PickupCard padding="md" className="space-y-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
-            <Store size={18} />
+      <PickupCard padding="md" className="space-y-4 shadow-[var(--pickup-shadow-md)] ring-1 ring-slate-100/80">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-[var(--pickup-shadow)]">
+            <Store size={18} strokeWidth={2.25} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black text-slate-900">
+            <p className="truncate text-[0.95rem] font-black tracking-tight text-slate-900">
               {row.vendor?.name || "Seller"}
             </p>
-            <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
               {row.requestId}
               {row.orderId ? ` · Order ${String(row.orderId).slice(-6)}` : ""}
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <PickupBadge variant="info">{statusLabel(row.status)}</PickupBadge>
               <PickupBadge variant="warning">{getNextActionLabel(phase)}</PickupBadge>
               {(row.pickupAssignedAt || row.createdAt) && (

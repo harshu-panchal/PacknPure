@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { useSlideTrack } from "../hooks/useSlideTrack";
 import { cn } from "../utils/cn";
 
@@ -9,6 +9,7 @@ const PAD = 6;
 
 /**
  * Responsive slide-to-confirm control for Pickup Partner flow.
+ * Visual polish only — confirmation logic unchanged.
  */
 const SlideToAction = ({
   label = "Slide to confirm",
@@ -70,24 +71,49 @@ const SlideToAction = ({
     }
   };
 
+  const progress = maxTravel > 0 ? offset / maxTravel : 0;
+
   return (
     <div
       ref={trackRef}
       className={cn(
-        "relative h-14 w-full min-w-0 select-none overflow-hidden rounded-2xl",
+        "relative h-[3.5rem] w-full min-w-0 select-none overflow-hidden rounded-2xl shadow-inner",
+        "ring-1 ring-white/10",
         colorClass,
         (disabled || loading) && "opacity-50",
       )}
       role="group"
       aria-label={label}
     >
-      <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-[10px] font-black uppercase tracking-[0.15em] text-white/85 sm:text-[11px] sm:tracking-[0.2em]">
-        {loading ? "Processing…" : label}
+      <div className="pickup-slide-track pointer-events-none absolute inset-0 opacity-60" />
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 bg-white/10 transition-[width] duration-75"
+        style={{ width: `${Math.min(100, progress * 100)}%` }}
+      />
+      <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-[10px] font-black uppercase tracking-[0.16em] text-white/90 sm:text-[11px] sm:tracking-[0.2em]">
+        {loading ? (
+          <span className="inline-flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            Processing…
+          </span>
+        ) : (
+          label
+        )}
       </p>
       <motion.button
         type="button"
-        className="absolute top-1.5 left-1.5 z-10 flex h-11 w-11 touch-none items-center justify-center rounded-xl bg-white text-slate-900 shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        className={cn(
+          "absolute top-1.5 left-1.5 z-10 flex h-11 w-11 touch-none items-center justify-center rounded-xl",
+          "bg-white text-slate-900 shadow-[0_4px_14px_rgba(0,0,0,0.18)]",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-white",
+          dragging && "scale-105 shadow-[0_6px_18px_rgba(0,0,0,0.22)]",
+        )}
         style={{ x: offset }}
+        transition={
+          dragging
+            ? { type: "tween", duration: 0 }
+            : { type: "spring", stiffness: 520, damping: 38 }
+        }
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -96,7 +122,13 @@ const SlideToAction = ({
         disabled={disabled || loading}
         aria-label={label}
       >
-        <ChevronRight size={20} />
+        <ChevronRight
+          size={20}
+          className={cn(
+            "transition-transform duration-150",
+            progress > 0.85 && "text-teal-600 translate-x-0.5",
+          )}
+        />
       </motion.button>
     </div>
   );

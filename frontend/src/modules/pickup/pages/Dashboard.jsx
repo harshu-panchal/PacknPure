@@ -260,7 +260,7 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="min-h-0 bg-slate-50">
+    <div className="min-h-0">
       <PickupPageHeader
         title="Pickup Center"
         subtitle={user?.name || "Partner"}
@@ -270,7 +270,7 @@ const Dashboard = () => {
             type="button"
             onClick={() => fetchAssignments({ silent: true })}
             aria-label="Refresh assignments"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-slate-100/70 text-slate-500 transition-colors hover:bg-teal-50 hover:text-teal-700 active:scale-95"
           >
             <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
           </button>
