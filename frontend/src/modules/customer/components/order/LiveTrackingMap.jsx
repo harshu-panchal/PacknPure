@@ -4,7 +4,6 @@ import { GoogleMap, useJsApiLoader, Marker, Polyline } from "@react-google-maps/
 import {
   MapPin,
   Navigation,
-  Phone,
   MessageSquare,
   Shield,
   Clock,
@@ -12,6 +11,8 @@ import {
   Search,
   Loader2,
 } from "lucide-react";
+import MaskedCallButton from "@/shared/components/delivery/MaskedCallButton";
+import { customerApi } from "@/modules/customer/services/customerApi";
 import customerPin from "@/assets/customer-pin.png";
 import deliveryIcon from "@/assets/deliveryIcon.png";
 import storePin from "@/assets/store-pin.png";
@@ -21,7 +22,7 @@ const libraries = ["places", "geometry"];
 const containerStyle = {
   width: "100%",
   height: "100%",
-  minHeight: "350px",
+  minHeight: "280px",
 };
 const RECENTER_INTERVAL_MS = 15000;
 const RIDER_FOCUS_RADIUS_M = 500;
@@ -60,6 +61,9 @@ const LiveTrackingMap = memo(({
   destinationLocation,
   routePhase = "pickup",
   routePolyline,
+  orderId = null,
+  partner = null,
+  distanceText = "—",
   onOpenInMaps,
 }) => {
   const mapRef = useRef(null);
@@ -379,7 +383,7 @@ const LiveTrackingMap = memo(({
 
   return (
     <div
-      className="relative w-full h-[350px] bg-[#E5E3DF] overflow-hidden rounded-b-[2rem] shadow-md border-b border-gray-200"
+      className="relative w-full min-h-[280px] h-[min(55vh,420px)] sm:h-[380px] md:h-[420px] bg-[#E5E3DF] overflow-hidden rounded-b-[2rem] shadow-md border-b border-gray-200"
       data-lenis-prevent
       data-lenis-prevent-touch="true"
     >
@@ -485,38 +489,56 @@ const LiveTrackingMap = memo(({
         </button>
       </div>
 
-      {/* 4. Rider Info Card (Compact Bottom) */}
+      {/* Rider info overlay — no phone numbers */}
       {riderName && (
-        <div className="absolute bottom-2 left-2 right-2 z-40">
+        <div className="absolute bottom-2 left-2 right-2 z-40 max-w-full">
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-white/50">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="h-10 w-10 rounded-full bg-gray-100 overflow-hidden border-2 border-white shadow-sm">
-                  <img
-                    src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&auto=format&fit=crop&q=60"
-                    alt="Rider"
-                    className="h-full w-full object-cover"
-                  />
+            className="bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-white/50"
+          >
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="relative shrink-0">
+                <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gray-100 overflow-hidden border-2 border-white shadow-sm">
+                  {partner?.profileImage ? (
+                    <img
+                      src={partner.profileImage}
+                      alt={riderName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-rose-50 text-[#E23744] text-xs font-bold">
+                      {riderName.charAt(0)}
+                    </div>
+                  )}
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 bg-[#E23744] text-white text-[7px] font-bold px-1 py-0.5 rounded-full flex items-center gap-0.5">
-                  4.8 <Star size={5} fill="white" />
+                  {(Number(partner?.rating) || 4.8).toFixed(1)} <Star size={5} fill="white" />
                 </div>
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-gray-900 text-xs truncate">{riderName}</h3>
-                <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                <h3 className="font-bold text-gray-900 text-xs sm:text-sm truncate">{riderName}</h3>
+                <p className="text-[10px] text-gray-500 flex items-center gap-1 truncate">
                   <Shield size={8} />
-                  Vaccinated
+                  {partner?.vehicleTypeLabel || partner?.vehicleType || "Partner"}
+                  {distanceText && distanceText !== "—" ? ` · ${distanceText}` : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button className="h-8 w-8 rounded-full bg-rose-50 flex items-center justify-center text-[#E23744] hover:bg-rose-100 transition-colors">
-                  <Phone size={14} />
-                </button>
-                <button className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 hover:bg-blue-100 transition-colors">
+              <div className="flex items-center gap-1 shrink-0">
+                {orderId && (
+                  <MaskedCallButton
+                    orderId={orderId}
+                    role="customer"
+                    initiateCall={(id) => customerApi.initiateMaskedCall(id)}
+                    compact
+                  />
+                )}
+                <button
+                  type="button"
+                  disabled
+                  title="Chat coming soon"
+                  className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-400"
+                >
                   <MessageSquare size={14} />
                 </button>
               </div>
@@ -532,10 +554,10 @@ const LiveTrackingMap = memo(({
         </div>
       )}
 
-      {/* Route cache indicator */}
+      {/* Route cache indicator — hidden on very small screens to avoid overlap */}
       {routePolyline && (
-        <div className="absolute bottom-2 right-2 bg-white/95 backdrop-blur px-2 py-1 rounded-md text-[10px] text-slate-600 font-bold border border-slate-200 shadow-sm">
-          Route cached • Reduced API cost
+        <div className="absolute bottom-[4.5rem] right-2 hidden sm:block bg-white/95 backdrop-blur px-2 py-1 rounded-md text-[10px] text-slate-600 font-bold border border-slate-200 shadow-sm">
+          Live route
         </div>
       )}
     </div>

@@ -5,17 +5,17 @@ import InvoiceModal from "../components/order/InvoiceModal";
 import HelpModal from "../components/order/HelpModal";
 import LiveTrackingMap from "../components/order/LiveTrackingMap";
 import DeliveryOtpDisplay from "../components/DeliveryOtpDisplay";
+import DeliveryPartnerCard from "../components/order/DeliveryPartnerCard";
+import DeliveryTimeline from "../components/order/DeliveryTimeline";
 import OrderProgressTracker from "../components/order/OrderProgressTracker";
 import OrderItemRow from "../components/order/OrderItemRow";
 import {
   ChevronLeft,
   Package,
-  Truck,
   MapPin,
   CreditCard,
   Download,
   HelpCircle,
-  Phone,
   Loader2,
   Store,
   Navigation2,
@@ -708,9 +708,30 @@ const OrderDetailPage = () => {
               destinationLocation={order.address?.location || null}
               routePhase={routePhase}
               routePolyline={activeRoutePolyline}
+              orderId={orderId}
+              partner={order.deliveryBoy}
+              distanceText={estimatedArrival.totalDistanceText}
               onOpenInMaps={handleOpenInMaps}
             />
           </div>
+        )}
+
+        {order.deliveryBoy && isActive && (
+          <DeliveryPartnerCard
+            partner={order.deliveryBoy}
+            orderId={orderId}
+            etaText={estimatedArrival.arrivalTimeText}
+            arrivingInText={estimatedArrival.arrivingInText}
+            distanceText={estimatedArrival.totalDistanceText}
+            isActive={isActive}
+          />
+        )}
+
+        {(isActive || status === "delivered") && (
+          <DeliveryTimeline
+            orderId={orderId}
+            initialTimeline={order.deliveryTimeline}
+          />
         )}
 
         <OrderProgressTracker
@@ -776,45 +797,6 @@ const OrderDetailPage = () => {
 
         <DeliveryOtpDisplay orderId={orderId} />
 
-        {order.deliveryBoy && isActive && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-full text-white"
-                style={{ backgroundColor: ACCENT }}
-              >
-                <Truck size={22} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                  Delivery partner
-                </p>
-                <p className="truncate text-base font-bold text-slate-900">
-                  {order.deliveryBoy.name || "Assigned rider"}
-                </p>
-                {order.deliveryBoy.phone ? (
-                  <a
-                    href={`tel:${order.deliveryBoy.phone}`}
-                    className="mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-[#E23744]"
-                  >
-                    <Phone size={14} />
-                    {order.deliveryBoy.phone}
-                  </a>
-                ) : null}
-              </div>
-              {order.deliveryBoy.phone ? (
-                <a
-                  href={`tel:${order.deliveryBoy.phone}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100"
-                  aria-label="Call delivery partner"
-                >
-                  <Phone size={18} className="text-slate-700" />
-                </a>
-              ) : null}
-            </div>
-          </div>
-        )}
-
         {/* Address & seller */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-4">
@@ -839,12 +821,6 @@ const OrderDetailPage = () => {
                     .filter(Boolean)
                     .join(", ")}
                 </p>
-                {order.address?.phone ? (
-                  <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                    <Phone size={14} className="text-slate-400" />
-                    {order.address.phone}
-                  </p>
-                ) : null}
               </div>
               <button
                 type="button"

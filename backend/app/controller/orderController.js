@@ -44,6 +44,12 @@ import {
   formatOrderVariantSlot,
   resolveOrderItemPrice,
 } from "../utils/orderItemHelpers.js";
+import {
+  sanitizeOrderForRole,
+  enrichDeliveryPartnerPublicProfile,
+} from "../utils/deliveryPrivacy.js";
+import { getDeliveryTimelineForOrder } from "../services/deliveryTimelineService.js";
+import { recordDeliveryAudit } from "../services/deliveryAuditService.js";
 import { resolveVariantIndex } from "../utils/productHelpers.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
 import {
@@ -240,7 +246,10 @@ export const getOrderDetails = async (req, res) => {
     const order = await Order.findOne(orderKey)
       .populate("customer", "name email phone")
       .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)
-      .populate("deliveryBoy", "name phone")
+      .populate(
+        "deliveryBoy",
+        "name phone vehicleType vehicleNumber documents.profileImage averageRating",
+      )
       .populate("returnDeliveryBoy", "name phone")
       .populate("seller", "shopName name address phone location")
       .lean();
@@ -339,7 +348,22 @@ export const getOrderDetails = async (req, res) => {
       }
     }
 
-    return handleResponse(res, 200, "Order details fetched", enrichOrderDoc(order));
+    const enriched = enrichOrderDoc(order);
+    const sanitized = sanitizeOrderForRole(enriched, roleNorm);
+
+    if (sanitized.deliveryBoy && (roleNorm === "customer" || roleNorm === "user")) {
+      sanitized.deliveryBoy = enrichDeliveryPartnerPublicProfile(sanitized.deliveryBoy);
+    }
+
+    if (roleNorm === "customer" || roleNorm === "user" || roleNorm === "delivery") {
+      try {
+        sanitized.deliveryTimeline = await getDeliveryTimelineForOrder(sanitized);
+      } catch {
+        /* timeline is optional */
+      }
+    }
+
+    return handleResponse(res, 200, "Order details fetched", sanitized);
   } catch (error) {
     console.error(`[ORDER_ERROR] Error fetching order details:`, error);
     return handleResponse(res, 500, error.message);
@@ -1606,6 +1630,14 @@ export const acceptOrder = async (req, res) => {
           order.orderId,
           idem,
         );
+        if (!duplicate) {
+          await recordDeliveryAudit({
+            orderId: updated?.orderId || order.orderId,
+            orderRef: updated?._id || order._id,
+            deliveryBoy: userId,
+            event: "assigned",
+          });
+        }
         return handleResponse(
           res,
           200,

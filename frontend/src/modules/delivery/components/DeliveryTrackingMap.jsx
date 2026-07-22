@@ -108,6 +108,8 @@ const DeliveryTrackingMapComponent = ({
 
   useEffect(() => {
     if (!navigator.geolocation) return undefined;
+    if (phase !== "delivery") return undefined;
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
@@ -139,7 +141,7 @@ const DeliveryTrackingMapComponent = ({
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, [orderId]);
+  }, [orderId, phase]);
 
   const fetchRoute = useCallback(async () => {
     if (!orderId || !rider) return;

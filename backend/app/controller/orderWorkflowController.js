@@ -9,6 +9,7 @@ import {
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import Order from "../models/order.js";
 import { orderMatchQueryFromRouteParam } from "../utils/orderLookup.js";
+import { recordDeliveryAudit } from "../services/deliveryAuditService.js";
 
 function parseHubCoordinate(...keys) {
   for (const key of keys) {
@@ -24,6 +25,17 @@ export const confirmPickup = async (req, res) => {
     const { orderId } = req.params;
     const { lat, lng } = req.body || {};
     const result = await confirmPickupAtomic(req.user.id, orderId, lat, lng);
+    await recordDeliveryAudit({
+      orderId: result?.orderId || orderId,
+      deliveryBoy: req.user.id,
+      event: "picked",
+      gpsSnapshot: lat != null && lng != null ? { lat, lng } : null,
+    });
+    await recordDeliveryAudit({
+      orderId: result?.orderId || orderId,
+      deliveryBoy: req.user.id,
+      event: "out_for_delivery",
+    });
     return handleResponse(res, 200, "Pickup confirmed", result);
   } catch (e) {
     return handleResponse(res, e.statusCode || 500, e.message);
@@ -40,6 +52,12 @@ export const markArrivedAtStore = async (req, res) => {
       lat,
       lng,
     );
+    await recordDeliveryAudit({
+      orderId: result?.orderId || orderId,
+      deliveryBoy: req.user.id,
+      event: "reached_hub",
+      gpsSnapshot: lat != null && lng != null ? { lat, lng } : null,
+    });
     return handleResponse(res, 200, "Arrived at store", result);
   } catch (e) {
     return handleResponse(res, e.statusCode || 500, e.message);

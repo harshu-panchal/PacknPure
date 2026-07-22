@@ -30,6 +30,7 @@ const DeliveryRoutes = () => {
         <Route path="auth" element={<DeliveryAuth />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="order-details/:orderId" element={<OrderDetails />} />
+        <Route path="navigation/:orderId" element={<Navigation />} />
         <Route path="navigation" element={<Navigation />} />
         <Route path="confirm-delivery/:orderId" element={<DeliveryConfirmation />} />
         <Route path="earnings" element={<Earnings />} />

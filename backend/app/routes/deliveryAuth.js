@@ -17,6 +17,10 @@ import {
   validateDeliveryOtp,
 } from "../controller/deliveryController.js";
 import {
+  customerInitiateMaskedCall,
+  deliveryInitiateMaskedCall,
+} from "../controller/maskedCallController.js";
+import {
   getAvailableOrders,
   acceptOrder,
   updateOrderStatus,
@@ -78,6 +82,11 @@ router.post(
   "/orders/:orderId/validate-otp",
   ...deliveryOps,
   validateDeliveryOtp,
+);
+router.post(
+  "/orders/:orderId/masked-call",
+  ...deliveryOps,
+  deliveryInitiateMaskedCall,
 );
 
 export default router;

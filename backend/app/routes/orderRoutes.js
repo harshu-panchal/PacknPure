@@ -26,6 +26,10 @@ import {
   verifyDeliveryOtp,
   getOrderRoute,
 } from "../controller/orderWorkflowController.js";
+import { getDeliveryTimeline } from "../controller/deliveryTimelineController.js";
+import {
+  customerInitiateMaskedCall,
+} from "../controller/maskedCallController.js";
 // Assuming there's a middleware to verify customer token
 import { verifyToken, allowRoles, isAccountVerified } from "../middleware/authMiddleware.js";
 
@@ -46,6 +50,17 @@ router.put("/cancel/:orderId", ...customerOnly, cancelOrder);
 router.post("/:orderId/returns", ...customerOnly, requestReturn);
 router.get("/:orderId/returns", ...customerOnly, getReturnDetails);
 router.get("/calculate-delivery-fee", ...customerOnly, getDeliveryFee);
+router.post(
+  "/:orderId/masked-call",
+  ...customerOnly,
+  customerInitiateMaskedCall,
+);
+router.get(
+  "/:orderId/delivery-timeline",
+  verifyToken,
+  allowRoles("customer", "user", "delivery", "admin"),
+  getDeliveryTimeline,
+);
 
 // Admin/Seller routes (might need different auth middleware for role checks)
 

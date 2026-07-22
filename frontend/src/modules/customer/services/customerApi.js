@@ -77,6 +77,10 @@ export const customerApi = {
     getWithDedupe("/delivery-mode/options", {}, { ttl: 15 * 1000 }),
   getOrderRoute: (orderId, params) =>
     axiosInstance.get(`/orders/workflow/${orderId}/route`, { params }),
+  initiateMaskedCall: (orderId) =>
+    axiosInstance.post(`/orders/${encodeURIComponent(String(orderId))}/masked-call`),
+  getDeliveryTimeline: (orderId) =>
+    axiosInstance.get(`/orders/${encodeURIComponent(String(orderId))}/delivery-timeline`),
   cancelOrder: (orderId, data) =>
     axiosInstance.put(`/orders/cancel/${orderId}`, data),
   requestReturn: (orderId, data) =>

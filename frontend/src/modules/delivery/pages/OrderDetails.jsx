@@ -24,6 +24,8 @@ import { Loader2 } from "lucide-react";
 import DeliveryTrackingMap from "../components/DeliveryTrackingMap";
 import DeliverySlideButton from "../components/DeliverySlideButton";
 import OtpInput from "../components/OtpInput";
+import MaskedCallButton from "@/shared/components/delivery/MaskedCallButton";
+import { useOrderGpsTracker } from "../hooks/useOrderGpsTracker";
 import {
   getCachedDeliveryPartnerLocation,
   getCurrentPositionWithCache,
@@ -207,6 +209,8 @@ const OrderDetails = () => {
   ];
 
   const publicStatusStage = getPublicStatusStage(step);
+  const gpsActive = step >= 3 && step < 4;
+  useOrderGpsTracker({ orderId, active: gpsActive });
   const cachedRiderLocation = getCachedDeliveryPartnerLocation(30 * 60 * 1000);
   const destinationLocation = order?.address?.location;
   const deliverySnapshot = useMemo(
@@ -371,44 +375,31 @@ const OrderDetails = () => {
   };
 
   const handleNavigate = () => {
-    // When delivering (step 3-4), use order's precise coordinates if set at checkout
+    // Delivery phase: embedded in-app navigation (no external Google Maps)
     if (step >= 3) {
-      const loc = order?.address?.location;
-      if (
-        loc &&
-        typeof loc.lat === "number" &&
-        typeof loc.lng === "number" &&
-        Number.isFinite(loc.lat) &&
-        Number.isFinite(loc.lng)
-      ) {
-        window.open(
-          `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`,
-          "_blank"
-        );
-        return;
-      }
-    } else {
-      // Store Pickup (step 1-2)
-      // Prioritize Hub location if hub flow is enabled
-      const hubLoc = order?.hubLocation?.coordinates;
-      if (order?.hubFlowEnabled && hubLoc && hubLoc.length === 2) {
-        window.open(
-          `https://www.google.com/maps/dir/?api=1&destination=${hubLoc[1]},${hubLoc[0]}`,
-          "_blank"
-        );
-        return;
-      }
-
-      const loc = order?.seller?.location?.coordinates;
-      if (loc && loc.length === 2) {
-        window.open(
-          `https://www.google.com/maps/dir/?api=1&destination=${loc[1]},${loc[0]}`,
-          "_blank"
-        );
-        return;
-      }
+      navigate(`/delivery/navigation/${orderId}`);
+      return;
     }
-    // Fallback when no coordinates
+
+    // Pickup phase: keep existing external maps behavior (unchanged)
+    const hubLoc = order?.hubLocation?.coordinates;
+    if (order?.hubFlowEnabled && hubLoc && hubLoc.length === 2) {
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${hubLoc[1]},${hubLoc[0]}`,
+        "_blank"
+      );
+      return;
+    }
+
+    const loc = order?.seller?.location?.coordinates;
+    if (loc && loc.length === 2) {
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${loc[1]},${loc[0]}`,
+        "_blank"
+      );
+      return;
+    }
+
     window.open("https://maps.google.com", "_blank");
   };
 
@@ -709,26 +700,32 @@ const OrderDetails = () => {
                   </div>
                 </div>
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="icon" className="h-9 w-9">
+                  <button
+                    type="button"
+                    disabled
+                    title="Chat coming soon"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400"
+                  >
                     <MessageSquare size={18} />
-                  </Button>
-                  {order.address?.phone && (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9"
-                      onClick={() => (window.location.href = `tel:${order.address.phone}`)}
-                    >
-                      <Phone size={18} />
-                    </Button>
-                  )}
+                  </button>
+                  <MaskedCallButton
+                    orderId={orderId}
+                    role="delivery"
+                    initiateCall={(id) => deliveryApi.initiateMaskedCall(id)}
+                    compact
+                  />
                 </div>
               </div>
               <div className="p-4">
                 <h3 className="font-bold text-lg mb-1">{order.address?.name || "Customer"}</h3>
                 <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">{order.address?.address}</p>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{order.address?.city}</p>
-                <Button onClick={handleNavigate} className="w-full bg-blue-600 hover:bg-blue-700 text-white border-none">
+                <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">{order.address?.city}</p>
+                {order.address?.landmark ? (
+                  <p className="text-xs font-medium text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mb-3">
+                    Landmark: {order.address.landmark}
+                  </p>
+                ) : null}
+                <Button onClick={handleNavigate} className="w-full bg-blue-600 hover:bg-blue-700 text-white border-none min-h-[48px]">
                   <Navigation size={18} className="mr-2" /> Navigate to Customer
                 </Button>
               </div>
@@ -804,7 +801,7 @@ const OrderDetails = () => {
       >
         <AlertTriangle className="text-yellow-600 mr-3 mt-0.5 flex-shrink-0" size={18} />
         <p className="text-sm text-yellow-800 leading-relaxed">
-          <strong>Note:</strong> Handle eggs with care. Call customer if location is hard to find.
+          <strong>Note:</strong> Handle items with care. Use masked call if the location is hard to find — personal numbers are never shared.
         </p>
       </motion.div>
 

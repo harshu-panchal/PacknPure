@@ -10,6 +10,10 @@ import { writeDeliveryLocation, appendTrailPoint } from "../services/firebaseSer
 import { getRedisClient } from "../config/redis.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { transitionOrderFulfillment } from "../services/fulfillmentWorkflowEngine.js";
+import {
+  recordDeliveryAudit,
+  maybeRecordGpsSnapshot,
+} from "../services/deliveryAuditService.js";
 
 const LOC_MIN_INTERVAL_MS = () =>
   parseInt(process.env.LOCATION_MIN_INTERVAL_MS || "3000", 10);
@@ -400,6 +404,13 @@ export const updateDeliveryLocation = async (req, res) => {
                 lng,
                 t: Date.now(),
             });
+            await maybeRecordGpsSnapshot(activeOrderId, deliveryId, {
+                lat,
+                lng,
+                accuracy: typeof accuracy === "number" ? accuracy : undefined,
+                heading: typeof heading === "number" ? heading : undefined,
+                speed: typeof speed === "number" ? speed : undefined,
+            });
         }
 
         return handleResponse(res, 200, "Location updated", {
@@ -606,6 +617,22 @@ export const generateDeliveryOtp = async (req, res) => {
             // Don't fail the request if socket emission fails
         }
 
+        await recordDeliveryAudit({
+            orderId: order.orderId,
+            orderRef: order._id,
+            deliveryBoy: deliveryBoyId,
+            event: "nearby",
+            metadata: { source: "otp_generate" },
+            gpsSnapshot: location ? { lat: location.lat, lng: location.lng } : null,
+        });
+        await recordDeliveryAudit({
+            orderId: order.orderId,
+            orderRef: order._id,
+            deliveryBoy: deliveryBoyId,
+            event: "reached_customer",
+            metadata: { source: "otp_generate" },
+        });
+
         return handleResponse(res, 200, "OTP generated and sent to customer", {
             success: true,
             data: {
@@ -787,6 +814,26 @@ export const validateDeliveryOtp = async (req, res) => {
             console.error('Error emitting Socket.IO event:', socketError);
             // Don't fail the request if socket emission fails
         }
+
+        const assignedAt = order.assignedAt ? new Date(order.assignedAt).getTime() : null;
+        const deliveryDurationMs =
+          assignedAt != null ? now.getTime() - assignedAt : null;
+
+        await recordDeliveryAudit({
+            orderId: order.orderId,
+            orderRef: order._id,
+            deliveryBoy: deliveryBoyId,
+            event: "otp_verified",
+            gpsSnapshot: validationLocation,
+        });
+        await recordDeliveryAudit({
+            orderId: order.orderId,
+            orderRef: order._id,
+            deliveryBoy: deliveryBoyId,
+            event: "delivered",
+            durationMs: deliveryDurationMs,
+            gpsSnapshot: validationLocation,
+        });
 
         return handleResponse(res, 200, "Order delivered successfully", {
             success: true,

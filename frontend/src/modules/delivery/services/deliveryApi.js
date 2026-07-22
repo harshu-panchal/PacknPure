@@ -60,4 +60,8 @@ export const deliveryApi = {
     axiosInstance.put(`/orders/status/${orderId}`, data),
   updateReturnStatus: (orderId, data) =>
     axiosInstance.put(`/orders/return-status/${orderId}`, data),
+  initiateMaskedCall: (orderId) =>
+    axiosInstance.post(
+      `/delivery/orders/${encodeURIComponent(String(orderId))}/masked-call`,
+    ),
 };
