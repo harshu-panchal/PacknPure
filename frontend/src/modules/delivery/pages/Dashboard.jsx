@@ -18,7 +18,6 @@ import Card from "@/shared/components/ui/Card";
 
 import { useAuth } from "@/core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
-import { pickupApi } from "../../pickup/services/pickupApi";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -27,7 +26,6 @@ const Dashboard = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [availableOrders, setAvailableOrders] = useState([]);
   const [activeDeliveries, setActiveDeliveries] = useState([]);
-  const [pickupAssignments, setPickupAssignments] = useState([]);
   const [earnings, setEarnings] = useState({
     today: 0,
     deliveries: 0,
@@ -82,18 +80,6 @@ const Dashboard = () => {
     }
   };
 
-  const fetchPickupAssignments = async () => {
-    try {
-      const response = await pickupApi.getAssignments({ status: "active" });
-      if (response.data.success) {
-        const items = response.data.result?.items || [];
-        setPickupAssignments(items);
-      }
-    } catch (error) {
-      console.error("Failed to fetch pickup assignments:", error);
-    }
-  };
-
   const fetchNotifications = async () => {
     try {
       const response = await deliveryApi.getNotifications();
@@ -111,14 +97,12 @@ const Dashboard = () => {
     if (user?.isVerified) {
       fetchAvailableOrders();
       fetchActiveDeliveries();
-      fetchPickupAssignments();
     }
     const interval = setInterval(() => {
       fetchNotifications();
       if (user?.isVerified) {
         fetchAvailableOrders();
         fetchActiveDeliveries();
-        fetchPickupAssignments();
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -303,37 +287,6 @@ const Dashboard = () => {
             </div>
           </div>
         </Card>
-
-        {/* Pickup Assignments Banner */}
-        <AnimatePresence>
-          {pickupAssignments.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 relative overflow-hidden cursor-pointer"
-              onClick={() => navigate("/delivery/pickups")}
-            >
-              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white dark:bg-gray-800/10 rounded-full blur-xl"></div>
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="bg-white dark:bg-gray-800/20 p-3 rounded-xl">
-                    <Package size={24} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black tracking-tight">Active Pickups</h3>
-                    <p className="text-indigo-100 text-xs font-medium">
-                      You have {pickupAssignments.length} procurement task(s) waiting.
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider">
-                  View Tasks
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Active Deliveries Banner */}
         <AnimatePresence>
