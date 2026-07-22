@@ -203,7 +203,7 @@ const CatalogListing = () => {
     <div className="p-4 sm:p-8 bg-slate-50/50 min-h-screen font-['Outfit',_sans-serif]">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
             Hub Catalog
           </h2>
           <p className="text-sm font-medium text-slate-500 mt-1">
@@ -244,7 +244,7 @@ const CatalogListing = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
           {
             label: "Catalog Products",
@@ -281,7 +281,7 @@ const CatalogListing = () => {
                   <stat.icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
                     {stat.label}
                   </p>
                   <h4 className="text-2xl font-black text-slate-900">{stat.val}</h4>
@@ -361,11 +361,11 @@ const CatalogListing = () => {
                           {product.name}
                         </h3>
                         {existing ? (
-                          <Badge variant="success" className="shrink-0 text-[10px]">
+                          <Badge variant="success" className="shrink-0 text-xs">
                             Listed
                           </Badge>
                         ) : (
-                          <Badge variant="gray" className="shrink-0 text-[10px]">
+                          <Badge variant="gray" className="shrink-0 text-xs">
                             Add
                           </Badge>
                         )}
@@ -376,13 +376,13 @@ const CatalogListing = () => {
                       </p>
                       <div className="flex flex-wrap gap-2 mt-2">
                         {variantCount > 0 && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-600 bg-violet-50 px-2 py-0.5 rounded-md">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-violet-600 bg-violet-50 px-2 py-0.5 rounded-md">
                             <HiOutlineSwatch className="h-3 w-3" />
                             {variantCount} variant{variantCount > 1 ? "s" : ""}
                           </span>
                         )}
                         {existing && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
                             <HiOutlineArchiveBox className="h-3 w-3" />
                             Stock {existing.catalogStock ?? existing.stock ?? 0}
                           </span>
@@ -391,7 +391,7 @@ const CatalogListing = () => {
                     </div>
                   </div>
                   <div className="px-4 py-2.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
                       {existing ? "Update stock & price" : "Select to list"}
                     </span>
                     <HiOutlinePlus className="h-4 w-4 text-indigo-500" />

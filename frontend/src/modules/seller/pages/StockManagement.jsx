@@ -215,7 +215,7 @@ const StockManagement = () => {
     };
 
     if (isLoading && inventory.length === 0 && history.length === 0) {
-        return <div className="flex items-center justify-center h-screen font-black text-slate-600">LOADING STOCK DATA...</div>;
+        return <div className="flex items-center justify-center min-h-[40vh] font-black text-slate-600">LOADING STOCK DATA...</div>;
     }
 
     return (
@@ -226,7 +226,7 @@ const StockManagement = () => {
                     <div>
                         <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                             Stock Management
-                            <Badge variant="warning" className="text-[9px] px-1.5 py-0 font-bold tracking-wider uppercase bg-amber-100 text-amber-700">
+                            <Badge variant="warning" className="text-[10px] sm:text-xs px-1.5 py-0 font-bold tracking-wider uppercase bg-amber-100 text-amber-700">
                                 Inventory Control
                             </Badge>
                         </h1>
@@ -266,8 +266,8 @@ const StockManagement = () => {
                     <BlurFade delay={0.3}>
                         <Card className="border-none shadow-xl shadow-slate-200/50 overflow-hidden rounded-3xl">
                             {/* Toolbox */}
-                            <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50/30">
-                                <div className="flex flex-col md:flex-row gap-3 items-center w-full">
+                            <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-slate-50/30">
+                                <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center w-full">
                                     <div className="relative w-full md:w-72">
                                         <HiOutlineMagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
                                         <Input
@@ -297,10 +297,10 @@ const StockManagement = () => {
                                         ))}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 w-full md:w-auto">
                                     <Button
                                         onClick={() => navigate('/seller/products/add')}
-                                        className="rounded-xl px-4 py-2 text-[10px] font-bold shadow-lg shadow-primary/20"
+                                        className="rounded-xl px-4 py-2 text-[10px] sm:text-xs font-bold shadow-lg shadow-primary/20 w-full md:w-auto"
                                     >
                                         <HiOutlinePlus className="h-4 w-4 mr-2" />
                                         ADD NEW PRODUCT
@@ -343,7 +343,7 @@ const StockManagement = () => {
                                                             </span>
                                                         )}
                                                         {item.stock <= item.threshold && (
-                                                            <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
+                                                            <span className="text-[10px] sm:text-xs font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
                                                                 Low Stock
                                                             </span>
                                                         )}
@@ -352,7 +352,7 @@ const StockManagement = () => {
                                                         <span className="text-xs font-bold text-slate-400">Status</span>
                                                         <Badge
                                                             variant={item.status === 'In Stock' ? 'success' : 'destructive'}
-                                                            className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg mt-0.5"
+                                                            className="text-[10px] sm:text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-lg mt-0.5"
                                                         >
                                                             {item.status}
                                                         </Badge>
@@ -439,7 +439,7 @@ const StockManagement = () => {
                                                                             </span>
                                                                         )}
                                                                         {item.stock <= item.threshold && (
-                                                                            <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
+                                                                            <span className="text-[10px] sm:text-xs font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
                                                                                 Low Stock
                                                                             </span>
                                                                         )}
@@ -449,7 +449,7 @@ const StockManagement = () => {
                                                             <td className="px-6 py-5">
                                                                 <Badge
                                                                     variant={item.status === 'In Stock' ? 'success' : 'destructive'}
-                                                                    className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg"
+                                                                    className="text-[10px] sm:text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-lg"
                                                                 >
                                                                     {item.status}
                                                                 </Badge>
@@ -504,38 +504,38 @@ const StockManagement = () => {
                             {history.length === 0 ? (
                                 <div className="p-10 text-center text-slate-600 font-black uppercase tracking-widest">No history found</div>
                             ) : history.map((log) => (
-                                <div key={log._id} className="p-6 hover:bg-slate-50/50 transition-colors flex items-center justify-between group">
-                                    <div className="flex items-center gap-5">
+                                <div key={log._id} className="p-6 hover:bg-slate-50/50 transition-colors flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between group">
+                                    <div className="flex items-center gap-5 min-w-0">
                                         <div className={cn(
-                                            "h-12 w-12 rounded-2xl flex items-center justify-center shadow-sm",
+                                            "h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center shadow-sm",
                                             log.type === 'Restock' ? "bg-emerald-50 text-emerald-600" :
                                                 log.type === 'Sale' ? "bg-indigo-50 text-indigo-600" : "bg-rose-50 text-rose-600"
                                         )}>
                                             {log.type === 'Restock' ? <HiOutlinePlus className="h-6 w-6" /> :
                                                 log.type === 'Sale' ? <HiOutlineCube className="h-6 w-6" /> : <HiOutlineMinus className="h-6 w-6" />}
                                         </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="text-sm font-black text-slate-900">{log.product?.name || 'Unknown Product'}</h4>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <h4 className="text-sm font-black text-slate-900 min-w-0 truncate">{log.product?.name || 'Unknown Product'}</h4>
                                                 <Badge className={cn(
-                                                    "text-[9px] font-bold px-1.5 py-0",
+                                                    "text-[10px] sm:text-xs font-bold px-1.5 py-0 shrink-0",
                                                     log.type === 'Restock' ? "bg-emerald-100 text-emerald-700" :
                                                         log.type === 'Sale' ? "bg-indigo-100 text-indigo-700" : "bg-rose-100 text-rose-700"
                                                 )}>
                                                     {log.type.toUpperCase()}
                                                 </Badge>
                                             </div>
-                                            <p className="text-[11px] text-slate-600 font-semibold mt-1">Note: {log.note || 'N/A'}</p>
+                                            <p className="text-[11px] text-slate-600 font-semibold mt-1 truncate">Note: {log.note || 'N/A'}</p>
                                         </div>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="text-left sm:text-right shrink-0">
                                         <div className={cn(
                                             "text-lg font-black tracking-tight mb-0.5",
                                             log.quantity > 0 ? "text-emerald-600" : "text-rose-600"
                                         )}>
                                             {log.quantity > 0 ? `+${log.quantity}` : log.quantity}
                                         </div>
-                                        <div className="flex items-center justify-end gap-1.5 text-[10px] font-bold text-slate-600">
+                                        <div className="flex items-center sm:justify-end gap-1.5 text-[10px] font-bold text-slate-600">
                                             <HiOutlineCalendarDays className="h-3.5 w-3.5" />
                                             {new Date(log.createdAt).toLocaleDateString()} • {new Date(log.createdAt).toLocaleTimeString()}
                                         </div>

@@ -365,7 +365,7 @@ const AddProduct = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-xl overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-slate-100">
+      <div className="bg-white rounded-lg shadow-xl overflow-hidden flex flex-col md:flex-row min-h-0 sm:min-h-[600px] border border-slate-100">
         {/* Sidebar Tabs */}
         <div className="md:w-64 bg-slate-50/50 border-r border-slate-100 p-4 space-y-1 overflow-y-auto">
           {[
@@ -390,7 +390,7 @@ const AddProduct = () => {
 
           <div className="pt-8 px-4">
             <div className="p-4 bg-emerald-50 rounded-md border border-emerald-100">
-              <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-1">
+              <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">
                 Status
               </p>
               <select
@@ -407,7 +407,7 @@ const AddProduct = () => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 p-8 overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-8 overflow-y-auto">
           {modalTab === "general" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
               <div className="space-y-1.5 flex flex-col relative" ref={suggestionsRef}>
@@ -432,7 +432,7 @@ const AddProduct = () => {
                     <button 
                        type="button"
                        onClick={fetchMasterCatalog}
-                       className="px-2 py-1 bg-white border border-slate-200 rounded text-[9px] font-black text-slate-500 hover:text-primary hover:border-primary transition-all shadow-sm"
+                       className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] sm:text-xs font-black text-slate-500 hover:text-primary hover:border-primary transition-all shadow-sm"
                     >
                       BROWSE ALL
                     </button>
@@ -443,7 +443,7 @@ const AddProduct = () => {
                 {showSuggestions && suggestions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-2xl border border-slate-100 max-h-[280px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                     <div className="p-2 border-b border-slate-50 bg-slate-50/50">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Matches in Hub Catalog</p>
+                      <p className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest px-2">Matches in Hub Catalog</p>
                     </div>
                     {suggestions.map((p) => (
                       <button
@@ -503,33 +503,33 @@ const AddProduct = () => {
                           {masterCatalog.map(p => (
                             <div 
                               key={p._id}
-                              className="group p-3 bg-white rounded-2xl border border-slate-100 hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer flex items-center justify-between gap-4"
+                              className="group p-3 bg-white rounded-2xl border border-slate-100 hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
                               onClick={() => {
                                 selectSuggestion(p);
                                 setIsBrowseModalOpen(false);
                               }}
                             >
-                              <div className="flex items-center gap-4">
-                                <div className="h-16 w-16 min-w-[64px] rounded-xl bg-slate-50 border border-slate-100 overflow-hidden">
+                              <div className="flex items-center gap-4 min-w-0">
+                                <div className="h-16 w-16 min-w-[64px] shrink-0 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden">
                                   <img src={p.mainImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
                                 </div>
-                                <div>
-                                  <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wide">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors truncate">{p.name}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wide">
                                       {p.categoryId?.name || 'Catalog'}
                                     </span>
-                                    <span className="text-[10px] font-medium text-slate-400 italic">Code: {p.sku || 'N/A'}</span>
+                                    <span className="text-[10px] sm:text-xs font-medium text-slate-400 italic">Code: {p.sku || 'N/A'}</span>
                                   </div>
                                 </div>
                               </div>
                               
-                              <div className="flex items-center gap-6 pr-2">
-                                <div className="text-right">
-                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Reference Price</p>
+                              <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 pr-0 sm:pr-2 shrink-0">
+                                <div className="text-left sm:text-right">
+                                  <p className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest mb-0.5">Reference Price</p>
                                   <p className="text-sm font-black text-primary italic">₹{p.price}</p>
                                 </div>
-                                <button className="px-4 py-2 bg-primary text-white text-[10px] font-black uppercase rounded-xl hover:bg-primary-600 transition-all shadow-md shadow-primary/20">
+                                <button className="px-4 py-2 bg-primary text-white text-[10px] sm:text-xs font-black uppercase rounded-xl hover:bg-primary-600 transition-all shadow-md shadow-primary/20">
                                   SELL THIS
                                 </button>
                               </div>
@@ -807,7 +807,7 @@ const AddProduct = () => {
                     ) : (
                       <>
                         <HiOutlinePhoto className="h-10 w-10 text-slate-200 group-hover:text-primary transition-colors" />
-                        <p className="text-[9px] font-bold text-slate-600 mt-2 uppercase tracking-widest group-hover:text-primary">
+                        <p className="text-[10px] sm:text-xs font-bold text-slate-600 mt-2 uppercase tracking-widest group-hover:text-primary">
                           Upload Cover
                         </p>
                       </>
@@ -829,7 +829,7 @@ const AddProduct = () => {
                     Gallery Images{" "}
                     <span className="text-slate-400 normal-case tracking-normal font-semibold">({(formData.galleryItems || []).length}/5)</span>
                   </label>
-                  <div className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Select multiple</div>
+                  <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-widest">Select multiple</div>
                 </div>
 
                 {/* Drop zone */}

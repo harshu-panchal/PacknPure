@@ -204,7 +204,7 @@ const DeliveryTracking = () => {
               Purchase Request Tracking
               <Badge
                 variant="primary"
-                className="text-[9px] px-1.5 py-0 font-bold tracking-wider uppercase bg-blue-100 text-blue-700">
+                className="text-[10px] sm:text-xs px-1.5 py-0 font-bold tracking-wider uppercase bg-blue-100 text-blue-700">
                 Hub-First
               </Badge>
             </h1>
@@ -217,7 +217,7 @@ const DeliveryTracking = () => {
 
       {/* Stats Grid */}
       {loading ? (
-        <div className="min-h-[400px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+        <div className="min-h-[240px] sm:min-h-[320px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-100 shadow-sm">
           <Loader2 className="h-10 w-10 text-primary animate-spin" />
           <p className="text-slate-600 font-bold mt-4 uppercase tracking-widest text-xs">Tracking Fleet...</p>
         </div>
@@ -263,13 +263,13 @@ const DeliveryTracking = () => {
               {/* Tabs & Search */}
               <div className="border-b border-slate-100 bg-slate-50/30">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between px-6">
-                  <div className="flex items-center">
+                  <div className="flex items-center overflow-x-auto scrollbar-hide">
                     {tabs.map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={cn(
-                          "relative py-5 px-6 text-[10px] font-black uppercase tracking-widest transition-all duration-300",
+                          "relative py-5 px-6 text-[10px] font-black uppercase tracking-widest transition-all duration-300 whitespace-nowrap shrink-0",
                           activeTab === tab
                             ? "text-primary bg-white/50"
                             : "text-slate-600 hover:text-slate-700",
@@ -322,12 +322,12 @@ const DeliveryTracking = () => {
                                   className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
                                 />
                               </div>
-                              <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 h-5 w-5 sm:h-6 sm:w-6 bg-emerald-500 rounded-md border-2 border-white flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black shadow-sm">
+                              <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 h-5 w-5 sm:h-6 sm:w-6 bg-emerald-500 rounded-md border-2 border-white flex items-center justify-center text-white text-[10px] sm:text-xs font-black shadow-sm">
                                 {dlv.deliveryBoy.rating}
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-[9px] sm:text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-0.5">
+                              <p className="text-[10px] sm:text-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
                                 Pickup Partner
                               </p>
                               <h3 className="text-sm sm:text-base font-black text-slate-900 leading-none truncate">
@@ -355,7 +355,7 @@ const DeliveryTracking = () => {
                                 </span>
                                 <Badge
                                   variant={getStatusVariant(dlv.status)}
-                                  className="text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
+                                  className="text-[10px] sm:text-xs font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
                                 >
                                   {dlv.status}
                                 </Badge>
@@ -367,7 +367,7 @@ const DeliveryTracking = () => {
                               </h4>
                             </div>
                             <div className="sm:text-right shrink-0">
-                              <p className="text-[9px] sm:text-xs font-black text-slate-600 uppercase tracking-widest">
+                              <p className="text-[10px] sm:text-xs font-black text-slate-600 uppercase tracking-widest">
                                 Order Date & Time
                               </p>
                               <p className="text-xs sm:text-sm font-black text-primary tracking-tight">
@@ -378,7 +378,7 @@ const DeliveryTracking = () => {
 
                           <div className="bg-slate-50/50 p-3 sm:p-4 rounded-lg border border-slate-100/50 min-w-0">
                             <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
-                              <p className="text-[9px] sm:text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                              <p className="text-[10px] sm:text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
                                 <HiOutlineMapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary shrink-0" />
                                 Destination Address
                               </p>

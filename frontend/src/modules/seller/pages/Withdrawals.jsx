@@ -121,7 +121,14 @@ const Withdrawals = () => {
     };
 
     if (loading) {
-        return <div className="flex items-center justify-center h-screen font-black text-slate-600">LOADING WITHDRAWALS...</div>;
+        return (
+            <div className="space-y-8 pb-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="flex flex-col items-center justify-center min-h-[40vh] font-black text-slate-600 uppercase tracking-widest text-xs">
+                    <Clock className="h-8 w-8 text-indigo-400 animate-pulse mb-3" />
+                    Loading Withdrawals...
+                </div>
+            </div>
+        );
     }
 
     const balances = {
@@ -146,7 +153,7 @@ const Withdrawals = () => {
                     <button
                         onClick={() => isVerified ? setIsModalOpen(true) : toast.error("Account pending approval. You cannot request withdrawals yet.")}
                         className={cn(
-                            "px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl active:scale-95 flex items-center gap-2 group",
+                            "w-full sm:w-auto px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2 group",
                             !isVerified && "opacity-50 cursor-not-allowed grayscale"
                         )}
                     >
@@ -207,7 +214,51 @@ const Withdrawals = () => {
                             />
                         </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    {/* Mobile Cards */}
+                    <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
+                        {filteredHistory.length === 0 ? (
+                            <p className="py-8 text-center text-slate-600 text-sm font-medium">
+                                {withdrawalHistory.length === 0 ? "No withdrawal requests yet." : "No matches for your search."}
+                            </p>
+                        ) : paginatedHistory.map((item, idx) => (
+                            <div key={item.id || item.ref || item.reference || `wd-${idx}`} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col gap-3">
+                                <div className="flex justify-between items-start gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black text-slate-900">{item.id}</p>
+                                        <p className="text-xs font-bold text-slate-600 mt-0.5 uppercase tracking-tighter">{item.date} • {item.time}</p>
+                                    </div>
+                                    <Badge
+                                        variant={item.status === 'Settled' ? 'success' : (item.status === 'Pending' || item.status === 'Processing') ? 'warning' : 'danger'}
+                                        className="text-[10px] sm:text-xs font-black px-2.5 py-0.5 uppercase tracking-widest rounded-lg shrink-0"
+                                    >
+                                        {item.status === 'Settled' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : (item.status === 'Pending' || item.status === 'Processing') ? <Clock className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                                        {item.status}
+                                    </Badge>
+                                </div>
+                                <div className="flex justify-between items-center border-t border-slate-50 pt-3">
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">Amount</span>
+                                        <span className="text-base font-black text-slate-900">₹{Math.abs(item.amount).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">Method</span>
+                                        <span className="text-xs font-bold text-slate-600">{item.customer}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDownloadReceipt(item)}
+                                            className="text-[10px] font-black text-indigo-500 hover:text-indigo-600 mt-1 uppercase tracking-widest flex items-center gap-1"
+                                        >
+                                            Receipt <Download className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                </div>
+                                {item.reason && <p className="text-[10px] sm:text-xs text-rose-500 font-bold uppercase italic">{item.reason}</p>}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left min-w-[640px]">
                             <thead>
                                 <tr className="bg-slate-50/50">
@@ -236,12 +287,12 @@ const Withdrawals = () => {
                                         <td className="px-8 py-5 text-center">
                                             <Badge
                                                 variant={item.status === 'Settled' ? 'success' : (item.status === 'Pending' || item.status === 'Processing') ? 'warning' : 'danger'}
-                                                className="text-[8px] font-black px-2.5 py-0.5 uppercase tracking-widest rounded-lg"
+                                                className="text-[10px] sm:text-xs font-black px-2.5 py-0.5 uppercase tracking-widest rounded-lg"
                                             >
                                                 {item.status === 'Settled' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : (item.status === 'Pending' || item.status === 'Processing') ? <Clock className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
                                                 {item.status}
                                             </Badge>
-                                            {item.reason && <p className="text-[9px] text-rose-500 font-bold mt-1 uppercase italic">{item.reason}</p>}
+                                            {item.reason && <p className="text-[10px] sm:text-xs text-rose-500 font-bold mt-1 uppercase italic">{item.reason}</p>}
                                         </td>
                                         <td className="px-8 py-5 text-right">
                                             <p className="text-xs font-bold text-slate-600">{item.customer}</p>

@@ -71,16 +71,16 @@ const Earnings = () => {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen font-black text-slate-600">LOADING EARNINGS...</div>;
+    return <div className="flex items-center justify-center min-h-[40vh] font-black text-slate-600">LOADING EARNINGS...</div>;
   }
   return (
     <div className="space-y-8 pb-16">
       <BlurFade delay={0.1}>
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800 hidden md:block">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-semibold text-gray-800">
             Earnings Overview
           </h2>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => {
                 const ledger = Array.isArray(data?.ledger) ? data.ledger : [];
@@ -183,7 +183,7 @@ const Earnings = () => {
               Monthly Revenue Performance
             </h3>
           </div>
-          <div className="h-[300px] w-full min-h-[200px] flex items-center justify-center">
+          <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full min-h-[200px] flex items-center justify-center">
             {(Array.isArray(data?.monthlyChart) ? data.monthlyChart : []).length === 0 ? (
               <p className="text-slate-600 text-sm font-medium">No monthly revenue data yet.</p>
             ) : (
@@ -300,7 +300,7 @@ const Earnings = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8">
                 <button
                   onClick={() => setIsWithdrawModalOpen(false)}
                   className="py-3 rounded-lg font-black text-slate-600 hover:bg-slate-50 transition-colors">

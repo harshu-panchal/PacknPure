@@ -321,7 +321,7 @@ const ProcurementRequests = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <span className="bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] uppercase tracking-tighter">PR Task</span>
+                      <span className="bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter">PR Task</span>
                       {row.requestId}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
@@ -340,7 +340,7 @@ const ProcurementRequests = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={statusVariant(row.status)} className="font-black text-[10px] uppercase">{row.status.replace('_', ' ')}</Badge>
+                    <Badge variant={statusVariant(row.status)} className="font-black text-[10px] sm:text-xs uppercase">{row.status.replace('_', ' ')}</Badge>
                   </div>
                 </div>
 
@@ -373,7 +373,7 @@ const ProcurementRequests = () => {
                               {lineStatus}
                             </Badge>
                           </div>
-                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 sm:flex sm:flex-wrap text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
                             <span>Requested: <span className="text-indigo-600">{requestedQty} {item.unit}</span></span>
                             <span>Committed: <span className="text-emerald-600">{item.committedQty || 0}</span></span>
                             <span>Remaining: <span className="text-rose-500">{item.remainingQty ?? 0}</span></span>
@@ -381,7 +381,7 @@ const ProcurementRequests = () => {
                           </div>
                           {lineRespondable && (
                             <div className="mt-3 flex flex-wrap items-end gap-2">
-                              <div className="w-28">
+                              <div className="w-full sm:w-28">
                                 <Input
                                   label="Accept Qty"
                                   value={commitMap[row._id]?.[key] ?? String(requestedQty)}
@@ -498,7 +498,7 @@ const ProcurementRequests = () => {
                 {/* Seller never verifies Pickup OTP — only reads status + OTP aloud */}
                 {row.pickupAssigned || row.pickupPartner?.name ? (
                   <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                    <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-indigo-600">
                       Pickup Partner Assigned
                     </p>
                     <p className="text-sm font-bold text-slate-800">
@@ -512,10 +512,10 @@ const ProcurementRequests = () => {
                     </p>
                     {row.status === "pickup_assigned" && row.pickupOtp ? (
                       <div className="rounded-lg bg-white px-3 py-2 border border-indigo-100">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-400">
                           Tell this OTP to Pickup Partner
                         </p>
-                        <p className="text-2xl font-black tracking-[0.35em] text-slate-900">
+                        <p className="text-xl sm:text-2xl font-black tracking-[0.2em] sm:tracking-[0.35em] text-slate-900">
                           {row.pickupOtp}
                         </p>
                       </div>

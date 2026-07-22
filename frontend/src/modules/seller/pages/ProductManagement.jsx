@@ -434,7 +434,7 @@ const ProductManagement = () => {
           <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">My Products</h2>
           <p className="text-sm sm:text-base text-slate-500 mt-1">Manage supply price and stock for your listings.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2">
           <ShimmerButton onClick={exportProducts} className="shadow-2xl" background="white" color="black">
             <span className="whitespace-pre-wrap text-center text-sm font-semibold text-slate-900 flex items-center gap-2">
               <HiOutlineArrowPath className="h-4 w-4" /> Export CSV
@@ -759,12 +759,12 @@ const ProductManagement = () => {
               )}
 
               {/* Live summary — variant-wise totals */}
-              <div className="px-6 py-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border-b border-slate-100 grid grid-cols-3 gap-3">
-                <div className="text-center">
+              <div className="px-6 py-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="text-center sm:border-r-0 border-b sm:border-b-0 border-slate-200/80 pb-3 sm:pb-0">
                   <p className="text-sm font-medium text-slate-500">Variants</p>
                   <p className="text-base font-semibold text-slate-900">{formSummary.variantCount}</p>
                 </div>
-                <div className="text-center border-x border-slate-200/80">
+                <div className="text-center sm:border-x border-slate-200/80 pb-3 sm:pb-0">
                   <p className="text-sm font-medium text-slate-500">Supply prices</p>
                   <p className="text-base font-semibold text-emerald-700">{formSummary.priceLabel}</p>
                 </div>
@@ -838,7 +838,7 @@ const ProductManagement = () => {
                                       <img src={m.mainImage} alt="" className="h-8 w-8 rounded object-cover" />
                                       <div>
                                         <p className="text-xs font-bold text-white">{m.name}</p>
-                                        <p className="text-[9px] text-slate-500 uppercase tracking-tighter">{m.categoryId?.name || 'Master'}</p>
+                                        <p className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-tighter">{m.categoryId?.name || 'Master'}</p>
                                       </div>
                                     </button>
                                   ))}
@@ -992,7 +992,7 @@ const ProductManagement = () => {
                       </div>
 
                       {!isCatalogLocked && (
-                        <div className="grid grid-cols-2 gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
                           <div>
                             <p className="text-sm font-medium text-amber-800">Default unit (product)</p>
                             <select
@@ -1190,8 +1190,8 @@ const ProductManagement = () => {
               Total stock: {totalVariantStock(viewingVariants?.variants || [])}
             </span>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-slate-100 shadow-sm bg-white">
-            <table className="w-full text-left">
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 shadow-sm bg-white">
+            <table className="w-full text-left min-w-[480px]">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Variant</th>

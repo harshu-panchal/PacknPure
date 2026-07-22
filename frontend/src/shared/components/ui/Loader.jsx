@@ -16,19 +16,28 @@ const Loader = ({ size = 'md', fullScreen = false, className }) => {
                 sizeClasses[size],
                 className
             )}
+            aria-hidden
         />
     );
 
     if (fullScreen) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div
+                className="fixed inset-0 z-shell-modal flex items-center justify-center bg-background/80 backdrop-blur-sm"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading"
+            >
                 {spinner}
             </div>
         );
     }
 
-    return spinner;
+    return (
+        <span role="status" aria-live="polite" aria-label="Loading" className="inline-flex">
+            {spinner}
+        </span>
+    );
 };
 
 export default Loader;
-

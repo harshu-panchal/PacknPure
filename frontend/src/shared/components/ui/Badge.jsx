@@ -16,7 +16,7 @@ const Badge = ({ children, variant = 'gray', className, ...props }) => {
         <ShadcnBadge
             variant="outline"
             className={cn(
-                'text-[10px] font-medium transition-colors px-2 py-0.5',
+                'text-xs font-medium transition-colors px-2.5 py-1',
                 variantStyles[variant] || variantStyles.gray,
                 className
             )}
@@ -28,4 +28,3 @@ const Badge = ({ children, variant = 'gray', className, ...props }) => {
 };
 
 export default Badge;
-

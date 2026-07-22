@@ -149,7 +149,7 @@ const Returns = () => {
                             Return Requests
                             <Badge
                                 variant="secondary"
-                                className="text-[10px] px-1.5 py-0 font-bold tracking-widest uppercase"
+                                className="text-xs px-1.5 py-0 font-bold tracking-widest uppercase"
                             >
                                 New
                             </Badge>

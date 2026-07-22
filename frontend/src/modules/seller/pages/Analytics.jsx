@@ -218,7 +218,7 @@ const Analytics = () => {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen font-black text-slate-600">LOADING ANALYTICS...</div>;
+    return <div className="flex items-center justify-center min-h-[40vh] font-black text-slate-600">LOADING ANALYTICS...</div>;
   }
 
   return (
@@ -231,7 +231,7 @@ const Analytics = () => {
               Advanced Analytics
               <Badge
                 variant="success"
-                className="text-[9px] px-1.5 py-0 font-bold tracking-wider uppercase bg-emerald-100 text-emerald-700">
+                className="text-[10px] sm:text-xs px-1.5 py-0 font-bold tracking-wider uppercase bg-emerald-100 text-emerald-700">
                 Real-time Insights
               </Badge>
             </h1>
@@ -341,7 +341,7 @@ const Analytics = () => {
         {/* Sales Performance Chart */}
         <BlurFade delay={0.4} className="lg:col-span-2">
           <Card className="border-none shadow-xl shadow-slate-200/50 rounded-3xl p-6 bg-white overflow-hidden group h-full">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 flex-wrap">
               <div>
                 <h3 className="text-lg font-black text-slate-900">
                   Revenue & Trends
@@ -350,7 +350,7 @@ const Analytics = () => {
                   Performance Insights
                 </p>
               </div>
-              <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
+              <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100 shrink-0">
                 {["Daily", "Weekly", "Monthly"].map((range) => (
                   <button
                     key={range}
@@ -366,7 +366,7 @@ const Analytics = () => {
                 ))}
               </div>
             </div>
-            <div className="h-[400px] w-full mt-4">
+            <div className="h-[240px] sm:h-[320px] lg:h-[400px] w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={statsData?.salesTrend || []}
@@ -454,7 +454,7 @@ const Analytics = () => {
                 Inventory Distribution
               </p>
             </div>
-            <div className="h-[350px] w-full flex items-center justify-center">
+            <div className="h-[220px] sm:h-[280px] lg:h-[350px] w-full flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart
                   cx="50%"
@@ -483,7 +483,7 @@ const Analytics = () => {
                 </RadarChart>
               </ResponsiveContainer>
             </div>
-            <div className="grid grid-cols-3 gap-2 w-full mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full mt-4">
               {(statsData?.categoryMix || []).slice(0, 3).map((cat, idx) => (
                 <div
                   key={idx}
@@ -584,7 +584,7 @@ const Analytics = () => {
             </div>
 
             <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="h-[250px] w-full md:w-1/2">
+              <div className="h-[180px] sm:h-[220px] lg:h-[250px] w-full md:w-1/2">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -634,7 +634,7 @@ const Analytics = () => {
               </div>
             </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-slate-50 pt-8">
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-50 pt-8">
               <div className="text-center">
                 <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2">
                   <HiOutlineMapPin className="h-5 w-5" />
@@ -694,7 +694,7 @@ const Analytics = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 bg-emerald-50 rounded-2xl">
                 <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
                   Revenue

@@ -29,7 +29,11 @@ const Button = ({
 
     return (
         <ShadcnButton
-            className={cn(className)}
+            className={cn(
+                size !== 'sm' && 'min-h-10',
+                size === 'sm' && 'min-h-9',
+                className,
+            )}
             variant={variantMap[variant] || 'default'}
             size={sizeMap[size] || 'default'}
             disabled={disabled || isLoading}

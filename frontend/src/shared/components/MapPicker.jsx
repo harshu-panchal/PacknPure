@@ -15,7 +15,7 @@ import Input from "./ui/Input";
 const libraries = ["places", "geometry"];
 const mapContainerStyle = {
   width: "100%",
-  height: "400px",
+  height: "100%",
 };
 
 const defaultCenter = {
@@ -397,12 +397,12 @@ const MapPicker = ({
         </div>
 
         <div
-          className="relative overflow-hidden rounded-xl border border-gray-200 shadow-inner"
+          className="relative h-[240px] sm:h-[320px] md:h-[400px] overflow-hidden rounded-xl border border-gray-200 shadow-inner"
           data-lenis-prevent
           data-lenis-prevent-touch="true"
         >
           {!isLoaded ? (
-            <div className="flex h-[400px] items-center justify-center bg-gray-50">
+            <div className="flex h-full items-center justify-center bg-gray-50">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (

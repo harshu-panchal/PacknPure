@@ -190,7 +190,7 @@ const Dashboard = () => {
   };
 
   if (loadingOrStats) {
-    return <div className="flex items-center justify-center h-screen font-bold text-slate-600">Updating Dashboard...</div>;
+    return <div className="flex items-center justify-center min-h-[40vh] font-bold text-slate-600">Updating Dashboard...</div>;
   }
 
   return (
@@ -282,7 +282,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 gap-6">
         {/* Revenue Chart */}
         <Card title="Supply Value Trend" subtitle="Last 7 days performance" className="w-full">
-          <div className="h-[300px] min-h-[280px] w-full mt-4">
+          <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
@@ -339,7 +339,7 @@ const Dashboard = () => {
         actions={
           <button
             onClick={() => navigate("/seller/procurement")}
-            className="text-sm font-medium text-primary hover:text-primary/80 flex items-center gap-1"
+            className="text-sm font-medium text-primary hover:text-primary/80 flex items-center gap-1 flex-wrap"
           >
             View All
             <ArrowUpRight className="h-4 w-4" />

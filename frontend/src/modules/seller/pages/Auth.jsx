@@ -252,7 +252,7 @@ const Auth = () => {
                         <button 
                             type="button"
                             onClick={(e) => handleRemoveFile(name, e)}
-                            className="absolute top-2 right-2 h-6 w-6 bg-white/90 backdrop-blur-sm hover:bg-rose-50 hover:text-rose-600 text-slate-500 rounded-full flex items-center justify-center transition-all shadow-sm opacity-0 group-hover/preview:opacity-100 z-10"
+                            className="absolute top-2 right-2 h-6 w-6 bg-white/90 backdrop-blur-sm hover:bg-rose-50 hover:text-rose-600 text-slate-500 rounded-full flex items-center justify-center transition-all shadow-sm opacity-100 sm:opacity-0 sm:group-hover/preview:opacity-100 z-10"
                         >
                             <X size={14} />
                         </button>
@@ -274,10 +274,10 @@ const Auth = () => {
             <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-emerald-100/30 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
 
             <div
-                className="w-full max-w-6xl bg-white rounded-[40px] shadow-[0_32px_120px_rgba(0,0,0,0.08)] flex flex-col md:flex-row relative z-10 border border-white my-10 min-h-[600px]"
+                className="w-full max-w-6xl bg-white rounded-[40px] shadow-[0_32px_120px_rgba(0,0,0,0.08)] flex flex-col md:flex-row relative z-10 border border-white my-10 min-h-0 sm:min-h-[600px]"
             >
                 {/* Left Side: Form Section */}
-                <div className="w-full md:w-1/2 p-8 lg:p-16 flex flex-col bg-white relative z-20">
+                <div className="w-full md:w-1/2 p-4 sm:p-8 lg:p-16 flex flex-col bg-white relative z-20">
                     <div className="flex-1">
                         <div className="mb-10 text-center md:text-left">
                             <div className="flex items-center justify-center md:justify-start gap-3 mb-6 group cursor-pointer">
@@ -299,7 +299,7 @@ const Auth = () => {
                                     <button onClick={() => setForgotPasswordStep(0)} className="mb-4 text-xs font-bold text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
                                         <ArrowLeft size={14} /> Back to Login
                                     </button>
-                                    <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight leading-tight">
+                                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight leading-tight">
                                         {forgotPasswordStep === 1 ? 'Reset Password' : 'Verify & Reset'}
                                     </h1>
                                     <p className="text-slate-400 font-medium text-base">
@@ -308,7 +308,7 @@ const Auth = () => {
                                 </>
                             ) : (
                                 <>
-                                    <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight leading-tight">
+                                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight leading-tight">
                                         {isLogin ? 'Welcome Back' : 'Join Our Network'}
                                     </h1>
                                     <p className="text-slate-400 font-medium text-base">
@@ -382,7 +382,7 @@ const Auth = () => {
                                     exit={{ opacity: 0, height: 0 }}
                                     className="space-y-4 overflow-hidden"
                                 >
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 ml-1">Owner Name</label>
                                             <div className="relative group">
@@ -399,7 +399,7 @@ const Auth = () => {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 ml-1">Phone Number</label>
                                             <div className="relative group">
@@ -436,7 +436,7 @@ const Auth = () => {
                                             <input type="text" readOnly onClick={() => setIsLocationModalOpen(true)} required value={formData.address} placeholder="Search or detect your location..." className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-100 transition-all cursor-pointer" />
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-3 pt-1">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                             <input type="text" name="lat" required readOnly value={formData.lat} placeholder="Latitude" className="w-full px-5 py-3 bg-slate-50 border-none rounded-[16px] text-xs font-bold text-slate-500 outline-none" />
                                             <input type="text" name="lng" required readOnly value={formData.lng} placeholder="Longitude" className="w-full px-5 py-3 bg-slate-50 border-none rounded-[16px] text-xs font-bold text-slate-500 outline-none" />
                                         </div>
@@ -451,7 +451,7 @@ const Auth = () => {
                                         <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3 block ml-1 flex items-center gap-2">
                                             <FileText size={14} /> Verification Documents
                                         </label>
-                                        <div className="grid grid-cols-3 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                             <FileInput name="tradeLicense" label="Trade License" />
                                             <FileInput name="gstCertificate" label="GST Certificate" />
                                             <FileInput name="idProof" label="ID Proof" />

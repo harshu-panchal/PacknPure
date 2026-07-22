@@ -333,8 +333,8 @@ const SellerProfile = () => {
 
         {/* Delivery area */}
         <Card className="border-none p-5 shadow-sm ring-1 ring-slate-100 lg:col-span-1">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
               <h3 className="text-sm font-bold text-slate-900">Delivery area</h3>
               <p className="mt-0.5 text-xs text-slate-500">
                 Pin your storefront and set how far you deliver.

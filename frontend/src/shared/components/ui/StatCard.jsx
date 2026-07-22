@@ -17,20 +17,28 @@ const StatCard = ({
     return (
         <div 
             onClick={onClick}
+            onKeyDown={onClick ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onClick(e);
+                }
+            } : undefined}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
             className={cn(
-                "ds-stat-card group",
-                onClick && "cursor-pointer",
+                "ds-stat-card group min-w-0",
+                onClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
                 className
             )}
         >
-            <div className="flex flex-col space-y-3">
-                <div className="flex justify-between items-start">
-                    <div className={cn("ds-stat-card-icon", bg)}>
+            <div className="flex flex-col space-y-3 min-w-0">
+                <div className="flex justify-between items-start gap-2">
+                    <div className={cn("ds-stat-card-icon flex-shrink-0", bg)}>
                         {Icon && <Icon className={cn("ds-icon-lg", color)} strokeWidth={2.5} />}
                     </div>
                     {trend && (
                         <div className={cn(
-                            "ds-stat-card-trend",
+                            "ds-stat-card-trend flex-shrink-0",
                             trendDirection === 'up' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
                         )}>
                             {trendDirection === 'up' ? (
@@ -42,10 +50,10 @@ const StatCard = ({
                         </div>
                     )}
                 </div>
-                <div>
-                    <p className="ds-caption mb-1.5">{label}</p>
-                    <p className="ds-stat-large">{value}</p>
-                    {description && <p className="ds-description mt-1">{description}</p>}
+                <div className="min-w-0">
+                    <p className="ds-caption mb-1.5 truncate">{label}</p>
+                    <p className="ds-stat-large break-words">{value}</p>
+                    {description && <p className="ds-description mt-1 line-clamp-2">{description}</p>}
                 </div>
             </div>
         </div>

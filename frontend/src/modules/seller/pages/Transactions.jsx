@@ -138,16 +138,16 @@ const Transactions = () => {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen font-black text-slate-600">LOADING TRANSACTIONS...</div>;
+    return <div className="flex items-center justify-center min-h-[40vh] font-black text-slate-600">LOADING TRANSACTIONS...</div>;
   }
 
   return (
     <div className="space-y-8 pb-16">
       <BlurFade delay={0.1}>
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black text-slate-900 flex flex-wrap items-center gap-2">
               Transaction Ledger
               <Badge
                 variant="primary"
@@ -159,7 +159,7 @@ const Transactions = () => {
               Keep track of all financial movements, payouts, and settlements.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <Button
               onClick={() => {
                 setIsDownloading(true);
@@ -193,7 +193,7 @@ const Transactions = () => {
                   setIsDownloading(false);
                 }
               }}
-              className="rounded-lg px-4 py-2 shadow-lg shadow-primary/20 disabled:opacity-50"
+              className="rounded-lg px-4 py-2 shadow-lg shadow-primary/20 disabled:opacity-50 w-full sm:w-auto whitespace-nowrap"
               disabled={isDownloading || filteredTransactions.length === 0}>
               <HiOutlineDocumentText className="h-4 w-4 mr-2" />
               {isDownloading ? "DOWNLOADING..." : "DOWNLOAD STATEMENTS"}
@@ -236,20 +236,22 @@ const Transactions = () => {
         <Card className="border-none shadow-xl shadow-slate-200/50 overflow-hidden rounded-lg p-0 bg-white">
           {/* Toolbar */}
           <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
-            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0">
-              {["All", "Order Payment", "Withdrawal", "Refund"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    "px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
-                    activeTab === tab
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-600 hover:text-slate-700",
-                  )}>
-                  {tab === "Order Payment" ? "Payments" : tab}
-                </button>
-              ))}
+            <div className="w-full md:w-auto overflow-x-auto">
+              <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-max min-w-full md:min-w-0">
+                {["All", "Order Payment", "Withdrawal", "Refund"].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
+                      activeTab === tab
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-700",
+                    )}>
+                    {tab === "Order Payment" ? "Payments" : tab}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="relative w-full md:w-80">
               <HiOutlineMagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />

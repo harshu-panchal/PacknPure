@@ -3,8 +3,8 @@ import NotificationCenter from "@core/components/notifications/NotificationCente
 import { sellerApi } from "../services/sellerApi";
 
 const Notifications = () => (
-  <div className="min-h-screen bg-slate-50 px-4 py-6">
-    <div className="mx-auto max-w-6xl">
+  <div className="min-h-app bg-slate-50 px-0 sm:px-4 py-2 sm:py-6">
+    <div className="mx-auto max-w-6xl min-w-0">
       <NotificationCenter
         api={sellerApi}
         title="Seller Notifications"

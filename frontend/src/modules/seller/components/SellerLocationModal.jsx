@@ -279,7 +279,7 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full max-w-[500px] bg-slate-50 rounded-3xl max-h-[85vh] overflow-y-auto outline-none shadow-2xl pb-6 pointer-events-auto"
+              className="w-full max-w-[500px] bg-slate-50 rounded-3xl max-h-[min(85dvh,85vh)] overflow-y-auto outline-none shadow-2xl pb-6 pointer-events-auto"
             >
             {/* Header */}
             <div className="sticky top-0 bg-slate-50 px-6 pt-6 pb-4 flex flex-col gap-4 z-20">
@@ -288,8 +288,10 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
                   Find Shop Location
                 </h2>
                 <button
+                  type="button"
                   onClick={onClose}
-                  className="h-10 w-10 bg-slate-200/50 hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors">
+                  aria-label="Close"
+                  className="min-h-11 min-w-11 h-11 w-11 bg-slate-200/50 hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors">
                   <X size={20} className="text-slate-600" />
                 </button>
               </div>
@@ -304,6 +306,7 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
                 </div>
                 <input
                   type="text"
+                  aria-label="Search location"
                   placeholder="Search for area, street name.."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
