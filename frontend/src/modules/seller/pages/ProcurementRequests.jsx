@@ -71,7 +71,6 @@ const ProcurementRequests = () => {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("all");
   const [rows, setRows] = useState([]);
-  const [otpMap, setOtpMap] = useState({});
   const [notesMap, setNotesMap] = useState({});
   const [commitMap, setCommitMap] = useState({});
   const [attachmentMap, setAttachmentMap] = useState({});
@@ -110,18 +109,6 @@ const ProcurementRequests = () => {
       };
     }
   }, []);
-
-  useEffect(() => {
-    setOtpMap((prev) => {
-      const next = { ...prev };
-      for (const row of rows) {
-        if (!next[row._id] && row.pickupOtp) {
-          next[row._id] = String(row.pickupOtp);
-        }
-      }
-      return next;
-    });
-  }, [rows]);
 
   useEffect(() => {
     setCommitMap((prev) => {
@@ -506,55 +493,51 @@ const ProcurementRequests = () => {
                     }
                     placeholder="Attachment URL (optional)"
                   />
-                  <div className="flex gap-2">
-                    <Input
-                      value={otpMap[row._id] || ""}
-                      onChange={(e) =>
-                        setOtpMap((prev) => ({
-                          ...prev,
-                          [row._id]: e.target.value.replace(/\D/g, "").slice(0, 6),
-                        }))
-                      }
-                      placeholder="Pickup OTP"
-                    />
-                    <Button
-                      variant="secondary"
-                      isLoading={savingId === `${row._id}:handover`}
-                      onClick={() =>
-                        act(
-                          `${row._id}:handover`,
-                          () =>
-                            sellerApi.confirmPurchaseHandover(row._id, {
-                              otp: otpMap[row._id],
-                              notes: notesMap[row._id] || "",
-                            }),
-                          "Handover OTP verified",
-                        )
-                      }
-                      disabled={row.status !== "pickup_assigned"}
-                    >
-                      Verify
-                    </Button>
-                  </div>
                 </div>
 
-                {row.pickupPartner?.name || row.pickupPartner?.phone ? (
-                  <p className="mt-2 text-xs font-semibold text-slate-600">
-                    Pickup Partner: {row.pickupPartner?.name || "N/A"}{" "}
-                    {row.pickupPartner?.phone ? `(${row.pickupPartner.phone})` : ""}
-                  </p>
+                {/* Seller never verifies Pickup OTP — only reads status + OTP aloud */}
+                {row.pickupAssigned || row.pickupPartner?.name ? (
+                  <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                      Pickup Partner Assigned
+                    </p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {row.pickupPartner?.name || row.pickupPartnerName || "Pickup Partner"}
+                    </p>
+                    <p className="text-xs font-semibold text-slate-600">
+                      {row.pickupStatusLabel ||
+                        (row.status === "pickup_assigned"
+                          ? "Waiting For Pickup"
+                          : row.status?.replace(/_/g, " "))}
+                    </p>
+                    {row.status === "pickup_assigned" && row.pickupOtp ? (
+                      <div className="rounded-lg bg-white px-3 py-2 border border-indigo-100">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Tell this OTP to Pickup Partner
+                        </p>
+                        <p className="text-2xl font-black tracking-[0.35em] text-slate-900">
+                          {row.pickupOtp}
+                        </p>
+                      </div>
+                    ) : row.status === "pickup_assigned" ? (
+                      <p className="text-xs font-semibold text-amber-700">
+                        Waiting for pickup partner to generate OTP…
+                      </p>
+                    ) : null}
+                    <p className="text-[10px] font-semibold text-slate-400">
+                      Phone hidden · Masked calling coming soon
+                    </p>
+                  </div>
                 ) : null}
+
                 {row.timeline?.length > 0 && (
                   <div className="mt-4 rounded-xl bg-slate-50 p-3 border border-slate-100">
-                    <p className="text-xs font-bold text-slate-500 uppercase mb-2">Request history</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+                      Pickup Status Timeline
+                    </p>
                     <PurchaseRequestTimeline timeline={row.timeline} compact />
                   </div>
                 )}
-                {row.status === "pickup_assigned" && row.pickupOtp ? (
-                  <p className="mt-2 text-xs font-semibold text-slate-600">
-                    Current Pickup OTP: {row.pickupOtp}
-                  </p>
-                ) : null}
               </div>
             ))}
           </div>

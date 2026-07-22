@@ -400,7 +400,9 @@ export const getMyPickupAssignments = async (req, res) => {
       vendor: {
         id: row.vendorId?._id || row.vendorId || null,
         name: row.vendorId?.shopName || row.vendorId?.name || "Vendor",
-        phone: row.vendorId?.phone || "",
+        // Privacy: never expose seller phone to pickup partner
+        phone: "",
+        maskedCallingReady: true,
         location: row.vendorId?.location || null,
       },
       products: (row.items || [])
@@ -415,11 +417,13 @@ export const getMyPickupAssignments = async (req, res) => {
         unitCost: Number(i.vendorUnitCost || 0),
       })),
       pickupOtpRequired: row.status === "pickup_assigned",
-      pickupOtp:
+      // Partner must enter OTP from seller — do not return plaintext OTP in list
+      pickupOtp: "",
+      pickupOtpGenerated: Boolean(
         row.status === "pickup_assigned" &&
-        (!row.pickupOtpExpiresAt || new Date(row.pickupOtpExpiresAt) > new Date())
-          ? String(row.pickupOtpCode || "")
-          : "",
+          row.pickupOtpHash &&
+          (!row.pickupOtpExpiresAt || new Date(row.pickupOtpExpiresAt) > new Date()),
+      ),
       pickupOtpExpiresAt: row.pickupOtpExpiresAt || null,
       notes: row.notes || "",
       eta: row.eta || null,
@@ -438,6 +442,160 @@ export const getMyPickupAssignments = async (req, res) => {
   }
 };
 
+/**
+ * Partner generates / refreshes handover OTP after parcel photo.
+ * Dev: always stores and returns 1234. Production: random OTP, provider-ready (no SMS yet).
+ */
+export const generateAssignmentPickupOtp = async (req, res) => {
+  try {
+    const partnerId = await resolvePickupPartnerId(req.user);
+    if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
+    const { id } = req.params;
+    const { vendorImageUrl } = req.body || {};
+
+    if (!vendorImageUrl || !String(vendorImageUrl).trim()) {
+      return handleResponse(res, 400, "Parcel image is required before generating OTP");
+    }
+
+    const pr = await PurchaseRequest.findOne({
+      _id: id,
+      pickupPartnerId: partnerId,
+      status: "pickup_assigned",
+    });
+    if (!pr) return handleResponse(res, 404, "Pickup assignment not found");
+
+    const otp =
+      process.env.NODE_ENV !== "production"
+        ? "1234"
+        : String(Math.floor(1000 + Math.random() * 9000));
+
+    pr.pickupOtpCode = otp;
+    pr.pickupOtpHash = hashPickupOtp(otp);
+    pr.pickupOtpExpiresAt = new Date(
+      Date.now() + (await getPickupOtpTimeoutMinutes()) * 60 * 1000,
+    );
+    pr.pickupOtpVerifiedAt = undefined;
+    pr.pickupProof = {
+      ...(pr.pickupProof?.toObject?.() || pr.pickupProof || {}),
+      vendorImageUrl: String(vendorImageUrl).trim(),
+      prePickupImageAt: new Date(),
+    };
+    await savePurchaseRequest(pr);
+
+    // Notify seller that OTP is ready (seller reads aloud; never verifies)
+    try {
+      const { createNotification } = await import("../services/notificationService.js");
+      if (pr.vendorId) {
+        await createNotification({
+          recipient: pr.vendorId,
+          recipientModel: "Seller",
+          title: "Pickup OTP Ready",
+          message: `Share the pickup OTP with the pickup partner for request ${pr.requestId}.`,
+          type: "order",
+          data: { purchaseRequestId: String(pr._id), requestId: pr.requestId },
+        });
+      }
+    } catch (notifyErr) {
+      console.warn("[generateAssignmentPickupOtp] Notify failed:", notifyErr.message);
+    }
+
+    const payload = {
+      expiresAt: pr.pickupOtpExpiresAt,
+      pickupOtpGenerated: true,
+    };
+    if (process.env.NODE_ENV !== "production") {
+      payload.otp = "1234";
+      payload.devMode = true;
+    }
+
+    return handleResponse(res, 200, "OTP generated successfully", payload);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Live GPS heartbeat for pickup partner.
+ * Emits to seller + admin rooms. Future-ready for customer tracking.
+ */
+export const updatePickupPartnerLiveLocation = async (req, res) => {
+  try {
+    const partnerId = await resolvePickupPartnerId(req.user);
+    if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
+
+    const { lat, lng, heading, speed, assignmentId } = req.body || {};
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return handleResponse(res, 400, "Valid lat/lng required");
+    }
+
+    const partner = await PickupPartner.findByIdAndUpdate(
+      partnerId,
+      {
+        $set: {
+          location: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          lastLocationAt: new Date(),
+        },
+      },
+      { new: true },
+    ).select("name location");
+
+    if (!partner) return handleResponse(res, 404, "Pickup partner not found");
+
+    const locationPayload = {
+      partnerId: String(partnerId),
+      partnerName: partner.name || "Pickup Partner",
+      lat: latitude,
+      lng: longitude,
+      heading: heading != null ? Number(heading) : null,
+      speed: speed != null ? Number(speed) : null,
+      assignmentId: assignmentId || null,
+      at: new Date().toISOString(),
+      // Future hooks — no real masked calling / customer track yet
+      trackingAudience: ["seller", "admin", "customer_future"],
+    };
+
+    try {
+      const { getIO } = await import("../socket/socketManager.js");
+      const io = getIO();
+      if (io) {
+        io.to("admin:orders").emit("pickup:location:update", locationPayload);
+        if (assignmentId) {
+          const pr = await PurchaseRequest.findById(assignmentId)
+            .select("vendorId orderId requestId")
+            .lean();
+          if (pr?.vendorId) {
+            io.to(`seller:${String(pr.vendorId)}`).emit(
+              "pickup:location:update",
+              locationPayload,
+            );
+          }
+          if (pr?.orderId) {
+            io.to(`order:${String(pr.orderId)}`).emit(
+              "pickup:location:update",
+              {
+                ...locationPayload,
+                // Customer privacy: never include phones; future customer track hook
+                customerTrackingReady: true,
+              },
+            );
+          }
+        }
+      }
+    } catch (socketErr) {
+      console.warn("[updatePickupPartnerLiveLocation] socket emit failed:", socketErr.message);
+    }
+
+    return handleResponse(res, 200, "Location updated", locationPayload);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 export const markAssignmentPicked = async (req, res) => {
   try {
     const partnerId = await resolvePickupPartnerId(req.user);
@@ -451,6 +609,9 @@ export const markAssignmentPicked = async (req, res) => {
     }
     if (!otp) {
       return handleResponse(res, 400, "Pickup OTP is required");
+    }
+    if (!vendorImageUrl || !String(vendorImageUrl).trim()) {
+      return handleResponse(res, 400, "Parcel image is required before confirming pickup");
     }
 
     const pr = await PurchaseRequest.findOne({
@@ -712,17 +873,8 @@ export const cancelPickupAssignment = async (req, res) => {
     pr.exceptionReason = String(reason || "Cancelled by delivery partner");
     await savePurchaseRequest(pr);
 
-    // Re-trigger pickup assignment in the background
-    try {
-      const { assignPickupToRequest } = await import("./purchaseRequestController.js");
-      const { pickBestPickupPartner } = await import("./purchaseRequestController.js"); // assuming this exists or similar service
-      const bestPartner = await pickBestPickupPartner(pr.hubId);
-      if (bestPartner) {
-        await assignPickupToRequest(pr, bestPartner);
-      }
-    } catch (err) {
-      console.warn("[Auto Reassign] Failed after cancellation:", err.message);
-    }
+    // Reassignment stays with existing admin/procurement pickup-assign flow.
+    // Pickup module does not call procurement controllers.
 
     return handleResponse(res, 200, "Assignment cancelled successfully");
   } catch (error) {
@@ -740,6 +892,9 @@ export const markAssignmentHubDelivered = async (req, res) => {
     const longitude = Number(lng);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       return handleResponse(res, 400, "Valid lat/lng required");
+    }
+    if (!hubImageUrl || !String(hubImageUrl).trim()) {
+      return handleResponse(res, 400, "Hub drop image is required");
     }
 
     const pr = await PurchaseRequest.findOne({

@@ -10,8 +10,11 @@ import {
   getPickupPartnerProfile,
   updatePickupPartnerProfile,
   getMyPickupAssignments,
+  generateAssignmentPickupOtp,
+  updatePickupPartnerLiveLocation,
   markAssignmentPicked,
   markAssignmentHubDelivered,
+  cancelPickupAssignment,
   uploadPickupProofImage,
   requestPickupWithdrawal,
   getMyWithdrawals,
@@ -47,6 +50,18 @@ router.get(
   getMyPickupAssignments,
 );
 router.post(
+  "/my/assignments/:id/generate-otp",
+  verifyToken,
+  allowRoles("pickup_partner", "admin", "delivery"),
+  generateAssignmentPickupOtp,
+);
+router.post(
+  "/my/location",
+  verifyToken,
+  allowRoles("pickup_partner", "admin", "delivery"),
+  updatePickupPartnerLiveLocation,
+);
+router.post(
   "/my/assignments/:id/mark-picked",
   verifyToken,
   allowRoles("pickup_partner", "admin", "delivery"),
@@ -57,6 +72,12 @@ router.post(
   verifyToken,
   allowRoles("pickup_partner", "admin", "delivery"),
   markAssignmentHubDelivered,
+);
+router.post(
+  "/my/assignments/:id/cancel",
+  verifyToken,
+  allowRoles("pickup_partner", "admin", "delivery"),
+  cancelPickupAssignment,
 );
 router.post(
   "/my/proofs/upload",

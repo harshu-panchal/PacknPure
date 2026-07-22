@@ -68,7 +68,7 @@ const DeliveryTracking = () => {
       const formatted = (prList || []).map((pr) => {
         const partner = pr.pickupPartner || pr.pickupPartnerId || null;
         const partnerName = partner?.name || partner?.fullName || "Not Assigned";
-        const partnerPhone = partner?.phone || "N/A";
+        const partnerPhone = ""; // Privacy: hide pickup partner phone from seller
         const coords =
           pr?.hubDropProof?.location ||
           pr?.pickupProof?.location ||
@@ -83,6 +83,7 @@ const DeliveryTracking = () => {
           deliveryBoy: {
             name: partnerName,
             phone: partnerPhone,
+            maskedCallingReady: true,
             avatar: partnerName?.charAt(0) || "?",
             image:
               partner?.image ||
@@ -332,13 +333,14 @@ const DeliveryTracking = () => {
                               <h3 className="text-sm sm:text-base font-black text-slate-900 leading-none truncate">
                                 {dlv.deliveryBoy.name}
                               </h3>
-                              <a
-                                href={`tel:${dlv.deliveryBoy.phone}`}
-                                className="inline-flex items-center gap-1.5 mt-1.5 sm:mt-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-white rounded-lg text-[10px] sm:text-[11px] font-black text-slate-800 shadow-sm border border-slate-100 hover:bg-primary hover:text-white hover:border-primary transition-all"
-                              >
+                              <span className="inline-flex items-center gap-1.5 mt-1.5 sm:mt-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-white rounded-lg text-[10px] sm:text-[11px] font-black text-slate-500 shadow-sm border border-slate-100">
                                 <HiOutlinePhone className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
-                                <span className="truncate">{dlv.deliveryBoy.phone}</span>
-                              </a>
+                                <span className="truncate">
+                                  {dlv.deliveryBoy.phone
+                                    ? dlv.deliveryBoy.phone
+                                    : "Masked calling soon"}
+                                </span>
+                              </span>
                             </div>
                           </div>
                         </div>
