@@ -18,6 +18,18 @@ import {
 
 const ACTIVE_PR_STATUSES = ["created", "seller_confirmed", "pickup_assigned", "picked", "hub_delivered"];
 
+/** Include terminal-but-still-holding statuses so auto-cancel can still release SC. */
+const RELEASABLE_PR_STATUSES = [
+  ...ACTIVE_PR_STATUSES,
+  "expired",
+  "seller_rejected",
+  "seller_failed",
+  "procurement_failed",
+  "closed",
+  "cancelled",
+  "exception",
+];
+
 const PR_INVENTORY_RELEASE_EVENTS = new Set(["SELLER_REJECTED", "SELLER_TIMEOUT", "SYSTEM_COMPENSATION"]);
 
 const toQty = (value) => Math.max(0, Number(value || 0));
@@ -35,6 +47,7 @@ const createOrGetRecord = async ({
   orderId,
   purchaseRequestId = null,
   allocationId = null,
+  quantity = null,
   actor = {},
   beforeState = {},
 }) => {
@@ -57,7 +70,24 @@ const createOrGetRecord = async ({
     allocationId: allocationId || null,
     status: { $in: ["completed", "skipped"] },
   });
-  if (existingByScope) return { record: existingByScope, duplicate: true };
+  if (existingByScope) {
+    // Allow re-running procurement failure if the order is still open (prior attempt cancelled nothing).
+    if (rollbackEvent === "PROCUREMENT_FAILED" && orderId) {
+      const stillOpen = await Order.findOne({
+        _id: orderId,
+        status: { $nin: ["cancelled", "delivered"] },
+      })
+        .select("_id status")
+        .lean();
+      if (stillOpen) {
+        // Fall through and create a new record with a unique transactionId suffix handled by caller.
+      } else {
+        return { record: existingByScope, duplicate: true };
+      }
+    } else {
+      return { record: existingByScope, duplicate: true };
+    }
+  }
 
   const rec = await RollbackRecord.create({
     transactionId,
@@ -91,7 +121,9 @@ const rollbackOrderReservations = async ({ order, session }) => {
   const operations = [];
   for (const item of order.items || []) {
     const variantId = item.variantId || null;
-    if (!variantId) continue; // variant-level only
+    const productId = item.product?._id || item.product;
+    if (!productId) continue;
+
     const releasableQty = Math.max(
       0,
       Math.min(
@@ -100,22 +132,26 @@ const rollbackOrderReservations = async ({ order, session }) => {
       ),
     );
     if (releasableQty <= 0) continue;
+
     const result = await releaseHubReservation({
-      productId: item.product,
+      productId,
       variantId,
       quantity: releasableQty,
       session,
       orderId: order._id,
       reason: "transaction_engine_order_cancel",
-      idempotencyKey: `order_cancel:${String(order._id)}:${String(item.product)}:${String(variantId)}`,
+      idempotencyKey: `order_cancel:${String(order._id)}:${String(productId)}:${String(variantId || "root")}`,
     });
     operations.push({
       action: "release_hub_reservation",
-      productId: String(item.product),
-      variantId: String(variantId),
+      productId: String(productId),
+      variantId: variantId ? String(variantId) : null,
       quantity: releasableQty,
       result,
     });
+
+    item.hubReservedQty = 0;
+    item.qaAcceptedQty = 0;
   }
   return operations;
 };
@@ -133,7 +169,7 @@ const releasePendingProcurementAllocations = async ({
 
   const prs = await PurchaseRequest.find({
     orderId: order._id,
-    status: { $in: ACTIVE_PR_STATUSES },
+    status: { $in: RELEASABLE_PR_STATUSES },
   }).session(session);
 
   for (const pr of prs) {
@@ -143,8 +179,15 @@ const releasePendingProcurementAllocations = async ({
       const lineAllocId = line.allocationId || pr.allocationId;
       const alloc =
         procurementSession?.allocations?.find((a) => a.allocationId === lineAllocId) || null;
-      const acceptedQty = alloc ? toQty(alloc.acceptedQty) : 0;
-      const baseQty = alloc ? toQty(alloc.quantity) : toQty(line.shortageQty);
+
+      // Skip if allocation already released/completed at reservation layer
+      const reservationState = String(alloc?.reservationState || "");
+      if (reservationState === "RELEASED" || reservationState === "COMPLETED") continue;
+
+      const acceptedQty = alloc ? toQty(alloc.acceptedQty) : toQty(line.committedQty);
+      const baseQty = alloc
+        ? toQty(alloc.reservedQty) || toQty(alloc.quantity)
+        : toQty(line.shortageQty || line.requestedQty);
       const releasableQty = releaseAccepted ? baseQty : Math.max(0, baseQty - acceptedQty);
       if (releasableQty <= 0) continue;
 
@@ -167,6 +210,11 @@ const releasePendingProcurementAllocations = async ({
         idempotencyKey: `${rollbackEvent}:${String(order._id)}:${String(pr._id)}:${String(lineAllocId || "none")}`,
       });
 
+      if (alloc) {
+        alloc.reservationState = "RELEASED";
+        alloc.reservedQty = 0;
+      }
+
       operations.push({
         action: "release_seller_commit",
         productId: String(line.productId),
@@ -178,15 +226,64 @@ const releasePendingProcurementAllocations = async ({
       });
     }
 
-    if (rollbackEvent === "PROCUREMENT_FAILED" || rollbackEvent === "ORDER_CANCELLED" || rollbackEvent === "ORDER_EXPIRED" || rollbackEvent === "PAYMENT_FAILED") {
+    if (
+      rollbackEvent === "PROCUREMENT_FAILED" ||
+      rollbackEvent === "ORDER_CANCELLED" ||
+      rollbackEvent === "ORDER_EXPIRED" ||
+      rollbackEvent === "PAYMENT_FAILED"
+    ) {
       pr.status = "cancelled";
       pr.exceptionReason = `rollback:${rollbackEvent}`;
       await pr.save({ session });
     }
   }
 
+  // Also release any session allocations still marked RESERVED (covers closed PRs / orphans)
+  if (procurementSession && releaseAccepted) {
+    for (const alloc of procurementSession.allocations || []) {
+      if (String(alloc.reservationState) !== "RESERVED") continue;
+      if (toQty(alloc.reservedQty) <= 0 && toQty(alloc.quantity) <= 0) continue;
+      const already = operations.some((op) => op.allocationId === String(alloc.allocationId));
+      if (already) continue;
+
+      const sellerProductId = alloc.selectedSellerProductId;
+      if (!sellerProductId) {
+        alloc.reservationState = "RELEASED";
+        alloc.reservedQty = 0;
+        continue;
+      }
+
+      const sellerVariantId = await resolveSellerVariantId({
+        sellerProductId,
+        masterProductId: alloc.productId,
+        masterVariantId: alloc.variantId,
+        session,
+      });
+      const qty = toQty(alloc.reservedQty) || toQty(alloc.quantity);
+      const result = await releaseSellerCommit({
+        productId: sellerProductId,
+        variantId: sellerVariantId || null,
+        quantity: qty,
+        session,
+        orderId: order._id,
+        reason: `transaction_engine_${rollbackEvent.toLowerCase()}_session_orphan`,
+        idempotencyKey: `${rollbackEvent}:session:${String(order._id)}:${String(alloc.allocationId)}`,
+      });
+      alloc.reservationState = "RELEASED";
+      alloc.reservedQty = 0;
+      operations.push({
+        action: "release_seller_commit",
+        allocationId: String(alloc.allocationId),
+        quantity: qty,
+        result,
+      });
+    }
+  }
+
   if (procurementSession && rollbackEvent === "PROCUREMENT_FAILED") {
     procurementSession.status = releaseAccepted ? "failed" : "on_hold";
+    await procurementSession.save({ session });
+  } else if (procurementSession && releaseAccepted) {
     await procurementSession.save({ session });
   }
 
@@ -296,6 +393,7 @@ export const executeRollbackEvent = async ({
     orderId: orderId || null,
     purchaseRequestId,
     allocationId,
+    quantity,
     actor,
     beforeState,
   });

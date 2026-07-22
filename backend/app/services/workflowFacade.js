@@ -103,13 +103,24 @@ export const markOrderOnHold = (order, options = {}) =>
   });
 
 export const markOrderProcurementFailedCancelled = (order, options = {}) => {
-  transitionOrder(order, WORKFLOW_STATUS.CANCELLED, {
-    actor: { role: "system" },
-    reason: options.reason || "procurement_failed",
-    ...options,
-  });
+  const actor = { role: "system", ...(options.actor || {}) };
+  const reason = options.reason || "procurement_failed";
+  // Prefer ORDER_CANCELLED (canonical); fall back to CANCELLED alias for older states.
+  try {
+    transitionOrder(order, WORKFLOW_STATUS.ORDER_CANCELLED, {
+      actor,
+      reason,
+      ...options,
+    });
+  } catch {
+    transitionOrder(order, WORKFLOW_STATUS.CANCELLED, {
+      actor,
+      reason,
+      ...options,
+    });
+  }
   setOrderLegacyStatus(order, "cancelled", options);
-  order.cancelReason = options.reason || "Procurement failed";
+  order.cancelReason = reason || "Procurement failed";
   return order;
 };
 

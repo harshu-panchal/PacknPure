@@ -745,19 +745,36 @@ export async function customerCancelV2(customerId, orderId, reason) {
   }
 
   const ws = resolveWorkflowStatus(order);
-  if (ws !== WORKFLOW_STATUS.SELLER_PENDING) {
+  const hubCancellable = new Set([
+    WORKFLOW_STATUS.CREATED,
+    WORKFLOW_STATUS.PROCUREMENT_REQUIRED,
+    WORKFLOW_STATUS.INVENTORY_RESERVED,
+    WORKFLOW_STATUS.SELLER_PENDING,
+    WORKFLOW_STATUS.ORDER_PLACED,
+    WORKFLOW_STATUS.PAYMENT_CONFIRMED,
+  ]);
+  const canCancel =
+    ws === WORKFLOW_STATUS.SELLER_PENDING ||
+    (order.hubFlowEnabled && hubCancellable.has(ws));
+  if (!canCancel) {
     const err = new Error("Order cannot be cancelled after confirmation");
     err.statusCode = 400;
     throw err;
   }
 
+  const toState = order.hubFlowEnabled
+    ? WORKFLOW_STATUS.ORDER_CANCELLED
+    : WORKFLOW_STATUS.CANCELLED;
+
   const updated = await findAndTransitionOrder({
     filter: {
       orderId,
       customer: customerId,
-      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+      workflowStatus: order.hubFlowEnabled
+        ? { $in: [...hubCancellable] }
+        : WORKFLOW_STATUS.SELLER_PENDING,
     },
-    toState: WORKFLOW_STATUS.CANCELLED,
+    toState,
     assign: {
       cancelledBy: "customer",
       cancelReason: reason || "Cancelled by customer",
@@ -780,7 +797,7 @@ export async function customerCancelV2(customerId, orderId, reason) {
   await compensateOrderCancellation(updated, orderId);
 
 
-  emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
+  emitOrderStatusUpdate(orderId, { workflowStatus: toState }, updated.customer);
   return updated;
 }
 
@@ -1174,26 +1191,44 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
     }
 
     // --- HUB STOCK DEDUCTION (SOP) ---
+    // Deduct Hub Reserved only. Use hubReservedQty + qaAcceptedQty (not full line qty).
     if (updated.hubFlowEnabled) {
       try {
         const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
         const HubInventory = (await import("../models/hubInventory.js")).default;
-        
+        let orderDirty = false;
+
         for (const item of updated.items) {
-          const productId = String(item.product);
-          const qtyToDeduct = Number(item.quantity || 0);
+          const productId = String(item.product?._id || item.product);
+          const variantId = item.variantId || null;
+          const reservedPortion =
+            Math.max(0, Number(item.hubReservedQty || 0)) +
+            Math.max(0, Number(item.qaAcceptedQty || 0));
+          const qtyToDeduct =
+            reservedPortion > 0
+              ? reservedPortion
+              : Math.max(0, Number(item.quantity || 0) - Number(item.deliveredQty || 0));
 
           if (qtyToDeduct > 0) {
             const { completeHubDelivery } = await import("./inventory/inventoryEngine.js");
             const deliveryResult = await completeHubDelivery({
               productId,
+              variantId,
               quantity: qtyToDeduct,
               hubId,
               orderId: updated._id,
               reason: "order_delivery_complete",
-              idempotencyKey: `hub_delivery:${String(updated._id)}:${productId}:${qtyToDeduct}`,
+              idempotencyKey: `hub_delivery:${String(updated._id)}:${productId}:${String(variantId || "root")}:${qtyToDeduct}`,
             });
             const hubStock = deliveryResult?.hubInventory;
+
+            item.hubReservedQty = 0;
+            item.qaAcceptedQty = 0;
+            item.deliveredQty = Math.max(
+              Number(item.deliveredQty || 0),
+              Number(item.quantity || 0),
+            );
+            orderDirty = true;
 
             if (hubStock) {
               let newStatus = "healthy";
@@ -1204,10 +1239,14 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
                 await HubInventory.findByIdAndUpdate(hubStock._id, { $set: { status: newStatus } });
               }
               console.log(
-                `[InventorySync] Deducted ${qtyToDeduct}. New Qty: ${hubStock.availableQty}, Status: ${newStatus}`,
+                `[InventorySync] Deducted reserved ${qtyToDeduct} for ${productId}. HR now ${hubStock.reservedQty}`,
               );
             }
           }
+        }
+
+        if (orderDirty) {
+          await updated.save();
         }
       } catch (err) {
         console.warn("[InventorySync] Failed to deduct hub stock during delivery:", err.message);

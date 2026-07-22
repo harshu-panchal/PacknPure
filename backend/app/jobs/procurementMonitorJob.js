@@ -57,32 +57,46 @@ const processExpirations = async () => {
           if (lineStatus !== "pending") continue;
 
           const allocId = row.allocationId || fullPr.allocationId;
+          const retryQty = toInt(row.remainingQty || row.requestedQty || row.shortageQty);
+          if (retryQty <= 0) continue;
+
           if (fullPr.procurementSessionId && allocId) {
             await markAllocationTimeout({
               procurementSessionId: fullPr.procurementSessionId,
               allocationId: allocId,
             });
-            const retryQty = toInt(row.remainingQty || row.requestedQty || row.shortageQty);
-            if (retryQty > 0) {
-              await releaseAllocationSellerStock({
-                procurementSessionId: fullPr.procurementSessionId,
-                allocationId: allocId,
-                purchaseRequestId: fullPr._id,
-                orderId: fullPr.orderId || null,
-                quantity: retryQty,
-                eventType: "SELLER_TIMEOUT",
-                reason: "procurement_request_expired_line",
-                actor: { type: "system" },
-                transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(allocId)}`,
-              });
-              await fallbackPurchaseRequestLine(
-                fullPr._id,
-                row.productId,
-                row.variantId || null,
-                retryQty,
-              );
-            }
+            await releaseAllocationSellerStock({
+              procurementSessionId: fullPr.procurementSessionId,
+              allocationId: allocId,
+              purchaseRequestId: fullPr._id,
+              orderId: fullPr.orderId || null,
+              quantity: retryQty,
+              eventType: "SELLER_TIMEOUT",
+              reason: "procurement_request_expired_line",
+              actor: { type: "system" },
+              transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(allocId)}`,
+            });
+          } else if (row.selectedSellerProductId) {
+            // No session allocation — still reverse SellerCommitted 1:1 before retry.
+            const { executeRollbackEvent } = await import("../services/transactionEngine.js");
+            await executeRollbackEvent({
+              eventType: "SELLER_TIMEOUT",
+              transactionId: `pr_timeout_release_noses:${String(fullPr._id)}:${String(row.productId)}:${retryQty}`,
+              orderId: fullPr.orderId || null,
+              purchaseRequestId: fullPr._id,
+              allocationId: allocId || null,
+              quantity: retryQty,
+              reason: "procurement_request_expired_line_no_session",
+              actor: { type: "system" },
+            });
           }
+
+          await fallbackPurchaseRequestLine(
+            fullPr._id,
+            row.productId,
+            row.variantId || null,
+            retryQty,
+          );
         }
       } else {
         if (fullPr?.procurementSessionId && fullPr?.allocationId) {

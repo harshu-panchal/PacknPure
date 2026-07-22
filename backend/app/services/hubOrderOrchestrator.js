@@ -21,7 +21,6 @@ import {
   isInventoryCommittedForAllocation,
   tryClaimAllocationReservation,
   revertAllocationReservationClaim,
-  releaseAllReservedAllocations,
   revertAllocation,
 } from "./procurementSessionService.js";
 import { rankSellerAllocations } from "./allocationEngine.js";
@@ -668,53 +667,29 @@ async function markProcurementExhausted(pr, session) {
   const procurementFailureAction = await getProcurementFailureAction();
   const isAutoCancel = procurementFailureAction === "auto_cancel";
 
-  if (pr.procurementSessionId) {
-    await releaseAllReservedAllocations({
-      procurementSessionId: pr.procurementSessionId,
-      orderId: pr.orderId || null,
-      eventType: isAutoCancel ? "SELLER_REJECTED" : "SYSTEM_COMPENSATION",
-      reason: "procurement_exhausted_pre_failure_release",
-      actor: { type: "system" },
-    });
-  }
-
-  const { updateManyPurchaseRequests } = await import("./purchaseRequestRepository.js");
-  await updateManyPurchaseRequests(
-    {
-      orderId: pr.orderId,
-      status: { $in: ["created", "expired", "seller_confirmed", "seller_rejected", "pickup_assigned"] },
-    },
-    {
-      $set: {
-        status: "closed",
-        exceptionReason: "Procurement exhausted — no eligible sellers remain.",
-      },
-    },
-  );
-
-  pr.status = "procurement_failed";
-  pr.exceptionReason = "All eligible sellers exhausted.";
-  await savePurchaseRequest(pr);
-  if (pr.procurementSessionId) {
-    const ProcurementSession = (await import("../models/procurementSession.js")).default;
-    await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
-      $set: { status: isAutoCancel ? "failed" : "on_hold" },
-    });
-  }
-  console.warn(
-    `[Procurement Failed] Order ${pr.orderId} PR ${pr.requestId} has no more fallback sellers.`,
-  );
-
+  // Auto-cancel / hold FIRST so HubReserved + SellerCommitted are released while PRs still exist.
   try {
     const Order = (await import("../models/order.js")).default;
     const order = await Order.findById(pr.orderId);
     if (order) {
       const { executeRollbackEvent } = await import("./transactionEngine.js");
       const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
+      const { releaseAllReservedAllocations } = await import("./procurementSessionService.js");
+
+      // Belt-and-suspenders: reverse any still-held seller commits before order cancel txn.
+      if (pr.procurementSessionId) {
+        await releaseAllReservedAllocations({
+          procurementSessionId: pr.procurementSessionId,
+          orderId: order._id,
+          eventType: "SELLER_TIMEOUT",
+          reason: "procurement_exhausted_pre_cancel",
+          actor: { type: "system" },
+        });
+      }
 
       await executeRollbackEvent({
         eventType: "PROCUREMENT_FAILED",
-        transactionId: `procurement_failed:${String(order._id)}:${isAutoCancel ? "cancel" : "hold"}`,
+        transactionId: `procurement_failed:${String(order._id)}:${isAutoCancel ? "cancel" : "hold"}:${Date.now()}`,
         orderId: order._id,
         reason: isAutoCancel
           ? "all_sellers_exhausted_auto_cancel"
@@ -748,6 +723,44 @@ async function markProcurementExhausted(pr, session) {
   } catch (e) {
     console.error("[Procurement Failed] Error executing failure policy:", e);
   }
+
+  // Close leftover PRs after inventory release (idempotent if already cancelled by rollback).
+  const { updateManyPurchaseRequests } = await import("./purchaseRequestRepository.js");
+  await updateManyPurchaseRequests(
+    {
+      orderId: pr.orderId,
+      status: {
+        $in: [
+          "created",
+          "expired",
+          "seller_confirmed",
+          "seller_rejected",
+          "pickup_assigned",
+          "procurement_failed",
+        ],
+      },
+    },
+    {
+      $set: {
+        status: "closed",
+        exceptionReason: "Procurement exhausted — no eligible sellers remain.",
+      },
+    },
+  );
+
+  pr.status = "procurement_failed";
+  pr.exceptionReason = "All eligible sellers exhausted.";
+  await savePurchaseRequest(pr);
+  if (pr.procurementSessionId) {
+    const ProcurementSession = (await import("../models/procurementSession.js")).default;
+    await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
+      $set: { status: isAutoCancel ? "failed" : "on_hold" },
+    });
+  }
+  console.warn(
+    `[Procurement Failed] Order ${pr.orderId} PR ${pr.requestId} has no more fallback sellers.`,
+  );
+
   return null;
 }
 

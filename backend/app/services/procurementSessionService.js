@@ -43,7 +43,12 @@ export const tryClaimAllocationReservation = async (procurementSessionId, alloca
       allocations: {
         $elemMatch: {
           allocationId: String(allocationId),
-          reservationState: { $in: [RESERVATION_STATE.NOT_RESERVED, null, undefined] },
+          // Allow re-claim after RELEASED (fallback retry on same slot is rare; new allocs use NOT_RESERVED).
+          $or: [
+            { reservationState: { $in: [RESERVATION_STATE.NOT_RESERVED, RESERVATION_STATE.RELEASED] } },
+            { reservationState: null },
+            { reservationState: { $exists: false } },
+          ],
         },
       },
     },
@@ -120,16 +125,26 @@ export const releaseAllocationSellerStock = async ({
   if (!allocation) return { skipped: true, reason: "no_allocation" };
 
   const state = normalizeReservationState(allocation);
-  if (state === RESERVATION_STATE.RELEASED || state === RESERVATION_STATE.NOT_RESERVED) {
+  if (state === RESERVATION_STATE.RELEASED) {
     return { skipped: true, reason: "already_released", reservationState: state };
   }
   if (state === RESERVATION_STATE.COMPLETED) {
     return { skipped: true, reason: "completed", reservationState: state };
   }
 
-  const currentlyReserved = toInt(allocation.reservedQty || allocation.quantity);
+  // NOT_RESERVED normally means nothing was frozen — but legacy / failed-claim paths may
+  // still hold SellerCommitted while status is allocated|locked. Release those 1:1.
+  const stockHolding = STOCK_HOLDING_ALLOCATION_STATUSES.has(String(allocation.status || ""));
+  if (state === RESERVATION_STATE.NOT_RESERVED && !stockHolding) {
+    return { skipped: true, reason: "already_released", reservationState: state };
+  }
+
+  const currentlyReserved =
+    state === RESERVATION_STATE.RESERVED
+      ? toInt(allocation.reservedQty || allocation.quantity)
+      : toInt(quantity != null ? quantity : allocation.reservedQty || allocation.quantity);
   const releaseQty =
-    quantity != null ? Math.min(toInt(quantity), currentlyReserved) : currentlyReserved;
+    quantity != null ? Math.min(toInt(quantity), currentlyReserved || toInt(quantity)) : currentlyReserved;
   if (releaseQty <= 0) {
     allocation.reservationState = RESERVATION_STATE.RELEASED;
     allocation.reservedQty = 0;
@@ -180,7 +195,12 @@ export const releaseAllReservedAllocations = async ({
 
   const results = [];
   for (const allocation of session.allocations || []) {
-    if (!isAllocationStockReserved(allocation)) continue;
+    const state = normalizeReservationState(allocation);
+    const stockHolding = STOCK_HOLDING_ALLOCATION_STATUSES.has(String(allocation.status || ""));
+    const shouldRelease =
+      isAllocationStockReserved(allocation) ||
+      (state === RESERVATION_STATE.NOT_RESERVED && stockHolding && toInt(allocation.quantity) > 0);
+    if (!shouldRelease) continue;
     const prId = allocation.purchaseRequestId || null;
     // eslint-disable-next-line no-await-in-loop
     const result = await releaseAllocationSellerStock({
