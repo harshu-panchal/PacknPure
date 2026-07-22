@@ -1,13 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutGrid, User, Bell } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "../../utils/cn";
+import PickupAlertsSheet from "../PickupAlertsSheet";
+import { usePickupAlertContext } from "../../context/PickupAlertContext";
 
 const PickupLayout = ({ children }) => {
   const location = useLocation();
   const currentPath = location.pathname;
   const isAuth = currentPath.includes("/auth");
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const { alerts, unreadCount, markAllRead } = usePickupAlertContext();
 
   const navItems = [
     { path: "/pickup/dashboard", label: "Tasks", icon: LayoutGrid },
@@ -44,7 +48,6 @@ const PickupLayout = ({ children }) => {
                   "relative flex min-h-[48px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1.5 transition-colors",
                   isActive ? "text-white" : "text-slate-500 hover:text-slate-300",
                 )}
-                aria-current={isActive ? "page" : undefined}
               >
                 {isActive && (
                   <motion.div
@@ -53,13 +56,7 @@ const PickupLayout = ({ children }) => {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <item.icon
-                  size={20}
-                  className={cn(
-                    "relative z-10 transition-transform",
-                    isActive && "scale-110 text-teal-400",
-                  )}
-                />
+                <item.icon size={20} className={cn("relative z-10", isActive && "text-teal-400")} />
                 <span
                   className={cn(
                     "relative z-10 text-[9px] font-black uppercase tracking-widest sm:text-[10px]",
@@ -74,17 +71,29 @@ const PickupLayout = ({ children }) => {
 
           <button
             type="button"
-            className="relative flex min-h-[48px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1.5 text-slate-500 transition-colors hover:text-slate-300"
-            aria-label="Alerts (coming soon)"
+            onClick={() => setAlertsOpen(true)}
+            className="relative flex min-h-[48px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1.5 text-slate-500 hover:text-slate-300"
+            aria-label="Alerts"
           >
             <Bell size={20} />
             <span className="text-[9px] font-black uppercase tracking-widest opacity-70 sm:text-[10px]">
               Alerts
             </span>
-            <span className="absolute right-3 top-2 h-2 w-2 rounded-full border-2 border-slate-900 bg-rose-500" />
+            {unreadCount > 0 && (
+              <span className="absolute right-3 top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-slate-900 bg-rose-500 px-1 text-[8px] font-black text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       </nav>
+
+      <PickupAlertsSheet
+        open={alertsOpen}
+        onClose={() => setAlertsOpen(false)}
+        alerts={alerts}
+        onMarkAllRead={markAllRead}
+      />
     </div>
   );
 };

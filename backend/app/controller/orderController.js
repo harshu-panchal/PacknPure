@@ -791,14 +791,54 @@ export const updateOrderStatus = async (req, res) => {
       if (order.deliveryBoy) {
         return handleResponse(res, 400, "Order already assigned to a delivery partner.");
       }
+
+      // DELIVERY_ASSIGNED is only allowed from DELIVERY_SEARCH / READY_FOR_DELIVERY.
+      // Advance early workflow states so admin can force-assign without a direct illegal jump
+      // (e.g. CREATED -> DELIVERY_ASSIGNED).
+      const adminActor = { id: userId, role: "admin" };
+      const advanceReason = "Admin advancing order for manual delivery assignment";
+      const currentWf = order.workflowStatus || WORKFLOW_STATUS.CREATED;
+      const adminAdvancePaths = {
+        [WORKFLOW_STATUS.CREATED]: [
+          WORKFLOW_STATUS.SELLER_PENDING,
+          WORKFLOW_STATUS.DELIVERY_SEARCH,
+        ],
+        [WORKFLOW_STATUS.SELLER_PENDING]: [WORKFLOW_STATUS.DELIVERY_SEARCH],
+        [WORKFLOW_STATUS.SELLER_ACCEPTED]: [WORKFLOW_STATUS.DELIVERY_SEARCH],
+        [WORKFLOW_STATUS.PACKING]: [WORKFLOW_STATUS.READY_FOR_DELIVERY],
+      };
+
+      if (
+        currentWf !== WORKFLOW_STATUS.DELIVERY_SEARCH &&
+        currentWf !== WORKFLOW_STATUS.READY_FOR_DELIVERY &&
+        currentWf !== WORKFLOW_STATUS.DELIVERY_ASSIGNED
+      ) {
+        const steps = adminAdvancePaths[currentWf];
+        if (!steps) {
+          return handleResponse(
+            res,
+            400,
+            `Cannot assign delivery partner while order is in ${currentWf}. Advance the order first.`,
+          );
+        }
+        for (const toState of steps) {
+          transitionOrderFulfillment(order, {
+            toState,
+            actor: adminActor,
+            reason: advanceReason,
+          });
+        }
+      }
+
       order.deliveryBoy = deliveryBoyId;
       transitionOrderFulfillment(order, {
         toState: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-        actor: { id: userId, role: "admin" },
+        actor: adminActor,
         reason: "Manual delivery assignment by admin",
         metadata: { deliveryBoyId: String(deliveryBoyId) },
       });
       order.assignedAt = new Date();
+      order.deliveryRiderStep = order.deliveryRiderStep || 1;
       newDeliveryBoyAssigned = true;
 
       // Keep legacy status flow consistent if order is still pending.

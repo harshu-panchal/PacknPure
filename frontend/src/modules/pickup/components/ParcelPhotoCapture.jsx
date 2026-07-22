@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Camera, ImagePlus, RotateCcw, Trash2 } from "lucide-react";
+import { Camera, ImagePlus, RotateCcw, Trash2, AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "../utils/cn";
 import { PickupSkeleton } from "./ui";
 
@@ -18,6 +18,8 @@ const ParcelPhotoCapture = ({
   onRemove,
   onReplace,
   label = "Parcel photos",
+  uploadError = null,
+  onRetryUpload,
 }) => {
   const cameraRef = useRef(null);
   const galleryRef = useRef(null);
@@ -25,6 +27,7 @@ const ParcelPhotoCapture = ({
   const replaceGalleryRef = useRef(null);
   const [replaceIndex, setReplaceIndex] = useState(null);
   const [loadedImages, setLoadedImages] = useState({});
+  const [captureError, setCaptureError] = useState(null);
 
   const remaining = Math.max(0, MAX_IMAGES - images.length);
   const canAdd = !disabled && remaining > 0 && !uploading;
@@ -38,7 +41,15 @@ const ParcelPhotoCapture = ({
 
   const handleAdd = (fileList, limit, source) => {
     const valid = filterFiles(fileList).slice(0, limit);
-    if (!valid.length) return;
+    if (!valid.length) {
+      setCaptureError(
+        source === "camera"
+          ? "Camera capture failed or permission denied. Try gallery or check browser settings."
+          : "No valid images selected. Use JPG, PNG, or WebP.",
+      );
+      return;
+    }
+    setCaptureError(null);
     onAddFiles?.(valid, source);
   };
 
@@ -121,6 +132,7 @@ const ParcelPhotoCapture = ({
           <button
             type="button"
             onClick={() => cameraRef.current?.click()}
+            aria-label="Take photo with camera"
             className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-3 py-4 text-teal-700 transition-colors active:scale-[0.99] hover:border-teal-300"
           >
             <Camera size={22} />
@@ -129,6 +141,7 @@ const ParcelPhotoCapture = ({
           <button
             type="button"
             onClick={() => galleryRef.current?.click()}
+            aria-label="Choose photos from gallery"
             className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-slate-600 transition-colors active:scale-[0.99] hover:border-slate-300"
           >
             <ImagePlus size={22} />
@@ -151,6 +164,26 @@ const ParcelPhotoCapture = ({
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
             Uploading… {uploadProgress}%
           </p>
+        </div>
+      )}
+
+      {(captureError || uploadError) && (
+        <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5">
+          <AlertCircle size={14} className="mt-0.5 shrink-0 text-rose-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold text-rose-800">
+              {uploadError || captureError}
+            </p>
+            {uploadError && onRetryUpload && (
+              <button
+                type="button"
+                onClick={onRetryUpload}
+                className="mt-1.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-rose-600"
+              >
+                <RefreshCw size={10} /> Retry upload
+              </button>
+            )}
+          </div>
         </div>
       )}
 

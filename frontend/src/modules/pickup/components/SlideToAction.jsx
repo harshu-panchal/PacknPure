@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { useSlideTrack } from "../hooks/useSlideTrack";
@@ -19,22 +19,28 @@ const SlideToAction = ({
 }) => {
   const { trackRef, maxTravel } = useSlideTrack(THUMB, PAD);
   const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
   const [dragging, setDragging] = useState(false);
 
   const clamp = (value) => Math.max(0, Math.min(maxTravel, value));
 
+  const setOffsetSafe = (value) => {
+    offsetRef.current = value;
+    setOffset(value);
+  };
+
   const finish = async (finalOffset) => {
     const threshold = maxTravel * 0.85;
     if (maxTravel > 0 && finalOffset >= threshold) {
-      setOffset(maxTravel);
+      setOffsetSafe(maxTravel);
       try {
         await onConfirm?.();
       } finally {
-        setOffset(0);
+        setOffsetSafe(0);
       }
       return;
     }
-    setOffset(0);
+    setOffsetSafe(0);
   };
 
   const onPointerDown = (e) => {
@@ -47,13 +53,21 @@ const SlideToAction = ({
     if (!dragging || disabled || loading) return;
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setOffset(clamp(e.clientX - rect.left - THUMB / 2 - PAD));
+    setOffsetSafe(clamp(e.clientX - rect.left - THUMB / 2 - PAD));
   };
 
   const onPointerUp = () => {
     if (!dragging) return;
     setDragging(false);
-    finish(offset);
+    finish(offsetRef.current);
+  };
+
+  const onKeyDown = (e) => {
+    if (disabled || loading) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      finish(maxTravel);
+    }
   };
 
   return (
@@ -72,12 +86,13 @@ const SlideToAction = ({
       </p>
       <motion.button
         type="button"
-        className="absolute top-1.5 left-1.5 z-10 flex h-11 w-11 touch-none items-center justify-center rounded-xl bg-white text-slate-900 shadow-lg"
+        className="absolute top-1.5 left-1.5 z-10 flex h-11 w-11 touch-none items-center justify-center rounded-xl bg-white text-slate-900 shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
         style={{ x: offset }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onKeyDown={onKeyDown}
         disabled={disabled || loading}
         aria-label={label}
       >

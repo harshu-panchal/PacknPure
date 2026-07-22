@@ -75,6 +75,23 @@
   animation: pickup-pulse-dot 1.5s ease-in-out infinite;
 }
 
+@media (max-width: 360px) {
+  .pickup-app {
+    --pickup-nav-h: 5rem;
+  }
+
+  .pickup-safe-x {
+    padding-left: max(0.5rem, var(--pickup-safe-left));
+    padding-right: max(0.5rem, var(--pickup-safe-right));
+  }
+}
+
+@media (min-width: 320px) and (max-width: 430px) {
+  .pickup-page main {
+    max-width: 100%;
+  }
+}
+
 @media (orientation: landscape) and (max-height: 500px) {
   .pickup-page {
     padding-bottom: calc(var(--pickup-nav-h) + var(--pickup-safe-bottom));
