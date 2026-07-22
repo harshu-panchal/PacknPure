@@ -67,14 +67,14 @@ export default function PosDashboard() {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Store className="mr-3 w-8 h-8 text-blue-600" />
-                        PacknPure Operational Control Center
+        <div className="pos-page max-w-7xl mx-auto w-full">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
+                <div className="min-w-0">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center flex-wrap gap-2">
+                        <Store className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" aria-hidden />
+                        <span>PacknPure Operational Control Center</span>
                     </h1>
-                    <p className="text-gray-500 mt-1">
+                    <p className="text-gray-500 mt-1 text-sm sm:text-base">
                         Unified view of Hub Inventory, POS Sales, and Procurement
                     </p>
                 </div>
@@ -85,6 +85,7 @@ export default function PosDashboard() {
                         size="large"
                         startIcon={<ShoppingCart />}
                         onClick={() => navigate(`/${posRole}/pos/checkout`)}
+                        className="!w-full sm:!w-auto !min-h-11"
                     >
                         Quick Order (F4)
                     </Button>
@@ -178,7 +179,7 @@ export default function PosDashboard() {
                         <Terminal className="w-5 h-5 mr-2 text-gray-500" />
                         Quick Access
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <QuickLink 
                             title="Hub Inventory" 
                             desc="View total available stock" 
@@ -261,7 +262,10 @@ const StatCard = ({ title, value, icon: Icon, color, trend, subtitle, action }) 
     return (
         <div 
             onClick={action}
-            className={`p-5 rounded-xl border ${colorMap[color] || 'bg-gray-50 border-gray-200'} flex flex-col justify-between`}
+            onKeyDown={action ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); action(); } } : undefined}
+            role={action ? 'button' : undefined}
+            tabIndex={action ? 0 : undefined}
+            className={`p-5 rounded-xl border min-w-0 ${colorMap[color] || 'bg-gray-50 border-gray-200'} flex flex-col justify-between ${action ? 'cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 transition-shadow' : ''}`}
         >
             <div className="flex items-start justify-between mb-2">
                 <p className="text-sm font-bold opacity-90">{title}</p>
@@ -278,10 +282,11 @@ const StatCard = ({ title, value, icon: Icon, color, trend, subtitle, action }) 
 
 const QuickLink = ({ title, desc, icon: Icon, onClick, disabled }) => (
     <button 
+        type="button"
         onClick={onClick}
         disabled={disabled}
-        className={`text-left p-4 rounded-lg border flex items-start transition-colors ${
-            disabled ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 bg-white'
+        className={`text-left p-4 rounded-lg border flex items-start transition-colors min-h-11 w-full ${
+            disabled ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 bg-white active:scale-[0.99]'
         }`}
     >
         <div className={`p-2 rounded-lg mr-3 ${disabled ? 'bg-gray-200 text-gray-400' : 'bg-blue-100 text-blue-600'}`}>

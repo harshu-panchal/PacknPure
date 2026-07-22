@@ -108,27 +108,26 @@ export default function Returns() {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <RotateCcw className="mr-3 w-7 h-7 text-orange-600" />
-                        Process Returns & Refunds
-                    </h1>
-                    <p className="text-gray-500 mt-1">Inventory will automatically be restocked into the Hub</p>
-                </div>
+        <div className="pos-page max-w-5xl mx-auto w-full">
+            <div className="mb-6">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                    <RotateCcw className="w-7 h-7 text-orange-600 flex-shrink-0" aria-hidden />
+                    Process Returns & Refunds
+                </h1>
+                <p className="text-gray-500 mt-1 text-sm">Inventory will automatically be restocked into the Hub</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-                <form onSubmit={handleSearch} className="p-6 border-b border-gray-100 flex gap-4 bg-gray-50">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <form onSubmit={handleSearch} className="p-4 sm:p-6 border-b border-gray-100 flex flex-col sm:flex-row gap-3 sm:gap-4 bg-gray-50">
+                    <div className="relative flex-1 min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" aria-hidden />
                         <input
-                            type="text"
+                            type="search"
+                            aria-label="Search order by ID or receipt number"
                             placeholder="Enter Order ID or Receipt Number..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 text-lg font-medium"
+                            className="w-full min-h-11 pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 text-base sm:text-lg font-medium"
                         />
                     </div>
                     <Button 
@@ -137,7 +136,7 @@ export default function Returns() {
                         color="warning" 
                         size="large"
                         disabled={isSearching || !searchQuery}
-                        className="!font-bold !px-8"
+                        className="!font-bold !px-8 !w-full sm:!w-auto !min-h-11"
                     >
                         {isSearching ? "Searching..." : "Find Order"}
                     </Button>
@@ -145,9 +144,9 @@ export default function Returns() {
 
                 {order ? (
                     <div className="p-6">
-                        <div className="flex justify-between items-start mb-6 pb-6 border-b border-gray-100">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 mb-1">Order #{order.orderId}</h2>
+                        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-6 pb-6 border-b border-gray-100">
+                            <div className="min-w-0">
+                                <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">Order #{order.orderId}</h2>
                                 <p className="text-sm text-gray-500">Date: {format(new Date(order.createdAt), 'PPpp')}</p>
                                 <p className="text-sm font-semibold text-gray-700 mt-2">
                                     Customer: {order.guestCustomer?.name || 'Walk-in'} {order.guestCustomer?.phone && `(${order.guestCustomer.phone})`}
@@ -168,8 +167,8 @@ export default function Returns() {
                                 const isFullyReturned = maxReturnable === 0;
 
                                 return (
-                                    <div key={item._id} className={`flex items-center justify-between p-4 rounded-lg border ${currentReturn > 0 ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-white'}`}>
-                                        <div className="flex-1">
+                                    <div key={item._id} className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg border ${currentReturn > 0 ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-white'}`}>
+                                        <div className="flex-1 min-w-0">
                                             <div className="font-bold text-gray-900">{item.name}</div>
                                             <div className="text-sm text-gray-500">
                                                 {item.variantName && <span className="mr-2">{item.variantName}</span>}
@@ -180,8 +179,8 @@ export default function Returns() {
                                             )}
                                         </div>
                                         
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right mr-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-shrink-0">
+                                            <div className="text-left sm:text-right">
                                                 <div className="font-bold text-gray-900">₹{item.price * currentReturn}</div>
                                                 <div className="text-xs text-gray-500">Refund value</div>
                                             </div>
@@ -221,7 +220,7 @@ export default function Returns() {
                                 />
                             </div>
                             
-                            <div className="bg-orange-100 p-4 rounded-lg border border-orange-200 min-w-[250px] text-center">
+                            <div className="bg-orange-100 p-4 rounded-lg border border-orange-200 w-full sm:min-w-[250px] sm:max-w-xs text-center flex-shrink-0">
                                 <div className="text-orange-800 font-medium text-sm mb-1">Total Refund Amount</div>
                                 <div className="text-3xl font-black text-orange-900 mb-3">₹{calculateRefund()}</div>
                                 <Button 

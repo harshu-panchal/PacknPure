@@ -429,6 +429,64 @@ body {
     min-width: 2.75rem;
     min-height: 2.75rem;
   }
+
+  /* POS module (Phase 3) */
+  .pos-module-container {
+    min-width: 0;
+    width: 100%;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pos-page {
+    min-width: 0;
+    width: 100%;
+    padding: 1rem;
+  }
+
+  @media (min-width: 768px) {
+    .pos-page {
+      padding: 1.5rem;
+    }
+  }
+
+  .pos-checkout-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--shell-header-h) - var(--shell-bottom-nav-h) - 2rem);
+    max-height: calc(100dvh - var(--shell-header-h) - var(--shell-bottom-nav-h) - 2rem);
+    overflow: hidden;
+    margin-left: calc(-1 * max(var(--page-pad-x), var(--safe-left)));
+    margin-right: calc(-1 * max(var(--page-pad-x), var(--safe-right)));
+    width: calc(100% + 2 * max(var(--page-pad-x), var(--safe-left)));
+  }
+
+  @media (min-width: 768px) {
+    .pos-checkout-shell {
+      margin-left: calc(-1 * max(var(--page-pad-x-md), var(--safe-left)));
+      margin-right: calc(-1 * max(var(--page-pad-x-md), var(--safe-right)));
+      width: calc(100% + 2 * max(var(--page-pad-x-md), var(--safe-left)));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .pos-checkout-shell {
+      flex-direction: row;
+      min-height: calc(100dvh - 10rem);
+      max-height: calc(100dvh - 10rem);
+      margin-left: 0;
+      margin-right: 0;
+      width: 100%;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .pos-checkout-shell {
+      min-height: calc(100dvh - 6rem);
+      max-height: calc(100dvh - 6rem);
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

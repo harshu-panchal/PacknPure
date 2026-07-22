@@ -137,21 +137,22 @@ export default function PosReports() {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <BarChart3 className="mr-3 w-7 h-7 text-indigo-600" />
+        <div className="pos-page max-w-7xl mx-auto w-full">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6 lg:mb-8">
+                <div className="min-w-0">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        <BarChart3 className="w-7 h-7 text-indigo-600 flex-shrink-0" aria-hidden />
                         POS Analytics & Reports
                     </h1>
-                    <p className="text-gray-500 mt-1">Unified view of offline store performance</p>
+                    <p className="text-gray-500 mt-1 text-sm">Unified view of offline store performance</p>
                 </div>
-                <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+                <div className="flex overflow-x-auto scrollbar-hide rounded-lg border border-gray-300 bg-white shadow-sm w-full sm:w-auto">
                     {['today', 'week', 'month', 'year'].map(range => (
                         <button
+                            type="button"
                             key={range}
                             onClick={() => setDateRange(range)}
-                            className={`px-4 py-2 text-sm font-semibold capitalize transition-colors ${
+                            className={`px-4 py-2.5 min-h-11 text-sm font-semibold capitalize transition-colors whitespace-nowrap flex-1 sm:flex-none ${
                                 dateRange === range 
                                 ? 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-600' 
                                 : 'text-gray-600 hover:bg-gray-50'

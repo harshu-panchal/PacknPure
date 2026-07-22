@@ -65,22 +65,23 @@ export default function PosCashDrawer() {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="pos-page max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {/* Left Side: Actions */}
-            <div>
-                <div className="flex items-center justify-between mb-6">
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Banknote className="w-7 h-7 mr-3 text-blue-600" />
-                        Manage Cash Drawer
+            <div className="min-w-0">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 min-w-0">
+                        <Banknote className="w-7 h-7 text-blue-600 flex-shrink-0" aria-hidden />
+                        <span>Manage Cash Drawer</span>
                     </h1>
                     <Button 
                         variant="contained" 
                         color="error" 
                         startIcon={<Power />}
                         onClick={() => {
-                            setActualCash(activeSession.expectedCash); // default to expected
+                            setActualCash(activeSession.expectedCash);
                             setIsClosingModalOpen(true);
                         }}
+                        className="!w-full sm:!w-auto !min-h-11"
                     >
                         End Session
                     </Button>
@@ -190,7 +191,7 @@ export default function PosCashDrawer() {
                     </div>
                 )}
 
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[500px]">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col max-h-[min(500px,50dvh)] md:max-h-[500px]">
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                         <h3 className="font-bold text-gray-800 flex items-center">
                             <History className="w-4 h-4 mr-2" /> Recent Movements
@@ -231,17 +232,17 @@ export default function PosCashDrawer() {
 
             {/* End Session Modal */}
             {isClosingModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <div className="fixed inset-0 z-shell-modal flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4 safe-px" role="dialog" aria-modal="true" aria-label="End POS session">
+                    <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl max-w-md w-full overflow-hidden max-h-[min(90dvh,90vh)] flex flex-col">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 flex-shrink-0">
                             <h3 className="font-bold text-gray-800 flex items-center">
-                                <Power className="w-5 h-5 mr-2 text-red-500" /> End POS Session
+                                <Power className="w-5 h-5 mr-2 text-red-500" aria-hidden /> End POS Session
                             </h3>
-                            <button onClick={() => setIsClosingModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <X className="w-5 h-5" />
+                            <button type="button" onClick={() => setIsClosingModalOpen(false)} aria-label="Close" className="touch-target inline-flex items-center justify-center text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" aria-hidden />
                             </button>
                         </div>
-                        <div className="p-6">
+                        <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain">
                             <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 flex justify-between items-center border border-blue-100">
                                 <div>
                                     <p className="text-sm font-medium opacity-80">Expected Cash</p>
@@ -304,7 +305,7 @@ const MovementItem = ({ type, amount, note, time }) => {
                 <p className={`font-bold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                     {isPositive ? '+' : '-'}₹{amount.toFixed(2)}
                 </p>
-                {time && <p className="text-[10px] text-gray-400">{new Date(time).toLocaleTimeString()}</p>}
+                {time && <p className="text-xs text-gray-400">{new Date(time).toLocaleTimeString()}</p>}
             </div>
         </div>
     );

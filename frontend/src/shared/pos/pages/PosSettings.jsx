@@ -42,14 +42,14 @@ export default function PosSettings() {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Settings className="mr-3 w-7 h-7 text-gray-600" />
+        <div className="pos-page max-w-5xl mx-auto w-full">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                <div className="min-w-0">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        <Settings className="w-7 h-7 text-gray-600 flex-shrink-0" aria-hidden />
                         POS Settings
                     </h1>
-                    <p className="text-gray-500 mt-1">Configure offline terminal behaviors and permissions</p>
+                    <p className="text-gray-500 mt-1 text-sm">Configure offline terminal behaviors and permissions</p>
                 </div>
                 <Button 
                     variant="contained" 
@@ -57,7 +57,7 @@ export default function PosSettings() {
                     size="large"
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="!font-bold !px-8"
+                    className="!font-bold !px-8 !w-full sm:!w-auto !min-h-11"
                 >
                     {isSaving ? "Saving..." : "Save Settings"}
                 </Button>

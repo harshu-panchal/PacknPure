@@ -135,20 +135,20 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
             onClose={() => !isProcessing && onOpenChange(false)} 
             maxWidth="sm" 
             fullWidth
-            PaperProps={{ className: "overflow-hidden rounded-xl" }}
+            PaperProps={{ className: "overflow-hidden rounded-xl mx-2 sm:mx-auto max-h-[min(95dvh,95vh)]" }}
         >
-            <div className="p-6 bg-gray-50 border-b border-gray-100">
-                <h2 className="text-xl font-bold flex items-center m-0">
+            <div className="p-4 sm:p-6 bg-gray-50 border-b border-gray-100">
+                <DialogTitle className="!p-0 !text-lg sm:!text-xl !font-bold">
                     Complete Payment
-                </h2>
+                </DialogTitle>
             </div>
             
             <DialogContent className="!p-0">
-                <div className="p-6 space-y-6">
+                <div className="p-4 sm:p-6 space-y-6 overflow-y-auto max-h-[min(70dvh,70vh)]">
                     {/* Amount to Pay */}
-                    <div className="flex justify-between items-center bg-blue-50 p-4 rounded-lg border border-blue-100">
-                        <span className="text-blue-800 font-semibold">Total Due</span>
-                        <span className="text-3xl font-black text-blue-700">₹{total.toFixed(2)}</span>
+                    <div className="flex justify-between items-center bg-blue-50 p-4 rounded-lg border border-blue-100 gap-3">
+                        <span className="text-blue-800 font-semibold shrink-0">Total Due</span>
+                        <span className="text-2xl sm:text-3xl font-black text-blue-700 break-all text-right">₹{total.toFixed(2)}</span>
                     </div>
 
                     {/* Payment Methods */}
@@ -170,7 +170,7 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                     ) : (
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <MethodBtn 
                                     id="cash" label="Cash" icon={Banknote} 
                                     active={paymentMethod} onClick={setPaymentMethod} 
@@ -203,10 +203,10 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                                     className="w-full text-2xl font-bold p-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-0"
                                     min={total}
                                 />
-                                <div className="flex gap-2 mt-2">
-                                    <button onClick={handleExact} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">Exact</button>
-                                    <button onClick={() => handleQuickAmount(100)} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">+100</button>
-                                    <button onClick={() => handleQuickAmount(500)} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">+500</button>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    <button type="button" onClick={handleExact} className="min-h-10 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">Exact</button>
+                                    <button type="button" onClick={() => handleQuickAmount(100)} className="min-h-10 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">+100</button>
+                                    <button type="button" onClick={() => handleQuickAmount(500)} className="min-h-10 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700 transition">+500</button>
                                 </div>
                             </div>
                             
@@ -220,7 +220,7 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                     )}
                 </div>
 
-                <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-4">
+                <div className="p-4 sm:p-6 bg-gray-50 border-t border-gray-100 flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
                     <Button 
                         variant="outlined" 
                         color="inherit" 
@@ -256,14 +256,16 @@ const MethodBtn = ({ id, label, icon: Icon, active, onClick }) => {
     const isActive = active === id;
     return (
         <button
+            type="button"
+            aria-pressed={isActive}
             onClick={() => onClick(id)}
-            className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
+            className={`flex flex-col items-center justify-center min-h-11 p-3 rounded-lg border-2 transition-all ${
                 isActive 
                 ? 'border-blue-500 bg-blue-50 text-blue-700' 
                 : 'border-gray-200 bg-white text-gray-500 hover:border-blue-200 hover:bg-gray-50'
             }`}
         >
-            <Icon className={`w-6 h-6 mb-2 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+            <Icon className={`w-6 h-6 mb-2 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} aria-hidden />
             <span className="text-xs font-semibold">{label}</span>
         </button>
     );

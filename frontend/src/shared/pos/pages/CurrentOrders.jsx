@@ -55,19 +55,17 @@ export default function CurrentOrders() {
     };
 
     if (loading) {
-        return <div className="p-6 text-center text-gray-500">Loading POS orders...</div>;
+        return <div className="flex items-center justify-center min-h-[40vh] p-6 text-gray-500" role="status">Loading POS orders...</div>;
     }
 
     return (
-        <div className="p-6 max-w-7xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <Package className="mr-3 w-7 h-7 text-blue-600" />
-                        Current POS Orders
-                    </h1>
-                    <p className="text-gray-500 mt-1">Live tracking of Walk-in and Take-Away orders</p>
-                </div>
+        <div className="pos-page max-w-7xl mx-auto w-full">
+            <div className="mb-6">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                    <Package className="w-7 h-7 text-blue-600 flex-shrink-0" aria-hidden />
+                    Current POS Orders
+                </h1>
+                <p className="text-gray-500 mt-1 text-sm">Live tracking of Walk-in and Take-Away orders</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

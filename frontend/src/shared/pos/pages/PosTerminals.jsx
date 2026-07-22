@@ -83,11 +83,11 @@ export default function PosTerminals() {
         }
     };
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500">Loading Terminals...</div>;
+    if (isLoading) return <div className="flex items-center justify-center min-h-[40vh] text-gray-500" role="status">Loading Terminals...</div>;
 
     return (
-        <div className="p-6 max-w-6xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
+        <div className="pos-page max-w-6xl mx-auto w-full">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center">
                         <Monitor className="w-7 h-7 mr-3 text-blue-600" />
@@ -95,7 +95,7 @@ export default function PosTerminals() {
                     </h1>
                     <p className="text-gray-500 mt-1">Manage physical registers and store locations</p>
                 </div>
-                <Button variant="contained" startIcon={<Plus />} color="primary" onClick={() => setIsAddModalOpen(true)}>
+                <Button variant="contained" startIcon={<Plus />} color="primary" onClick={() => setIsAddModalOpen(true)} className="!w-full sm:!w-auto !min-h-11">
                     Add Terminal
                 </Button>
             </div>

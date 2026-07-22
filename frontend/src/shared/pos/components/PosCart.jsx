@@ -47,8 +47,8 @@ export const PosCart = () => {
     }
 
     return (
-        <div className="flex-1 overflow-auto bg-white rounded-lg border border-gray-200">
-            <table className="w-full text-left border-collapse">
+        <div className="flex-1 overflow-x-auto overscroll-x-contain bg-white rounded-lg border border-gray-200">
+            <table className="w-full text-left border-collapse min-w-[640px]">
                 <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                     <tr>
                         <th className="py-3 px-4 text-sm font-semibold text-gray-600 min-w-[200px]">Product & Inventory Status</th>

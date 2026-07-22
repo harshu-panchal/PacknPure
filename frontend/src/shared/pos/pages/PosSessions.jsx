@@ -41,33 +41,34 @@ export default function PosSessions() {
     };
 
     return (
-        <div className="p-6 max-w-6xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center">
-                        <History className="w-7 h-7 mr-3 text-blue-600" />
+        <div className="pos-page max-w-6xl mx-auto w-full">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+                <div className="min-w-0">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        <History className="w-7 h-7 text-blue-600 flex-shrink-0" aria-hidden />
                         POS Sessions History
                     </h1>
-                    <p className="text-gray-500 mt-1">Review past shifts and end-of-day reports</p>
+                    <p className="text-gray-500 mt-1 text-sm">Review past shifts and end-of-day reports</p>
                 </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <div className="relative w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 bg-gray-50">
+                    <div className="relative w-full sm:w-64 min-w-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden />
                         <input 
-                            type="text" 
+                            type="search"
+                            aria-label="Search sessions"
                             value={searchTerm}
                             onChange={handleSearch}
                             placeholder="Search Cashier or Terminal..." 
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                            className="w-full min-h-11 pl-9 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
                 </div>
 
                 {isLoading ? (
-                    <div className="p-12 text-center text-gray-500">Loading sessions...</div>
+                    <div className="p-12 text-center text-gray-500 min-h-[40vh] flex items-center justify-center" role="status">Loading sessions...</div>
                 ) : sessions.length === 0 ? (
                     <div className="p-12 text-center text-gray-500 flex flex-col items-center">
                         <History className="w-12 h-12 mb-4 text-gray-300" />
@@ -75,8 +76,30 @@ export default function PosSessions() {
                         <p className="text-sm">Historical session data will appear here.</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    <>
+                    <div className="block lg:hidden divide-y divide-gray-100">
+                        {sessions.map((session) => (
+                            <div key={session._id} className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-gray-800 truncate">{session.terminalId?.name || 'Unknown Terminal'}</div>
+                                        <div className="text-xs text-gray-500">{session.cashierId?.name || 'Unknown Cashier'}</div>
+                                    </div>
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${session.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        {session.status}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div><span className="text-gray-500">Opened</span><p className="font-medium text-gray-800">{format(new Date(session.openedAt), 'dd MMM, hh:mm a')}</p></div>
+                                    <div><span className="text-gray-500">POS Sales</span><p className="font-bold text-gray-800">₹{(isSeller ? (session.totalCashSales || 0) + (session.totalOnlineSales || 0) : (session.totalCashSales || 0) + (session.totalCardSales || 0) + (session.totalUPISales || 0)).toFixed(2)}</p></div>
+                                    <div><span className="text-gray-500">Expected</span><p className="font-medium">₹{session.expectedCash?.toFixed(2) || '0.00'}</p></div>
+                                    <div><span className="text-gray-500">Difference</span><p className={`font-bold ${session.cashDifference < 0 ? 'text-red-500' : session.cashDifference > 0 ? 'text-green-500' : 'text-gray-400'}`}>{session.cashDifference > 0 ? '+' : ''}{session.cashDifference !== undefined ? session.cashDifference.toFixed(2) : '0.00'}</p></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="hidden lg:block overflow-x-auto overscroll-x-contain">
+                        <table className="w-full text-left border-collapse min-w-[900px]">
                             <thead>
                                 <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-sm">
                                     <th className="p-4 font-semibold">Terminal & Cashier</th>
@@ -148,6 +171,7 @@ export default function PosSessions() {
                             </tbody>
                         </table>
                     </div>
+                    </>
                 )}
             </div>
         </div>

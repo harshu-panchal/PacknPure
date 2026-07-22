@@ -45,7 +45,7 @@ const PosGuards = () => {
 
     // 3. Active Session Check
     if (isLoading) {
-        return <div className="flex items-center justify-center p-12">Loading POS data...</div>;
+        return <div className="flex items-center justify-center min-h-[40vh] p-6 text-gray-500" role="status">Loading POS data...</div>;
     }
 
     // If trying to access checkout/cash-drawer without an active session, block them.
@@ -75,7 +75,7 @@ const PosGuards = () => {
     // Wrap everything downstream in PosCartProvider to isolate cart state to POS pages
     return (
         <PosCartProvider>
-            <div className="pos-module-container h-full w-full flex flex-col">
+            <div className="pos-module-container flex flex-col min-h-0 w-full flex-1">
                 <Outlet />
             </div>
         </PosCartProvider>

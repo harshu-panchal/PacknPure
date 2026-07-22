@@ -97,32 +97,33 @@ export default function PosReceiptPage() {
     };
 
     return (
-        <div className="flex flex-col h-full min-h-[calc(100vh-100px)] bg-gray-100 overflow-y-auto w-full rounded-xl">
-            <div className="bg-white p-4 border-b border-gray-200 flex items-center justify-between shadow-sm sticky top-0 z-10 print:hidden">
-                <div className="flex items-center gap-4">
+        <div className="flex flex-col min-h-[min(100dvh,100vh)] bg-gray-100 overflow-y-auto w-full rounded-xl">
+            <div className="bg-white p-3 sm:p-4 border-b border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm sticky top-0 z-shell-topbar print:hidden safe-pt">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
                     <Button 
                         startIcon={<ArrowLeft size={16} />} 
                         onClick={() => navigate(`/${role}/pos/checkout`)}
                         color="inherit"
+                        className="!self-start !min-h-11"
                     >
                         Back to POS
                     </Button>
-                    <h1 className="text-xl font-black text-gray-800">Receipt Generated</h1>
+                    <h1 className="text-lg sm:text-xl font-black text-gray-800 truncate">Receipt Generated</h1>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                     <Button 
                         variant="contained" 
                         color="primary" 
                         startIcon={<Plus size={16} />}
                         onClick={() => navigate(`/${role}/pos/checkout`)}
-                        className="!rounded-xl !font-bold"
+                        className="!rounded-xl !font-bold !w-full sm:!w-auto !min-h-11"
                     >
                         New Order
                     </Button>
                 </div>
             </div>
 
-            <div className="flex-1 p-6 flex justify-center pb-20 mt-4">
+            <div className="flex-1 p-4 sm:p-6 flex justify-center pb-24 md:pb-20 mt-2 sm:mt-4">
                 <div className="bg-white shadow-xl rounded-2xl w-full max-w-md overflow-hidden flex flex-col h-max">
                     <div className="p-8 text-sm receipt-content flex-1" id="printable-receipt" style={{ fontFamily: 'monospace' }}>
                         <div className="text-center mb-6 relative">
