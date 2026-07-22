@@ -424,7 +424,11 @@ export const getMyPickupAssignments = async (req, res) => {
           row.pickupOtpHash &&
           (!row.pickupOtpExpiresAt || new Date(row.pickupOtpExpiresAt) > new Date()),
       ),
+      pickupOtpVerified: Boolean(
+        row.status === "pickup_assigned" && row.pickupOtpVerifiedAt,
+      ),
       pickupOtpExpiresAt: row.pickupOtpExpiresAt || null,
+      reachedSellerAt: row.pickupProof?.reachedSellerAt || null,
       notes: row.notes || "",
       eta: row.eta || null,
       dates: mapPrKeyDates(row),
@@ -443,7 +447,44 @@ export const getMyPickupAssignments = async (req, res) => {
 };
 
 /**
- * Partner generates / refreshes handover OTP after parcel photo.
+ * Partner marks arrival at seller (unlocks parcel images step).
+ * Does not change PR business status — pickup_assigned remains.
+ */
+export const markReachedSeller = async (req, res) => {
+  try {
+    const partnerId = await resolvePickupPartnerId(req.user);
+    if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
+    const { id } = req.params;
+    const { lat, lng } = req.body || {};
+
+    const pr = await PurchaseRequest.findOne({
+      _id: id,
+      pickupPartnerId: partnerId,
+      status: "pickup_assigned",
+    });
+    if (!pr) return handleResponse(res, 404, "Pickup assignment not found");
+
+    const prev = pr.pickupProof?.toObject?.() || pr.pickupProof || {};
+    pr.pickupProof = {
+      ...prev,
+      reachedSellerAt: new Date(),
+      location:
+        Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
+          ? { lat: Number(lat), lng: Number(lng) }
+          : prev.location,
+    };
+    await savePurchaseRequest(pr);
+
+    return handleResponse(res, 200, "Reached seller recorded", {
+      reachedSellerAt: pr.pickupProof.reachedSellerAt,
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Partner generates / refreshes handover OTP after parcel photo(s).
  * Dev: always stores and returns 1234. Production: random OTP, provider-ready (no SMS yet).
  */
 export const generateAssignmentPickupOtp = async (req, res) => {
@@ -451,10 +492,18 @@ export const generateAssignmentPickupOtp = async (req, res) => {
     const partnerId = await resolvePickupPartnerId(req.user);
     if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
     const { id } = req.params;
-    const { vendorImageUrl } = req.body || {};
+    const { vendorImageUrl, vendorImageUrls } = req.body || {};
 
-    if (!vendorImageUrl || !String(vendorImageUrl).trim()) {
-      return handleResponse(res, 400, "Parcel image is required before generating OTP");
+    const urls = [
+      ...(Array.isArray(vendorImageUrls) ? vendorImageUrls : []),
+      ...(vendorImageUrl ? [vendorImageUrl] : []),
+    ]
+      .map((u) => String(u || "").trim())
+      .filter(Boolean);
+    const uniqueUrls = [...new Set(urls)].slice(0, 4);
+
+    if (uniqueUrls.length < 1) {
+      return handleResponse(res, 400, "At least one parcel image is required before generating OTP");
     }
 
     const pr = await PurchaseRequest.findOne({
@@ -475,14 +524,22 @@ export const generateAssignmentPickupOtp = async (req, res) => {
       Date.now() + (await getPickupOtpTimeoutMinutes()) * 60 * 1000,
     );
     pr.pickupOtpVerifiedAt = undefined;
+    const prev = pr.pickupProof?.toObject?.() || pr.pickupProof || {};
     pr.pickupProof = {
-      ...(pr.pickupProof?.toObject?.() || pr.pickupProof || {}),
-      vendorImageUrl: String(vendorImageUrl).trim(),
-      prePickupImageAt: new Date(),
+      ...prev,
+      vendorImageUrl: uniqueUrls[0],
+      // Extra URLs kept in notes prefix for history without schema migration
+      notes: [
+        prev.notes && !String(prev.notes).startsWith("VENDOR_IMAGES:")
+          ? String(prev.notes)
+          : "",
+        `VENDOR_IMAGES:${uniqueUrls.join("|")}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
     };
     await savePurchaseRequest(pr);
 
-    // Notify seller that OTP is ready (seller reads aloud; never verifies)
     try {
       const { createNotification } = await import("../services/notificationService.js");
       if (pr.vendorId) {
@@ -502,6 +559,7 @@ export const generateAssignmentPickupOtp = async (req, res) => {
     const payload = {
       expiresAt: pr.pickupOtpExpiresAt,
       pickupOtpGenerated: true,
+      vendorImageUrls: uniqueUrls,
     };
     if (process.env.NODE_ENV !== "production") {
       payload.otp = "1234";
@@ -509,6 +567,52 @@ export const generateAssignmentPickupOtp = async (req, res) => {
     }
 
     return handleResponse(res, 200, "OTP generated successfully", payload);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/**
+ * Verify handover OTP only — does not complete pickup.
+ * Unlocks Confirm Pickup step on the partner app.
+ */
+export const verifyAssignmentPickupOtp = async (req, res) => {
+  try {
+    const partnerId = await resolvePickupPartnerId(req.user);
+    if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
+    const { id } = req.params;
+    const { otp } = req.body || {};
+    const normalizedOtp = String(otp || "").trim();
+
+    if (!normalizedOtp) {
+      return handleResponse(res, 400, "Pickup OTP is required");
+    }
+
+    const pr = await PurchaseRequest.findOne({
+      _id: id,
+      pickupPartnerId: partnerId,
+      status: "pickup_assigned",
+    }).select("+pickupOtpHash +pickupOtpCode +pickupOtpExpiresAt +pickupOtpVerifiedAt");
+
+    if (!pr) return handleResponse(res, 404, "Pickup assignment not found");
+
+    if (!pr.pickupOtpHash) {
+      return handleResponse(res, 400, "Generate OTP before verifying");
+    }
+    if (pr.pickupOtpExpiresAt && new Date(pr.pickupOtpExpiresAt) < new Date()) {
+      return handleResponse(res, 400, "Pickup OTP expired");
+    }
+    if (pr.pickupOtpHash !== hashPickupOtp(normalizedOtp)) {
+      return handleResponse(res, 400, "Invalid OTP");
+    }
+
+    pr.pickupOtpVerifiedAt = new Date();
+    await savePurchaseRequest(pr);
+
+    return handleResponse(res, 200, "OTP verified successfully", {
+      pickupOtpVerified: true,
+      verifiedAt: pr.pickupOtpVerifiedAt,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -601,7 +705,7 @@ export const markAssignmentPicked = async (req, res) => {
     const partnerId = await resolvePickupPartnerId(req.user);
     if (!partnerId) return handleResponse(res, 403, "No linked PickupPartner account found.");
     const { id } = req.params;
-    const { otp, lat, lng, notes, vendorImageUrl } = req.body || {};
+    const { otp, lat, lng, notes, vendorImageUrl, vendorImageUrls } = req.body || {};
     const latitude = Number(lat);
     const longitude = Number(lng);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -610,7 +714,14 @@ export const markAssignmentPicked = async (req, res) => {
     if (!otp) {
       return handleResponse(res, 400, "Pickup OTP is required");
     }
-    if (!vendorImageUrl || !String(vendorImageUrl).trim()) {
+    const imageUrls = [
+      ...(Array.isArray(vendorImageUrls) ? vendorImageUrls : []),
+      ...(vendorImageUrl ? [vendorImageUrl] : []),
+    ]
+      .map((u) => String(u || "").trim())
+      .filter(Boolean);
+    const uniqueImageUrls = [...new Set(imageUrls)].slice(0, 4);
+    if (uniqueImageUrls.length < 1) {
       return handleResponse(res, 400, "Parcel image is required before confirming pickup");
     }
 
@@ -635,6 +746,9 @@ export const markAssignmentPicked = async (req, res) => {
     }
     if (pr.pickupOtpExpiresAt && new Date(pr.pickupOtpExpiresAt) < new Date()) {
       return handleResponse(res, 400, "Pickup OTP expired");
+    }
+    if (!pr.pickupOtpVerifiedAt) {
+      return handleResponse(res, 400, "Verify OTP before confirming pickup");
     }
 
     const coords = pr.vendorId?.location?.coordinates;
@@ -699,8 +813,13 @@ export const markAssignmentPicked = async (req, res) => {
       pr.pickupProof = {
         pickedAt: new Date(),
         pickedBy: partnerId,
-        vendorImageUrl: String(vendorImageUrl || ""),
-        notes: String(notes || "Seller failed to provide stock"),
+        vendorImageUrl: uniqueImageUrls[0],
+        notes: [
+          String(notes || "Seller failed to provide stock"),
+          `VENDOR_IMAGES:${uniqueImageUrls.join("|")}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
         location: { lat: latitude, lng: longitude },
       };
       await savePurchaseRequest(pr);
@@ -789,8 +908,13 @@ export const markAssignmentPicked = async (req, res) => {
     pr.pickupProof = {
       pickedAt: new Date(),
       pickedBy: partnerId,
-      vendorImageUrl: String(vendorImageUrl || ""),
-      notes: String(notes || ""),
+      vendorImageUrl: uniqueImageUrls[0],
+      notes: [
+        String(notes || ""),
+        `VENDOR_IMAGES:${uniqueImageUrls.join("|")}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
       location: { lat: latitude, lng: longitude },
     };
     await savePurchaseRequest(pr);
