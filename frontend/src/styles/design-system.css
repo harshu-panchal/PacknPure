@@ -201,7 +201,13 @@
 .ds-section-spacing {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .ds-section-spacing {
+    gap: 1.5rem;
+  }
 }
 
 .ds-content-spacing {

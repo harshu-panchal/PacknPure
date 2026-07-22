@@ -36,6 +36,44 @@
 
   /* Cart pill fill — overridden on Home by MainLocationHeader */
   --customer-mini-cart-color: #E23744;
+
+  /* ============================================
+     APP SHELL — Responsive Foundation (Phase 1)
+     ============================================ */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  --shell-header-h: 3.5rem;
+  --shell-header-h-md: 4rem;
+  --shell-bottom-nav-h: 4rem;
+  --shell-sidebar-rail: 5rem;
+  --shell-sidebar-seller: 14rem;
+  --shell-sidebar-seller-md: 16rem;
+  --shell-sidebar-admin: 16rem;
+  --shell-sidebar-admin-md: 18rem;
+
+  --page-pad-x: 1rem;
+  --page-pad-x-md: 1.5rem;
+  --page-pad-y: 1rem;
+  --page-pad-y-md: 1.5rem;
+  --page-gap: 1rem;
+  --page-gap-md: 1.5rem;
+  --page-max-w: 100%;
+
+  /* Z-index architecture */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-backdrop: 300;
+  --z-drawer: 400;
+  --z-sidebar: 400;
+  --z-topbar: 500;
+  --z-bottom-nav: 500;
+  --z-popover: 600;
+  --z-modal: 700;
+  --z-toast: 800;
 }
 
 body {
@@ -285,6 +323,111 @@ body {
     100% {
       transform: translateX(-50%);
     }
+  }
+
+  /* ============================================
+     APP SHELL UTILITIES (Phase 1)
+     ============================================ */
+
+  .min-h-app {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .h-app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .safe-pt {
+    padding-top: var(--safe-top);
+  }
+
+  .safe-pb {
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .safe-px {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  .app-shell {
+    min-height: 100vh;
+    min-height: 100dvh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  .app-shell-content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+    transition: padding-left 300ms ease;
+  }
+
+  .app-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    overflow-x: clip;
+    padding-left: max(var(--page-pad-x), var(--safe-left));
+    padding-right: max(var(--page-pad-x), var(--safe-right));
+    padding-top: calc(var(--shell-header-h) + var(--safe-top) + 0.75rem);
+    padding-bottom: calc(var(--shell-bottom-nav-h) + var(--safe-bottom) + 1rem);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  @media (min-width: 768px) {
+    .app-main {
+      padding-left: max(var(--page-pad-x-md), var(--safe-left));
+      padding-right: max(var(--page-pad-x-md), var(--safe-right));
+      padding-top: var(--page-pad-y-md);
+      padding-bottom: var(--page-pad-y-md);
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    .app-main--no-bottom-nav {
+      padding-bottom: var(--page-pad-y-md);
+    }
+  }
+
+  .app-main--no-bottom-nav {
+    padding-bottom: calc(1.5rem + var(--safe-bottom));
+  }
+
+  .app-page-container {
+    width: 100%;
+    max-width: var(--page-max-w);
+    margin-inline: auto;
+    min-width: 0;
+  }
+
+  .app-shell-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: var(--z-backdrop);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .z-shell-backdrop { z-index: var(--z-backdrop); }
+  .z-shell-drawer { z-index: var(--z-drawer); }
+  .z-shell-sidebar { z-index: var(--z-sidebar); }
+  .z-shell-topbar { z-index: var(--z-topbar); }
+  .z-shell-bottom-nav { z-index: var(--z-bottom-nav); }
+  .z-shell-popover { z-index: var(--z-popover); }
+  .z-shell-dropdown { z-index: var(--z-dropdown); }
+  .z-shell-modal { z-index: var(--z-modal); }
+  .z-shell-toast { z-index: var(--z-toast); }
+
+  .touch-target {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 }
 

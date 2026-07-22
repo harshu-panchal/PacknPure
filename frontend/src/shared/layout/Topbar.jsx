@@ -2,7 +2,6 @@ import React from 'react';
 import { useAuth } from '@core/context/AuthContext';
 import {
     HiOutlineLogout,
-    HiOutlineUserCircle,
     HiOutlineBell,
     HiOutlineSearch,
     HiOutlineMenu
@@ -15,7 +14,7 @@ import { AnimatePresence } from 'framer-motion';
 import NotificationPopup from './NotificationPopup';
 import { toast } from 'sonner';
 
-const Topbar = ({ onMenuClick }) => {
+const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
     const { user, logout, role } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -28,6 +27,7 @@ const Topbar = ({ onMenuClick }) => {
     const notificationRef = React.useRef(null);
 
     const isSeller = location.pathname.startsWith('/seller');
+    const usesShellChrome = role === 'admin' || role === 'seller';
 
     const handleSearchSubmit = (e) => {
         if (e) e.preventDefault();
@@ -111,7 +111,7 @@ const Topbar = ({ onMenuClick }) => {
                 await adminApi.markNotificationRead(id);
             }
             fetchNotifications();
-        } catch (error) {
+        } catch {
             toast.error("Failed to mark as read");
         }
     };
@@ -125,7 +125,7 @@ const Topbar = ({ onMenuClick }) => {
             }
             fetchNotifications();
             toast.success("All caught up!");
-        } catch (error) {
+        } catch {
             toast.error("Failed to mark all as read");
         }
     };
@@ -174,34 +174,41 @@ const Topbar = ({ onMenuClick }) => {
     }, [searchQuery, role, isSeller, adminSearchOptions, sellerSearchOptions]);
 
     return (
-        <header className={cn(
-            "bg-white/70 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300",
-            (role === 'admin' || role === 'seller')
-                ? "fixed top-0 left-0 right-0 z-[1000] h-14 px-4 md:static md:h-16 md:px-6"
-                : "fixed top-0 left-56 right-0 h-16 px-6 z-40"
-        )}>
-            <div className="flex items-center flex-1 mr-4 overflow-visible">
+        <header
+            className={cn(
+                "bg-white/70 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2",
+                usesShellChrome
+                    ? "fixed top-0 left-0 right-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:static md:h-16 md:pt-0 md:px-6"
+                    : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-4 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
+            )}
+        >
+            <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-visible">
                 <button
+                    type="button"
                     onClick={onMenuClick}
-                    className="p-2.5 mr-2 bg-gray-100/80 hover:bg-white rounded-xl text-gray-600 hover:text-primary transition-all duration-300 border border-transparent hover:border-primary/20 shadow-sm"
+                    aria-label={isMobileNavOpen ? 'Close menu' : 'Open menu'}
+                    aria-expanded={isMobileNavOpen}
+                    aria-controls="app-sidebar"
+                    className="touch-target inline-flex items-center justify-center mr-1 sm:mr-2 bg-gray-100/80 hover:bg-white rounded-xl text-gray-600 hover:text-primary transition-all duration-300 border border-transparent hover:border-primary/20 shadow-sm flex-shrink-0"
                 >
                     <HiOutlineMenu className="h-5 w-5" />
                 </button>
 
-                <form onSubmit={handleSearchSubmit} className="relative w-full md:w-[400px] group">
-                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300" />
+                <form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-0 max-w-full md:max-w-[400px] group">
+                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300 pointer-events-none" />
                     <input
-                        type="text"
-                        placeholder={isSeller ? "Search products by name or SKU..." : "Search anything..."}
+                        type="search"
+                        placeholder={isSeller ? "Search products..." : "Search..."}
+                        aria-label="Search"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onFocus={() => setShowSearchSuggestions(true)}
                         onBlur={() => setShowSearchSuggestions(false)}
-                        className="w-full pl-10 pr-4 py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
+                        className="w-full min-w-0 pl-10 pr-3 sm:pr-4 py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
                     />
                     
                     {(role === 'admin' || isSeller) && showSearchSuggestions && searchQuery.trim() && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden z-[1100] animate-in fade-in slide-in-from-top-2">
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden z-shell-dropdown animate-in fade-in slide-in-from-top-2">
                             {filteredOptions.length > 0 ? (
                                 <ul className="max-h-64 overflow-y-auto py-1">
                                     {filteredOptions.map((opt, i) => (
@@ -214,10 +221,10 @@ const Topbar = ({ onMenuClick }) => {
                                                     setSearchQuery(opt.label);
                                                     setShowSearchSuggestions(false);
                                                 }}
-                                                className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-primary/5 hover:text-primary transition-colors flex items-center space-x-2"
+                                                className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-primary/5 hover:text-primary transition-colors flex items-center space-x-2 min-h-11"
                                             >
-                                                <HiOutlineSearch className="h-3 w-3 text-gray-400" />
-                                                <span>{opt.label}</span>
+                                                <HiOutlineSearch className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                                <span className="truncate">{opt.label}</span>
                                             </button>
                                         </li>
                                     ))}
@@ -232,12 +239,15 @@ const Topbar = ({ onMenuClick }) => {
                 </form>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-1 sm:gap-2 md:gap-3 flex-shrink-0">
                 <div className="relative" ref={notificationRef}>
                     <button
+                        type="button"
                         onClick={handleToggleNotifications}
+                        aria-label="Notifications"
+                        aria-expanded={showNotifications}
                         className={cn(
-                            "p-2 hover:bg-primary/5 text-gray-500 hover:text-primary rounded-xl transition-all duration-300 relative group",
+                            "touch-target inline-flex items-center justify-center hover:bg-primary/5 text-gray-500 hover:text-primary rounded-xl transition-all duration-300 relative group",
                             showNotifications && "bg-primary/5 text-primary"
                         )}
                     >
@@ -259,8 +269,11 @@ const Topbar = ({ onMenuClick }) => {
                     </AnimatePresence>
                 </div>
 
-                <div className="h-8 w-px bg-gray-100 mx-1"></div>
+                <div className="hidden sm:block h-8 w-px bg-gray-100 mx-0.5" aria-hidden />
+
                 <button
+                    type="button"
+                    aria-label="Open profile"
                     onClick={() => {
                         if (location.pathname.startsWith('/admin')) {
                             navigate('/admin/profile');
@@ -272,22 +285,25 @@ const Topbar = ({ onMenuClick }) => {
                             navigate('/profile');
                         }
                     }}
-                    className="flex items-center space-x-2.5 p-1 pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md"
+                    className="flex items-center space-x-2.5 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md min-h-11"
                 >
-                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform">
+                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform flex-shrink-0">
                         {user?.name?.[0] || 'A'}
                     </div>
-                    <div>
-                        <p className="text-xs font-bold text-gray-900 leading-tight">{user?.name || 'Demo User'}</p>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{user?.role || 'Member'}</p>
+                    <div className="hidden md:block text-left min-w-0">
+                        <p className="text-xs font-bold text-gray-900 leading-tight truncate max-w-[9rem]">{user?.name || 'Demo User'}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider truncate">{user?.role || 'Member'}</p>
                     </div>
                 </button>
+
                 <button
+                    type="button"
                     onClick={handleLogout}
-                    className="flex items-center space-x-1.5 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50"
+                    aria-label="Sign out"
+                    className="touch-target inline-flex items-center justify-center gap-1.5 px-2 sm:px-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50"
                 >
-                    <HiOutlineLogout className="h-4 w-4" />
-                    <span className="hidden lg:block">Sign Out</span>
+                    <HiOutlineLogout className="h-4 w-4 flex-shrink-0" />
+                    <span className="hidden lg:inline">Sign Out</span>
                 </button>
             </div>
         </header>
@@ -295,4 +311,3 @@ const Topbar = ({ onMenuClick }) => {
 };
 
 export default Topbar;
-

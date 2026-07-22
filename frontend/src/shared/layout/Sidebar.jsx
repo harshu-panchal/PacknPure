@@ -7,32 +7,6 @@ import { HiChevronDown } from "react-icons/hi2";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
-const colorMap = {
-  indigo:
-    "text-indigo-600 bg-indigo-50 border-indigo-100 group-hover:bg-indigo-100/50",
-  rose: "text-rose-600 bg-rose-50 border-rose-100 group-hover:bg-rose-100/50",
-  amber:
-    "text-amber-600 bg-amber-50 border-amber-100 group-hover:bg-amber-100/50",
-  blue: "text-blue-600 bg-blue-50 border-blue-100 group-hover:bg-blue-100/50",
-  emerald:
-    "text-emerald-600 bg-emerald-50 border-emerald-100 group-hover:bg-emerald-100/50",
-  violet:
-    "text-violet-600 bg-violet-50 border-violet-100 group-hover:bg-violet-100/50",
-  cyan: "text-cyan-600 bg-cyan-50 border-cyan-100 group-hover:bg-cyan-100/50",
-  orange:
-    "text-orange-600 bg-orange-50 border-orange-100 group-hover:bg-orange-100/50",
-  green:
-    "text-green-600 bg-green-50 border-green-100 group-hover:bg-green-100/50",
-  sky: "text-sky-600 bg-sky-50 border-sky-100 group-hover:bg-sky-100/50",
-  pink: "text-pink-600 bg-pink-50 border-pink-100 group-hover:bg-pink-100/50",
-  fuchsia:
-    "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-100 group-hover:bg-fuchsia-100/50",
-  red: "text-red-600 bg-red-50 border-red-100 group-hover:bg-red-100/50",
-  slate:
-    "text-slate-600 bg-slate-50 border-slate-100 group-hover:bg-slate-100/50",
-  dark: "text-gray-800 bg-gray-100 border-gray-200 group-hover:bg-gray-200/50",
-};
-
 const SidebarItem = ({
   item,
   isOpen,
@@ -60,11 +34,12 @@ const SidebarItem = ({
     return (
       <div className="space-y-1">
         <button
+          type="button"
           onClick={onToggle}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           className={cn(
-            "w-full flex items-center justify-between rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden",
+            "w-full flex items-center justify-between rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden min-h-11",
             isChildActive || isOpen
               ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.05)] ring-1 ring-white/10"
               : "text-gray-400 hover:text-white",
@@ -86,7 +61,7 @@ const SidebarItem = ({
             )}
           </AnimatePresence>
 
-          <div className="flex items-center space-x-2.5 z-10">
+          <div className="flex items-center space-x-2.5 z-10 min-w-0">
             <div
               className={cn(
                 "p-1.5 rounded-lg transition-all duration-500 shadow-lg flex-shrink-0",
@@ -129,7 +104,7 @@ const SidebarItem = ({
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    "block rounded-lg transition-all duration-300 relative",
+                    "block rounded-lg transition-all duration-300 relative min-h-10",
                     childLabelClass,
                     isActive
                       ? "text-white font-bold bg-white/10 shadow-sm ring-1 ring-white/5"
@@ -161,7 +136,7 @@ const SidebarItem = ({
       onClick={onClose}
       className={({ isActive }) =>
         cn(
-          "flex items-center space-x-2.5 rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden",
+          "flex items-center space-x-2.5 rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden min-h-11",
           isActive
             ? "bg-primary text-white shadow-[0_10px_30px_rgba(var(--primary),0.3)]"
             : "text-gray-400 hover:text-white",
@@ -214,7 +189,7 @@ const SidebarItem = ({
   );
 };
 
-const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hoveredIdx, setHoveredIdx, isCollapsed }) => {
+const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hoveredIdx, setHoveredIdx, isCollapsed, showCloseButton }) => {
   const { settings } = useSettings();
   const { role } = useAuth();
   const isAdmin = role === 'admin';
@@ -222,8 +197,8 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-shrink-0 flex h-16 items-center justify-between px-5 border-b border-white/5 bg-gradient-to-b from-white/[0.02] to-transparent z-10">
-        <div className="flex items-center space-x-2.5">
+      <div className="flex-shrink-0 flex h-16 items-center justify-between px-5 border-b border-white/5 bg-gradient-to-b from-white/[0.02] to-transparent z-10 safe-pt">
+        <div className="flex items-center space-x-2.5 min-w-0">
           <div className="h-9 w-9 flex-shrink-0 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30 transform -rotate-6 hover:rotate-0 transition-all duration-500 ease-out">
             <span className="text-lg font-black italic">{appName.charAt(0)}</span>
           </div>
@@ -245,13 +220,16 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
           )}
         </div>
 
-        {/* Mobile Close Button */}
-        <button
-          onClick={onClose}
-          className="p-2 md:hidden text-gray-500 hover:text-white transition-colors"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {showCloseButton && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="touch-target inline-flex items-center justify-center rounded-xl text-gray-500 hover:text-white transition-colors md:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <nav
@@ -284,10 +262,7 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
                 onClose={onClose}
                 isHovered={hoveredIdx === idx}
                 onMouseEnter={() => setHoveredIdx(idx)}
-                onMouseEnterWithClose={() => {
-                  setHoveredIdx(idx);
-                }}
-                onMouseLeave={() => { }} // Handle in nav container
+                onMouseLeave={() => { }}
                 isCollapsed={isCollapsed}
               />
             );
@@ -295,7 +270,7 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
         </AnimatePresence>
       </nav>
 
-      <div className="p-4 border-t border-white/5 bg-gradient-to-t from-white/[0.02] to-transparent flex-shrink-0">
+      <div className="p-4 border-t border-white/5 bg-gradient-to-t from-white/[0.02] to-transparent flex-shrink-0 safe-pb">
         <div className={cn(
           "bg-white/5 rounded-lg shadow-sm border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all group cursor-pointer",
           isCollapsed ? "p-2 flex justify-center" : "p-3"
@@ -313,13 +288,13 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
                   "font-bold text-white truncate group-hover:text-primary transition-colors",
                   isAdmin ? "text-sm" : "text-xs"
                 )}>
-                  {title?.toLowerCase().includes('seller') ? 'Seller Console' : 'Admin Console'}
+                  {title?.toLowerCase().includes('seller') || title?.toLowerCase().includes('vendor') ? 'Seller Console' : 'Admin Console'}
                 </p>
                 <p className={cn(
                   "text-gray-500 truncate font-black uppercase tracking-widest",
                   isAdmin ? "text-[10px]" : "text-[9px]"
                 )}>
-                  {title?.toLowerCase().includes('seller') ? 'Seller' : 'Super Admin'}
+                  {title?.toLowerCase().includes('seller') || title?.toLowerCase().includes('vendor') ? 'Seller' : 'Super Admin'}
                 </p>
               </div>
             )}
@@ -330,16 +305,26 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
   );
 };
 
-const Sidebar = ({ items, title, isCollapsed = false }) => {
+const Sidebar = ({
+  items,
+  title,
+  isCollapsed = false,
+  isDesktop = true,
+  isMobileOpen = false,
+  onClose,
+}) => {
   const { role } = useAuth();
   const isAdmin = role === 'admin';
-  const sidebarWidth = isAdmin ? 'w-64 md:w-72' : 'w-56';
+  const sidebarWidth = isAdmin ? 'w-64 md:w-72' : 'w-56 md:w-64';
   const [openMenu, setOpenMenu] = useState(null);
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const handleToggle = (label) => {
     setOpenMenu((prev) => (prev === label ? null : label));
   };
+
+  // Mobile drawer always shows labels; desktop respects collapse rail.
+  const effectiveCollapsed = isDesktop ? isCollapsed : false;
 
   const commonProps = {
     items,
@@ -348,17 +333,32 @@ const Sidebar = ({ items, title, isCollapsed = false }) => {
     handleToggle,
     hoveredIdx,
     setHoveredIdx,
-    isCollapsed
+    isCollapsed: effectiveCollapsed,
+    onClose,
+    showCloseButton: !isDesktop,
   };
 
   return (
     <>
-      {/* Desktop & Mobile Sidebar */}
-      <aside className={cn(
-        "fixed left-0 inset-y-0 bg-[#0a0c10] text-gray-400 border-r border-white/5 shadow-[20px_0_60px_rgba(0,0,0,0.4)] flex-col z-50 transition-all duration-300",
-        isCollapsed ? 'w-20' : sidebarWidth,
-        "flex"
-      )}>
+      {!isDesktop && isMobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation overlay"
+          className="app-shell-backdrop md:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <aside
+        id="app-sidebar"
+        aria-hidden={!isDesktop && !isMobileOpen}
+        className={cn(
+          "fixed inset-y-0 left-0 bg-[#0a0c10] text-gray-400 border-r border-white/5 shadow-[20px_0_60px_rgba(0,0,0,0.4)] flex flex-col z-shell-drawer transition-transform duration-300 ease-out",
+          isDesktop
+            ? cn(isCollapsed ? 'w-20' : sidebarWidth, 'translate-x-0')
+            : cn(sidebarWidth, isMobileOpen ? 'translate-x-0' : '-translate-x-full'),
+        )}
+      >
         <SidebarContent {...commonProps} />
       </aside>
     </>

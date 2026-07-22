@@ -1,36 +1,38 @@
 import ReactDOM from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineClock } from 'react-icons/hi2';
 import { cn } from '@/lib/utils';
-import Button from '@shared/components/ui/Button';
 
 const NotificationPopup = ({ notifications, onMarkAsRead, onMarkAllAsRead, onClose }) => {
     return ReactDOM.createPortal(
         <motion.div
+            role="dialog"
+            aria-label="Notifications"
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ type: "spring", damping: 20, stiffness: 300 }}
-            className="fixed top-20 right-4 md:right-8 w-[calc(100%-2rem)] md:w-[400px] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-slate-100 overflow-hidden !z-[99999] max-h-[85vh] flex flex-col"
+            className="fixed top-[calc(var(--shell-header-h)+var(--safe-top)+0.75rem)] right-3 sm:right-4 md:right-8 w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] md:w-[400px] max-w-[400px] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-slate-100 overflow-hidden z-shell-popover max-h-[min(85dvh,85vh)] flex flex-col"
         >
-            <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+            <div className="p-4 border-b border-gray-50 flex items-center justify-between gap-3 bg-slate-50/50 flex-shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
                         <HiOutlineBell className="h-4 w-4" />
                     </div>
-                    <h3 className="text-sm font-black text-slate-900 tracking-tight">Notifications</h3>
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight truncate">Notifications</h3>
                 </div>
                 {notifications.length > 0 && (
                     <button
+                        type="button"
                         onClick={onMarkAllAsRead}
-                        className="text-[10px] font-black text-primary hover:text-primary/80 uppercase tracking-widest transition-colors"
+                        className="min-h-10 px-2 text-[11px] font-black text-primary hover:text-primary/80 uppercase tracking-widest transition-colors flex-shrink-0"
                     >
                         Mark all as read
                     </button>
                 )}
             </div>
 
-            <div className="flex-1 md:max-h-[400px] overflow-y-auto custom-scrollbar">
+            <div className="flex-1 md:max-h-[400px] overflow-y-auto custom-scrollbar overscroll-contain">
                 {notifications.length > 0 ? (
                     <div className="divide-y divide-gray-50">
                         {notifications.map((notif) => (
@@ -45,7 +47,7 @@ const NotificationPopup = ({ notifications, onMarkAsRead, onMarkAllAsRead, onClo
                                 {!notif.isRead && (
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" />
                                 )}
-                                <div className="flex gap-4">
+                                <div className="flex gap-4 min-w-0">
                                     <div className={cn(
                                         "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110",
                                         notif.type === 'order' ? "bg-emerald-50 text-emerald-600" :
@@ -56,15 +58,15 @@ const NotificationPopup = ({ notifications, onMarkAsRead, onMarkAllAsRead, onClo
                                             notif.type === 'payment' ? <HiOutlineClock size={20} /> :
                                                 <HiOutlineExclamationCircle size={20} />}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center justify-between mb-1">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
                                             <p className={cn(
-                                                "text-xs font-black tracking-tight",
+                                                "text-xs font-black tracking-tight truncate",
                                                 notif.isRead ? "text-slate-600" : "text-slate-900"
                                             )}>
                                                 {notif.title}
                                             </p>
-                                            <span className="text-[9px] font-bold text-slate-400">
+                                            <span className="text-[9px] font-bold text-slate-400 flex-shrink-0">
                                                 {new Date(notif.createdAt).toLocaleDateString()}
                                             </span>
                                         </div>
@@ -89,8 +91,9 @@ const NotificationPopup = ({ notifications, onMarkAsRead, onMarkAllAsRead, onClo
 
             <div className="p-3 bg-slate-50/50 border-t border-gray-50 text-center flex-shrink-0">
                 <button
+                    type="button"
                     onClick={onClose}
-                    className="text-[10px] font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest transition-colors"
+                    className="min-h-10 px-3 text-[11px] font-black text-slate-400 hover:text-slate-900 uppercase tracking-widest transition-colors"
                 >
                     Close Panel
                 </button>
