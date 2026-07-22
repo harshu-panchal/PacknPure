@@ -1,181 +1,452 @@
-import React, { useMemo, useState, memo } from "react";
-import { MapPin, Navigation } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
+import {
+  MapPin,
+  Navigation,
+  Loader2,
+  ExternalLink,
+  Crosshair,
+} from "lucide-react";
 import { cn } from "../utils/cn";
-import { toLatLng } from "../utils/assignmentUtils";
+import { toLatLng, formatDistance } from "../utils/assignmentUtils";
+import deliveryIcon from "@/assets/deliveryIcon.png";
+import storePin from "@/assets/store-pin.png";
 
-const STOP_COLORS = {
-  current: "0x0d9488",
-  remaining: "0x94a3b8",
-  completed: "0x22c55e",
-  hub: "0x059669",
+const libraries = ["places", "geometry"];
+
+const containerStyle = {
+  width: "100%",
+  height: "100%",
+  minHeight: "260px",
 };
 
-function buildMarkers(partnerLoc, targetLoc, stops = []) {
-  const markers = [];
-  if (partnerLoc) {
-    markers.push(
-      `markers=size:mid%7Ccolor:0x0d9488%7Clabel:P%7C${partnerLoc.lat},${partnerLoc.lng}`,
-    );
-  }
+const AVG_SPEED_KMH = 24;
 
-  for (const stop of stops) {
-    const loc = toLatLng(stop.loc);
-    if (!loc) continue;
-    const color =
-      stop.type === "hub"
-        ? STOP_COLORS.hub
-        : STOP_COLORS[stop.status] || STOP_COLORS.remaining;
-    const label = stop.type === "hub" ? "H" : String(stop.label || "S").charAt(0).toUpperCase();
-    markers.push(
-      `markers=size:small%7Ccolor:${color}%7Clabel:${encodeURIComponent(label)}%7C${loc.lat},${loc.lng}`,
-    );
-  }
+function openExternalMaps(origin, destination) {
+  if (!destination) return;
+  const dest = `${destination.lat},${destination.lng}`;
+  const originParam =
+    origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)
+      ? `&origin=${origin.lat},${origin.lng}`
+      : "";
+  const url = `https://www.google.com/maps/dir/?api=1${originParam}&destination=${dest}&travelmode=driving`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
-  if (targetLoc && !stops.some((s) => s.status === "current")) {
-    const isHub = stops.some((s) => s.type === "hub" && s.status === "current");
-    markers.push(
-      `markers=size:mid%7Ccolor:${isHub ? STOP_COLORS.hub : STOP_COLORS.current}%7Clabel:T%7C${targetLoc.lat},${targetLoc.lng}`,
-    );
-  }
+function estimateMinutesFromMeters(meters) {
+  if (!Number.isFinite(meters) || meters <= 0) return null;
+  return Math.max(1, Math.round((meters / 1000 / AVG_SPEED_KMH) * 60));
+}
 
-  return markers;
+function formatArrivalClock(minutesFromNow) {
+  if (!Number.isFinite(minutesFromNow)) return "—";
+  const d = new Date(Date.now() + minutesFromNow * 60 * 1000);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 /**
- * In-app navigation map card for Pickup Partner (no external redirect).
+ * Interactive Google Map for Pickup Partner navigation.
+ * Partner pin + destination pin + road route (Directions API) + ETA card.
  */
 const InAppNavMap = ({
   partnerLoc,
   targetLoc,
   targetLabel = "SHOP",
   phaseLabel,
-  distance,
-  eta,
+  distance: distanceProp,
+  eta: etaProp,
   stops = [],
 }) => {
-  const [imgError, setImgError] = useState(false);
+  const mapRef = useRef(null);
+  const polylineRef = useRef(null);
+  const [mapInstance, setMapInstance] = useState(null);
+  const [routeMeta, setRouteMeta] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [directionsError, setDirectionsError] = useState(null);
 
-  const stopSummary = useMemo(() => {
-    const completed = stops.filter((s) => s.status === "completed").length;
-    const remaining = stops.filter((s) => s.status === "remaining").length;
-    return { completed, remaining, total: stops.length };
-  }, [stops]);
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+  const isHub =
+    String(targetLabel).toUpperCase() === "HUB" ||
+    String(targetLabel).toLowerCase().includes("hub");
 
-  if (!partnerLoc) {
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: apiKey,
+    libraries,
+  });
+
+  const rider = useMemo(() => {
+    if (!partnerLoc) return null;
+    const lat = Number(partnerLoc.lat);
+    const lng = Number(partnerLoc.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }, [partnerLoc]);
+
+  const dest = useMemo(() => {
+    if (!targetLoc) return null;
+    const lat = Number(targetLoc.lat);
+    const lng = Number(targetLoc.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }, [targetLoc]);
+
+  const riderIcon = useMemo(() => {
+    if (!isLoaded || !window.google?.maps) return undefined;
+    return {
+      url: deliveryIcon,
+      scaledSize: new window.google.maps.Size(44, 64),
+      anchor: new window.google.maps.Point(22, 64),
+    };
+  }, [isLoaded]);
+
+  const destIcon = useMemo(() => {
+    if (!isLoaded || !window.google?.maps) return undefined;
+    return {
+      url: storePin,
+      scaledSize: new window.google.maps.Size(40, 52),
+      anchor: new window.google.maps.Point(20, 52),
+    };
+  }, [isLoaded]);
+
+  const mapCenter = rider || dest || { lat: 22.7196, lng: 75.8577 };
+
+  const clearPolyline = useCallback(() => {
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+  }, []);
+
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+    setMapInstance(map);
+  }, []);
+
+  const fitBounds = useCallback(
+    (path) => {
+      const map = mapRef.current || mapInstance;
+      if (!map || !window.google?.maps) return;
+      const bounds = new window.google.maps.LatLngBounds();
+      if (rider) bounds.extend(rider);
+      if (dest) bounds.extend(dest);
+      if (Array.isArray(path)) {
+        path.forEach((p) => bounds.extend(p));
+      }
+      for (const stop of stops) {
+        const loc = toLatLng(stop.loc);
+        if (loc) bounds.extend(loc);
+      }
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { top: 48, right: 48, bottom: 48, left: 48 });
+      }
+    },
+    [rider, dest, stops, mapInstance],
+  );
+
+  const recenter = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !rider) return;
+    map.panTo(rider);
+    map.setZoom(15);
+  }, [rider]);
+
+  // Fetch road route via client DirectionsService (no backend change)
+  useEffect(() => {
+    if (!isLoaded || !mapInstance || !rider || !dest || !window.google?.maps) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setRouteLoading(true);
+    setDirectionsError(null);
+
+    const service = new window.google.maps.DirectionsService();
+    service.route(
+      {
+        origin: rider,
+        destination: dest,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (cancelled) return;
+        setRouteLoading(false);
+
+        clearPolyline();
+
+        if (status !== "OK" || !result?.routes?.[0]) {
+          setDirectionsError(
+            status === "REQUEST_DENIED"
+              ? "Enable Directions API + billing for your Maps key"
+              : "Route unavailable — use Navigate for turn-by-turn",
+          );
+          setRouteMeta(null);
+          fitBounds();
+          return;
+        }
+
+        const route = result.routes[0];
+        const leg = route.legs?.[0];
+        const path = route.overview_path || [];
+
+        const pl = new window.google.maps.Polyline({
+          path,
+          strokeColor: isHub ? "#059669" : "#0d9488",
+          strokeOpacity: 0.95,
+          strokeWeight: 5,
+          map: mapInstance,
+        });
+        polylineRef.current = pl;
+
+        setRouteMeta({
+          durationSeconds: leg?.duration?.value ?? null,
+          distanceMeters: leg?.distance?.value ?? null,
+          durationText: leg?.duration?.text || null,
+          distanceText: leg?.distance?.text || null,
+        });
+
+        fitBounds(path);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      clearPolyline();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when endpoints move
+  }, [isLoaded, mapInstance, rider?.lat, rider?.lng, dest?.lat, dest?.lng, isHub]);
+
+  const minutes =
+    routeMeta?.durationSeconds != null
+      ? Math.max(1, Math.round(routeMeta.durationSeconds / 60))
+      : estimateMinutesFromMeters(routeMeta?.distanceMeters);
+
+  const distanceLabel =
+    routeMeta?.distanceText ||
+    (routeMeta?.distanceMeters != null
+      ? formatDistance(routeMeta.distanceMeters)
+      : distanceProp) ||
+    null;
+
+  const arrivalClock = minutes != null ? formatArrivalClock(minutes) : etaProp || "—";
+  const arrivingIn =
+    minutes != null ? `${minutes} min${minutes === 1 ? "" : "s"}` : etaProp || "—";
+
+  if (!dest) return null;
+
+  if (!apiKey) {
     return (
-      <div className="flex min-h-[7rem] w-full min-w-0 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 sm:rounded-3xl">
-        <MapPin className="mb-2 text-slate-300" size={22} />
-        <p className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Enable GPS for in-app navigation
-        </p>
+      <div className="space-y-3">
+        <div className="flex min-h-[12rem] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center sm:rounded-3xl">
+          <MapPin className="text-slate-300" size={22} />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            Set VITE_GOOGLE_MAPS_API_KEY for live map
+          </p>
+          <button
+            type="button"
+            onClick={() => openExternalMaps(rider, dest)}
+            className="mt-1 inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-teal-600 px-4 text-[10px] font-black uppercase tracking-widest text-white"
+          >
+            <ExternalLink size={14} /> Open in Google Maps
+          </button>
+        </div>
       </div>
     );
   }
 
-  if (!targetLoc) return null;
+  if (loadError) {
+    return (
+      <div className="flex min-h-[12rem] items-center justify-center rounded-2xl bg-rose-50 px-4 text-center text-xs font-semibold text-rose-700 sm:rounded-3xl">
+        Map failed to load. Check API key and billing.
+      </div>
+    );
+  }
 
-  const isHub = String(targetLabel).toUpperCase() === "HUB";
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-  const markerParams = buildMarkers(partnerLoc, targetLoc, stops);
-  const pathParam =
-    partnerLoc && targetLoc
-      ? `path=color:0x0d9488aa%7Cweight:4%7C${partnerLoc.lat},${partnerLoc.lng}%7C${targetLoc.lat},${targetLoc.lng}`
-      : "";
-
-  const staticUrl = apiKey
-    ? `https://maps.googleapis.com/maps/api/staticmap?size=640x320&scale=2&maptype=roadmap&${[...markerParams, pathParam].filter(Boolean).join("&")}&key=${apiKey}`
-    : null;
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-[12rem] items-center justify-center rounded-2xl bg-slate-50 sm:rounded-3xl">
+        <Loader2 className="animate-spin text-teal-600" size={28} />
+      </div>
+    );
+  }
 
   return (
-    <div className="relative min-h-[10rem] w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-md sm:min-h-[12rem] sm:rounded-3xl">
-      {staticUrl && !imgError ? (
-        <img
-          src={staticUrl}
-          alt={`Route to ${targetLabel}`}
-          className="h-full min-h-[10rem] w-full object-cover sm:min-h-[12rem]"
-          loading="lazy"
-          onError={() => setImgError(true)}
-        />
-      ) : (
-        <div className="flex min-h-[10rem] w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-50 to-teal-50 px-4 py-6 text-center sm:min-h-[12rem]">
-          <Navigation className="text-teal-600" size={28} />
-          <p className="text-xs font-black uppercase tracking-widest text-slate-700">
-            Navigating to {targetLabel}
-          </p>
-          <p className="max-w-full break-all text-[10px] font-medium text-slate-500">
-            {partnerLoc.lat.toFixed(4)}, {partnerLoc.lng.toFixed(4)} →{" "}
-            {targetLoc.lat.toFixed(4)}, {targetLoc.lng.toFixed(4)}
-          </p>
-          {stops.length > 0 && (
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
-              {stopSummary.completed} done · {stopSummary.remaining} remaining
-            </p>
-          )}
-        </div>
-      )}
+    <div className="space-y-3">
+      <div
+        className="relative h-[280px] w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-md sm:h-[340px] sm:rounded-3xl"
+        data-lenis-prevent
+        data-lenis-prevent-touch="true"
+      >
+        {!rider && (
+          <div className="absolute inset-x-0 top-0 z-10 bg-amber-50/95 px-3 py-2 text-center text-[10px] font-semibold text-amber-900">
+            Enable GPS to show your live location on the map
+          </div>
+        )}
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between bg-gradient-to-b from-black/35 to-transparent p-3">
-        <div className="rounded-lg bg-white/95 px-2.5 py-1 shadow-md backdrop-blur-sm">
-          <p className="text-[8px] font-black uppercase leading-none text-slate-500">From</p>
-          <p className="text-[10px] font-black uppercase leading-none text-teal-700">You</p>
-        </div>
-        <div
-          className={cn(
-            "rounded-lg border-b-2 bg-white/95 px-2.5 py-1 shadow-md backdrop-blur-sm",
-            isHub ? "border-emerald-500" : "border-teal-500",
-          )}
+        {directionsError && (
+          <div className="absolute inset-x-2 top-2 z-10 max-w-[90%] rounded-lg border border-amber-200 bg-amber-50/95 px-2 py-1.5 text-[10px] leading-snug text-amber-900">
+            {directionsError}
+          </div>
+        )}
+
+        <GoogleMap
+          mapContainerStyle={containerStyle}
+          center={mapCenter}
+          zoom={14}
+          onLoad={onMapLoad}
+          options={{
+            disableDefaultUI: true,
+            zoomControl: true,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+            gestureHandling: "greedy",
+          }}
         >
-          <p className="text-[8px] font-black uppercase leading-none text-slate-500">Next</p>
-          <p
+          {rider && (
+            <Marker position={rider} title="You" icon={riderIcon} />
+          )}
+          {dest && (
+            <Marker
+              position={dest}
+              title={targetLabel}
+              icon={destIcon}
+            />
+          )}
+          {stops
+            .filter((s) => s.status !== "current" && s.id !== "hub")
+            .slice(0, 6)
+            .map((s) => {
+              const loc = toLatLng(s.loc);
+              if (!loc) return null;
+              return (
+                <Marker
+                  key={s.id}
+                  position={loc}
+                  title={s.label || "Stop"}
+                  opacity={s.status === "completed" ? 0.55 : 0.85}
+                  label={{
+                    text: s.status === "completed" ? "✓" : String((s.label || "S")[0]).toUpperCase(),
+                    color: "#0f172a",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                  }}
+                />
+              );
+            })}
+        </GoogleMap>
+
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between bg-gradient-to-b from-black/30 to-transparent p-3">
+          <div className="rounded-lg bg-white/95 px-2.5 py-1 shadow-md backdrop-blur-sm">
+            <p className="text-[8px] font-black uppercase leading-none text-slate-500">From</p>
+            <p className="text-[10px] font-black uppercase leading-none text-teal-700">You</p>
+          </div>
+          <div
             className={cn(
-              "max-w-[8rem] truncate text-[10px] font-black uppercase leading-none",
-              isHub ? "text-emerald-600" : "text-teal-700",
+              "max-w-[55%] rounded-lg border-b-2 bg-white/95 px-2.5 py-1 shadow-md backdrop-blur-sm",
+              isHub ? "border-emerald-500" : "border-teal-500",
             )}
           >
-            {targetLabel}
-          </p>
+            <p className="text-[8px] font-black uppercase leading-none text-slate-500">Next</p>
+            <p
+              className={cn(
+                "truncate text-[10px] font-black uppercase leading-none",
+                isHub ? "text-emerald-600" : "text-teal-700",
+              )}
+            >
+              {targetLabel}
+            </p>
+          </div>
+        </div>
+
+        <div className="absolute bottom-2 left-2 right-2 z-10 flex items-end justify-between gap-2">
+          <div className="rounded-md border border-slate-200 bg-white/95 px-2 py-1 text-[10px] font-bold text-slate-600 shadow-sm backdrop-blur">
+            {routeLoading
+              ? "Updating route…"
+              : phaseLabel || (isHub ? "Hub delivery" : "Seller pickup")}
+          </div>
+          <div className="flex gap-2">
+            {rider && (
+              <button
+                type="button"
+                onClick={recenter}
+                aria-label="Recenter on my location"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-teal-700 shadow-md"
+              >
+                <Crosshair size={18} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => openExternalMaps(rider, dest)}
+              aria-label="Open navigation in Google Maps"
+              className="flex h-10 min-w-[10rem] items-center justify-center gap-2 rounded-xl bg-teal-600 px-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-teal-600/30"
+            >
+              <Navigation size={16} />
+              Navigate
+            </button>
+          </div>
         </div>
       </div>
 
-      {stops.length > 1 && (
-        <div className="pointer-events-none absolute left-3 top-14 flex flex-wrap gap-1">
-          {stops.slice(0, 5).map((s) => (
-            <span
-              key={s.id}
+      {/* ETA card — same pattern as Delivery Order Details */}
+      <div
+        className={cn(
+          "flex items-center justify-between gap-4 rounded-2xl border p-4 shadow-sm",
+          isHub
+            ? "border-emerald-100 bg-emerald-50/80"
+            : "border-teal-100 bg-teal-50/60",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className={cn(
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+              isHub ? "bg-emerald-100 text-emerald-700" : "bg-teal-100 text-teal-700",
+            )}
+          >
+            <Navigation size={20} aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <p
               className={cn(
-                "rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase shadow-sm",
-                s.status === "completed" && "bg-emerald-500 text-white",
-                s.status === "current" && "bg-teal-600 text-white",
-                s.status === "remaining" && "bg-white/90 text-slate-600",
+                "text-[11px] font-bold uppercase tracking-wider",
+                isHub ? "text-emerald-700" : "text-teal-700",
               )}
             >
-              {s.type === "hub" ? "Hub" : s.label?.slice(0, 8) || "Stop"}
-            </span>
-          ))}
+              Estimated time
+            </p>
+            <p className="truncate text-xl font-black leading-none text-slate-900">
+              {arrivalClock}
+            </p>
+          </div>
         </div>
-      )}
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
-        <div className="max-w-full rounded-xl border border-white/20 bg-slate-900/90 px-3 py-2 shadow-xl backdrop-blur-md">
-          <p className="flex items-center justify-center gap-2 truncate text-[9px] font-black uppercase tracking-wider text-white sm:text-[10px] sm:tracking-[0.15em]">
-            <span
-              className={cn(
-                "pickup-pulse-dot h-2 w-2 shrink-0 rounded-full",
-                isHub
-                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                  : "bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]",
-              )}
-            />
-            <span className="truncate">
-              {phaseLabel || (isHub ? "Delivering to Hub" : "Heading to Vendor")}
-              {distance ? ` · ${distance}` : ""}
-              {eta ? ` · ETA ${eta}` : ""}
-            </span>
+        <div className="shrink-0 text-right">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Arriving in
           </p>
+          <p className="text-xl font-black leading-none text-slate-900">{arrivingIn}</p>
+          {distanceLabel && (
+            <p className="mt-1 text-[10px] font-semibold text-slate-500">{distanceLabel}</p>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default memo(InAppNavMap);
+function propsEqual(prev, next) {
+  return (
+    prev.partnerLoc?.lat === next.partnerLoc?.lat &&
+    prev.partnerLoc?.lng === next.partnerLoc?.lng &&
+    prev.targetLoc?.lat === next.targetLoc?.lat &&
+    prev.targetLoc?.lng === next.targetLoc?.lng &&
+    prev.targetLabel === next.targetLabel &&
+    prev.phaseLabel === next.phaseLabel &&
+    prev.distance === next.distance &&
+    prev.eta === next.eta &&
+    prev.stops === next.stops
+  );
+}
+
+export default memo(InAppNavMap, propsEqual);

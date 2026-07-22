@@ -330,7 +330,7 @@ const AssignmentCard = function AssignmentCard({
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {distance != null && (
+          {!showMap && distance != null && (
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                 Distance
@@ -338,7 +338,7 @@ const AssignmentCard = function AssignmentCard({
               <p className="text-xs font-black text-slate-800">{formatDistance(distance)}</p>
             </div>
           )}
-          {etaText && (
+          {!showMap && etaText && (
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">ETA</p>
               <p className="flex items-center gap-1 text-xs font-black text-slate-800">
@@ -347,7 +347,7 @@ const AssignmentCard = function AssignmentCard({
               </p>
             </div>
           )}
-          {row.vendor?.location && (
+          {row.vendor?.location && !showMap && (
             <div className="col-span-2 rounded-xl bg-slate-50 px-3 py-2 sm:col-span-1">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                 Seller
