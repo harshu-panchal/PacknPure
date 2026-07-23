@@ -4,6 +4,7 @@ const PICKUP_SESSION_PREFIXES = [
   "pickup_hub_reached_",
   "pickup_vendor_imgs_",
   "pickup_hub_imgs_",
+  "pickup_otp_",
 ];
 const PICKUP_LOCAL_KEYS = [
   "pickup_alerts_v1",

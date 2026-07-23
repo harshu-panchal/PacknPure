@@ -96,26 +96,42 @@ export function useLiveLocation(activeAssignmentId) {
   }, [enabled, postLocation]);
 
   /**
-   * Resolve valid coords for mark-picked / hub-delivered.
-   * Retries browser GPS, then falls back to last known liveLoc.
-   * Throws with a user-facing message if no valid coords.
+   * Fast coords for mark-picked / hub-delivered.
+   * Uses live watch location immediately (no multi-second GPS wait).
    */
   const getCurrentPosition = useCallback(async () => {
-    const coords = await resolveGpsCoords({
-      retries: 3,
-      timeoutMs: 10000,
-      lastKnown: liveLocRef.current,
-    });
-    setLiveLoc(coords);
-    setGpsAccuracy(coords.accuracyM ?? null);
-    setGpsError(null);
-    return {
-      latitude: coords.lat,
-      longitude: coords.lng,
-      lat: coords.lat,
-      lng: coords.lng,
-      fromCache: Boolean(coords.fromCache),
-    };
+    const known = liveLocRef.current;
+    if (isValidCoord(known?.lat, known?.lng)) {
+      return {
+        latitude: Number(known.lat),
+        longitude: Number(known.lng),
+        lat: Number(known.lat),
+        lng: Number(known.lng),
+        fromCache: true,
+      };
+    }
+    try {
+      const coords = await resolveGpsCoords({
+        retries: 1,
+        timeoutMs: 2000,
+        lastKnown: known,
+        preferCache: true,
+      });
+      setLiveLoc(coords);
+      setGpsAccuracy(coords.accuracyM ?? null);
+      setGpsError(null);
+      return {
+        latitude: coords.lat,
+        longitude: coords.lng,
+        lat: coords.lat,
+        lng: coords.lng,
+        fromCache: Boolean(coords.fromCache),
+      };
+    } catch (err) {
+      // Testing / denied GPS: do not block slide for long — use last post or soft fail fast
+      setGpsError(err?.message || "Could not get a valid location.");
+      throw err;
+    }
   }, []);
 
   return { liveLoc, gpsError, gpsAccuracy, getCurrentPosition };

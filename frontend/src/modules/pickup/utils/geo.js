@@ -39,6 +39,8 @@ export async function resolveGpsCoords(opts = {}) {
   const retries = Math.max(1, opts.retries ?? 3);
   const timeoutMs = opts.timeoutMs ?? 8000;
   const lastKnown = opts.lastKnown;
+  // Prefer existing live location first — avoids long slide "Processing…" waits
+  const preferCache = opts.preferCache !== false;
   let lastError = null;
 
   const cacheFallback = () => {
@@ -52,6 +54,11 @@ export async function resolveGpsCoords(opts = {}) {
     }
     return null;
   };
+
+  if (preferCache) {
+    const cached = cacheFallback();
+    if (cached) return cached;
+  }
 
   for (let i = 0; i < retries; i += 1) {
     try {
@@ -67,26 +74,9 @@ export async function resolveGpsCoords(opts = {}) {
       lastError = err;
       // Permission denied — don't keep retrying
       if (err?.code === 1) break;
-      // After first failure, prefer last-known to avoid long slide delays
       const cached = cacheFallback();
-      if (cached && i >= 0) {
-        // One more quick low-accuracy attempt, then cache
-        if (i === 0) {
-          try {
-            const pos = await readOnce({
-              enableHighAccuracy: false,
-              timeout: 2500,
-              maximumAge: 120000,
-            });
-            const payload = toGeoPayload(pos);
-            if (payload) return payload;
-          } catch {
-            /* use cache */
-          }
-        }
-        return cached;
-      }
-      await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+      if (cached) return cached;
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
     }
   }
 
