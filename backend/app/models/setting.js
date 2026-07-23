@@ -177,6 +177,13 @@ const settingSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        // How long to wait (minutes) after the first PR rejection before firing the grouped retry batch.
+        // Gives time for all concurrent rejections in the same wave to settle before re-running allocation.
+        procurementRetryBatchDelayMinutes: {
+            type: Number,
+            default: 2,
+            min: 1,
+        },
     },
     {
         timestamps: true,

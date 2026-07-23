@@ -32,7 +32,9 @@ import {
   getSellerResponseTimeoutMinutes,
   isMultiSellerAllocationEnabled,
   getProcurementFailureAction,
+  getProcurementRetryBatchDelayMs,
 } from "./settingsService.js";
+import { procurementRetryQueue, JOB_NAMES } from "../queues/orderQueues.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const toInt = (v) => Math.max(0, Number(v || 0));
@@ -53,6 +55,57 @@ const buildRequestId = () =>
 
 export const HUB_ORDER_MODE = () =>
   String(process.env.HUB_FIRST_ORDER_ROUTING || "false").toLowerCase() === "true";
+
+/**
+ * Atomically schedule a grouped procurement retry batch job for an order.
+ *
+ * Uses a findOneAndUpdate with { retryBatchScheduledAt: null } as an atomic lock
+ * so that only ONE job is scheduled per rejection wave, even if multiple PRs reject
+ * concurrently. The lock is reset to null after the batch job completes.
+ *
+ * @param {string|ObjectId} orderId
+ * @param {string|ObjectId} procurementSessionId
+ */
+export const scheduleRetryBatch = async (orderId, procurementSessionId) => {
+  if (!orderId || !procurementSessionId) return;
+
+  const ProcurementSessionModel = (await import("../models/procurementSession.js")).default;
+
+  // Atomic lock: only the first rejection in a wave proceeds past this point.
+  const updated = await ProcurementSessionModel.findOneAndUpdate(
+    { _id: procurementSessionId, retryBatchScheduledAt: null },
+    { $set: { retryBatchScheduledAt: new Date() } },
+    { new: true },
+  );
+
+  if (!updated) {
+    // Another rejection already scheduled the batch — nothing to do.
+    return;
+  }
+
+  const delayMs = await getProcurementRetryBatchDelayMs();
+  const jobId = `procurement:retry:${String(orderId)}`;
+
+  try {
+    await procurementRetryQueue.add(
+      JOB_NAMES.PROCUREMENT_RETRY,
+      {
+        orderId: String(orderId),
+        procurementSessionId: String(procurementSessionId),
+      },
+      { delay: delayMs, jobId, removeOnComplete: true },
+    );
+    console.log(
+      `[RetryBatch] Scheduled grouped retry for order ${orderId} in ${delayMs}ms (job: ${jobId})`,
+    );
+  } catch (err) {
+    // If queue is unavailable (e.g. Redis down), reset the lock so manual or future retries work.
+    console.warn(`[RetryBatch] Failed to schedule retry for order ${orderId}:`, err.message);
+    await ProcurementSessionModel.findByIdAndUpdate(procurementSessionId, {
+      $set: { retryBatchScheduledAt: null },
+    });
+  }
+};
 
 /** Physical seller variant stock (matches seller/admin portal UI). */
 export function sellerProcurementCapacity(
@@ -772,24 +825,28 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const pr = await PurchaseRequest.findById(prId);
   if (!pr) return null;
 
+  // Multi-line PRs: delegate each unaccepted line to fallbackPurchaseRequestLine
+  // which will release allocations and schedule the grouped retry batch.
   if ((pr.items || []).length > 1 && remainingQty === null) {
-    let lastResult = null;
     for (const line of pr.items || []) {
       const row = line.toObject ? line.toObject() : line;
       const lineStatus = String(row.lineStatus || "pending").toLowerCase();
       if (lineStatus === "accepted") continue;
       const retryQty = toInt(row.remainingQty);
       if (retryQty <= 0) continue;
-      lastResult = await fallbackPurchaseRequestLine(
+      // eslint-disable-next-line no-await-in-loop
+      await fallbackPurchaseRequestLine(
         pr._id,
         row.productId,
         row.variantId || null,
         retryQty,
       );
     }
-    return lastResult;
+    return null;
   }
 
+  // Single-line PR: mark allocation as timed out if applicable, release stock,
+  // then schedule the grouped retry batch instead of immediately creating a new PR.
   if (pr.procurementSessionId && pr.allocationId && String(pr.status) === "expired") {
     await markAllocationTimeout({
       procurementSessionId: pr.procurementSessionId,
@@ -805,190 +862,39 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
   const itemKey = buildItemKey(productId, variantId);
 
   const ProcurementSession = (await import("../models/procurementSession.js")).default;
-  let session = pr.procurementSessionId
+  const session = pr.procurementSessionId
     ? await ProcurementSession.findById(pr.procurementSessionId)
     : null;
 
-  const qtyToProcure =
-    remainingQty !== null
-      ? toInt(remainingQty)
-      : session
-        ? getUncoveredRemainingQty(session, itemKey)
-        : toInt(
-            productLine.remainingQty ||
-              productLine.requestedQty ||
-              productLine.shortageQty ||
-              0,
-          );
-
-  if (qtyToProcure <= 0) return null;
-
-  const fallbackTimeout = await getSellerResponseTimeoutMinutes();
-
-  const Product = (await import("../models/product.js")).default;
-  const masterProduct = await Product.findById(productId).select("variants").lean();
-
-  const maxAttempts = Math.max(1, (pr.rankedSellers?.length || 0) + 10);
-  let attemptGuard = 0;
-
-  while (attemptGuard++ < maxAttempts) {
-    if (pr.procurementSessionId) {
-      session = await ProcurementSession.findById(pr.procurementSessionId);
-    }
-
-    const eligibleSellers = session
-      ? getEligibleFallbackSellers(session, itemKey, pr)
-      : (pr.rankedSellers || []).map((id) => String(id));
-
-    if (eligibleSellers.length === 0) {
-      const stillUncovered = session ? getUncoveredRemainingQty(session, itemKey) : qtyToProcure;
-      if (stillUncovered <= 0) return null;
-      return markProcurementExhausted(pr, session);
-    }
-
-    const nextVendorId = eligibleSellers[0];
-    const remainingRanked = eligibleSellers.slice(1);
-
-    let selectedSellerProductId = null;
-    const nextVendorProduct = await Product.findOne({
-      sellerId: nextVendorId,
-      masterProductId: productId,
-    })
-      .select("_id")
-      .lean();
-    if (nextVendorProduct) {
-      selectedSellerProductId = nextVendorProduct._id;
-    }
-
-    const retryNumber = Number(pr.retryNumber || 0) + 1;
-    let allocationRecord = null;
-
-    if (pr.procurementSessionId) {
-      const reserved = await reserveAllocation({
-        procurementSessionId: pr.procurementSessionId,
-        productId,
-        variantId,
-        quantity: qtyToProcure,
-        vendorId: nextVendorId,
-        selectedSellerProductId: selectedSellerProductId || null,
-        rankedSellers: remainingRanked,
-        retryNumber,
-        sourceAllocationId: pr.allocationId || null,
-        reason: "fallback_reassignment",
-        eventKey: `fallback:${String(pr.procurementSessionId)}:${itemKey}:${String(nextVendorId)}:${Number(qtyToProcure)}`,
-      });
-
-      if (reserved?.duplicate) {
-        if (reserved.existingPurchaseRequest?._id) {
-          pr.rankedSellers = remainingRanked;
-          await savePurchaseRequest(pr);
-          return PurchaseRequest.findById(reserved.existingPurchaseRequest._id);
-        }
-        continue;
-      }
-
-      allocationRecord = reserved?.allocation || null;
-      if (!allocationRecord) continue;
-    }
-
-    const actualQty = toInt(allocationRecord?.quantity || qtyToProcure);
-    const allocationId = allocationRecord?.allocationId || null;
-
-    if (selectedSellerProductId) {
-      try {
-        const commitResult = await commitSellerStockForPrLine({
-          selectedSellerProductId,
-          masterProduct,
-          masterProductId: productId,
-          masterVariantId: variantId,
-          quantity: actualQty,
-          procurementSessionId: pr.procurementSessionId || null,
-          allocationId,
-        });
-        if (!commitResult?.committed) {
-          if (pr.procurementSessionId && allocationId) {
-            await revertAllocation({
-              procurementSessionId: pr.procurementSessionId,
-              allocationId,
-            });
-          }
-          continue;
-        }
-      } catch (err) {
-        console.warn(
-          `[fallbackPurchaseRequest] Seller inventory commit failed for ${nextVendorId}:`,
-          err.message,
-        );
-        if (pr.procurementSessionId && allocationId) {
-          await revertAllocation({
-            procurementSessionId: pr.procurementSessionId,
-            allocationId,
-          });
-        }
-        continue;
-      }
-    }
-
-    const newPr = await createPurchaseRequest({
-      requestId: buildRequestId(),
-      orderId: pr.orderId,
-      procurementSessionId: pr.procurementSessionId || undefined,
-      allocationId: allocationId || undefined,
-      retryNumber: allocationRecord?.retryNumber ?? retryNumber,
-      hubId: pr.hubId,
-      vendorId: nextVendorId,
-      rankedSellers: remainingRanked,
-      status: "created",
-      expiresAt: new Date(Date.now() + fallbackTimeout * 60 * 1000),
-      items: [
-        {
-          productId,
-          variantId: variantId || undefined,
-          selectedSellerProductId: selectedSellerProductId || undefined,
-          requiredQty: productLine.requiredQty,
-          availableQtyAtHub: productLine.availableQtyAtHub,
-          shortageQty: actualQty,
-          requestedQty: actualQty,
-          remainingQty: actualQty,
-          committedQty: 0,
-          vendorUnitCost: productLine.vendorUnitCost,
-          vendorQuotedPrice: productLine.vendorQuotedPrice,
-          pricingStrategy: "fallback_auto_reassignment",
-          gstRate: productLine.gstRate,
-          gstAmount: productLine.gstAmount,
-          baseSupplyPrice: productLine.baseSupplyPrice,
-          finalSupplyPrice: productLine.finalSupplyPrice,
-          totalProcurementCost: productLine.finalSupplyPrice * actualQty,
-        },
-      ],
-      notes: `Fallback request from failed PR ${pr.requestId}`,
-    });
-
-    pr.rankedSellers = remainingRanked;
-    await savePurchaseRequest(pr);
-
-    if (pr.procurementSessionId && allocationId) {
-      await attachPurchaseRequestAllocation({
-        procurementSessionId: pr.procurementSessionId,
-        allocationId,
-        purchaseRequestId: newPr._id,
-      });
-    }
-
-    return newPr;
-  }
-
-  const finalSession = pr.procurementSessionId
-    ? await ProcurementSession.findById(pr.procurementSessionId)
-    : null;
-  if (finalSession && getUncoveredRemainingQty(finalSession, itemKey) <= 0) {
-    return null;
-  }
-
-  return markProcurementExhausted(
-    pr,
-    finalSession,
+  // If already fully covered by other in-flight allocations, nothing to do.
+  const stillUncovered = session ? getUncoveredRemainingQty(session, itemKey) : (
+    remainingQty !== null ? toInt(remainingQty) :
+    toInt(productLine.remainingQty || productLine.requestedQty || productLine.shortageQty || 0)
   );
+
+  if (stillUncovered <= 0) return null;
+
+  // Check if there are any eligible fallback sellers left in the ranked list.
+  // If none remain, mark procurement exhausted (order cancelled/on-hold) immediately
+  // — no point in scheduling a batch when there are no sellers to try.
+  const eligibleSellers = session
+    ? getEligibleFallbackSellers(session, itemKey, pr)
+    : (pr.rankedSellers || []).map((id) => String(id));
+
+  if (eligibleSellers.length === 0) {
+    const recheckUncovered = session ? getUncoveredRemainingQty(session, itemKey) : stillUncovered;
+    if (recheckUncovered <= 0) return null;
+    return markProcurementExhausted(pr, session);
+  }
+
+  // Defer new PR creation to the grouped retry batch job.
+  // The batch job re-runs the full allocation + grouping pipeline after the wait period,
+  // so all concurrent rejections from the same order can be re-bundled correctly.
+  if (pr.procurementSessionId) {
+    await scheduleRetryBatch(pr.orderId, pr.procurementSessionId);
+  }
+
+  return null;
 };
 
 /**
@@ -1022,10 +928,12 @@ export const fallbackPurchaseRequestLine = async (
     ? await ProcurementSession.findById(pr.procurementSessionId)
     : null;
 
+  // If already fully covered by another in-flight allocation, nothing to do.
   if (session && getUncoveredRemainingQty(session, itemKey) <= 0) {
     return null;
   }
 
+  // Check if any eligible fallback sellers remain before scheduling the batch.
   const metaRank = session?.metadata?.rankedSellerIdsByItem?.[itemKey] || [];
   const eligibleSellers = session
     ? getEligibleFallbackSellers(session, itemKey, { rankedSellers: metaRank })
@@ -1039,128 +947,16 @@ export const fallbackPurchaseRequestLine = async (
     return null;
   }
 
-  const Product = (await import("../models/product.js")).default;
-  const fallbackTimeout = await getSellerResponseTimeoutMinutes();
-  const masterProduct = await Product.findById(productId).select("variants").lean();
-
-  const nextVendorId = eligibleSellers[0];
-  const remainingRanked = eligibleSellers.slice(1);
-
-  let selectedSellerProductId = null;
-  const nextVendorProduct = await Product.findOne({
-    sellerId: nextVendorId,
-    masterProductId: productId,
-  })
-    .select("_id")
-    .lean();
-  if (nextVendorProduct) {
-    selectedSellerProductId = nextVendorProduct._id;
+  // Defer new PR creation to the grouped retry batch job.
+  // The allocation was already released by the caller (procurementMonitorJob or
+  // seller response handler) before this function is called, so stock is already free.
+  // The batch job waits for all concurrent rejections to settle, then re-runs the full
+  // allocation + grouping pipeline to produce correctly bundled PRs.
+  if (pr.procurementSessionId) {
+    await scheduleRetryBatch(pr.orderId, pr.procurementSessionId);
   }
 
-  const retryNumber = Number(pr.retryNumber || 0) + 1;
-
-  if (!pr.procurementSessionId) return null;
-
-  const reserved = await reserveAllocation({
-    procurementSessionId: pr.procurementSessionId,
-    productId,
-    variantId,
-    quantity: qty,
-    vendorId: nextVendorId,
-    selectedSellerProductId: selectedSellerProductId || null,
-    rankedSellers: remainingRanked,
-    retryNumber,
-    sourceAllocationId: line?.allocationId || pr.allocationId || null,
-    reason: "fallback_line_reassignment",
-    eventKey: `fallback_line:${String(pr.procurementSessionId)}:${itemKey}:${String(nextVendorId)}:${qty}`,
-  });
-
-  if (reserved?.duplicate) {
-    if (reserved.existingPurchaseRequest?._id) {
-      return PurchaseRequest.findById(reserved.existingPurchaseRequest._id);
-    }
-    return null;
-  }
-
-  const allocationRecord = reserved?.allocation || null;
-  if (!allocationRecord) return null;
-
-  const allocationId = allocationRecord.allocationId;
-  const actualQty = toInt(allocationRecord.quantity || qty);
-
-  if (selectedSellerProductId) {
-    try {
-      const commitResult = await commitSellerStockForPrLine({
-        selectedSellerProductId,
-        masterProduct,
-        masterProductId: productId,
-        masterVariantId: variantId,
-        quantity: actualQty,
-        procurementSessionId: pr.procurementSessionId,
-        allocationId,
-      });
-      if (!commitResult?.committed) {
-        await revertAllocation({
-          procurementSessionId: pr.procurementSessionId,
-          allocationId,
-        });
-        return null;
-      }
-    } catch (err) {
-      console.warn(`[fallbackPurchaseRequestLine] Commit failed:`, err.message);
-      await revertAllocation({
-        procurementSessionId: pr.procurementSessionId,
-        allocationId,
-      });
-      return null;
-    }
-  }
-
-  const newPr = await createPurchaseRequest({
-    requestId: buildRequestId(),
-    orderId: pr.orderId,
-    procurementSessionId: pr.procurementSessionId,
-    allocationId,
-    retryNumber: allocationRecord.retryNumber ?? retryNumber,
-    hubId: pr.hubId,
-    vendorId: nextVendorId,
-    rankedSellers: remainingRanked,
-    status: "created",
-    expiresAt: new Date(Date.now() + fallbackTimeout * 60 * 1000),
-    items: [
-      {
-        productId,
-        variantId: variantId || undefined,
-        selectedSellerProductId: selectedSellerProductId || undefined,
-        requiredQty: line?.requiredQty || actualQty,
-        availableQtyAtHub: line?.availableQtyAtHub || 0,
-        shortageQty: actualQty,
-        requestedQty: actualQty,
-        remainingQty: actualQty,
-        committedQty: 0,
-        vendorUnitCost: line?.vendorUnitCost || 0,
-        vendorQuotedPrice: line?.vendorQuotedPrice || 0,
-        pricingStrategy: "fallback_line_reassignment",
-        gstRate: line?.gstRate || 0,
-        gstAmount: line?.gstAmount || 0,
-        baseSupplyPrice: line?.baseSupplyPrice || 0,
-        finalSupplyPrice: line?.finalSupplyPrice || 0,
-        totalProcurementCost: (line?.finalSupplyPrice || 0) * actualQty,
-        lineStatus: "pending",
-        itemKey,
-        allocationId,
-      },
-    ],
-    notes: `Line fallback for ${itemKey} from PR ${pr.requestId}`,
-  });
-
-  await attachPurchaseRequestAllocation({
-    procurementSessionId: pr.procurementSessionId,
-    allocationId,
-    purchaseRequestId: newPr._id,
-  });
-
-  return newPr;
+  return null;
 };
 
 /**

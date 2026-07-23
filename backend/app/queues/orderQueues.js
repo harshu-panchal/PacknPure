@@ -38,7 +38,19 @@ export const deliveryTimeoutQueue = isRedisEnabled()
     })
   : createNoopQueue();
 
+/** Delayed queue for grouped procurement retry batching.
+ * Fires after a configurable wait period so all rejections in the same wave
+ * settle before the re-allocation runs. One job per order per rejection wave. */
+export const procurementRetryQueue = isRedisEnabled()
+  ? new Bull("procurement-retry", {
+      redis: redisOpts,
+      createClient: createBullRedisClient,
+      settings: queueSettings,
+    })
+  : createNoopQueue();
+
 export const JOB_NAMES = {
   SELLER_TIMEOUT: "seller-timeout",
   DELIVERY_TIMEOUT: "delivery-timeout",
+  PROCUREMENT_RETRY: "procurement-retry",
 };

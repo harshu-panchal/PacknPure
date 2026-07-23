@@ -9,6 +9,7 @@ import {
 import { createNotificationBatch } from "../services/notificationService.js";
 import { markAllocationTimeout, releaseAllocationSellerStock } from "../services/procurementSessionService.js";
 import { getPickupTimeoutMs, getHubReceiveTimeoutMs } from "../services/settingsService.js";
+import { scheduleRetryBatch } from "../services/hubOrderOrchestrator.js";
 
 const toInt = (v) => Math.max(0, Number(v || 0));
 const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
@@ -77,7 +78,6 @@ const processExpirations = async () => {
               transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(allocId)}`,
             });
           } else if (row.selectedSellerProductId) {
-            // No session allocation — still reverse SellerCommitted 1:1 before retry.
             const { executeRollbackEvent } = await import("../services/transactionEngine.js");
             await executeRollbackEvent({
               eventType: "SELLER_TIMEOUT",
@@ -91,6 +91,8 @@ const processExpirations = async () => {
             });
           }
 
+          // Allocation released — now schedule the grouped retry batch.
+          // All concurrent line expirations for this order share the same batch job.
           await fallbackPurchaseRequestLine(
             fullPr._id,
             row.productId,
@@ -115,6 +117,7 @@ const processExpirations = async () => {
             transactionId: `pr_timeout_release:${String(fullPr._id)}:${String(fullPr.allocationId)}`,
           });
         }
+        // Allocation released — schedule the grouped retry batch.
         await fallbackPurchaseRequest(fullPr._id);
       }
       console.log(`[ProcurementMonitor] PR ${pr.requestId} expired. Triggered fallback and released commitments.`);
