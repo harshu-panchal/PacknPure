@@ -115,7 +115,12 @@ export const ReceiptModal = ({ open, onOpenChange, orderData }) => {
                                 <tr key={idx}>
                                     <td className="py-2 pr-2">
                                         <div className="font-bold">{item.name}</div>
-                                        {item.variantId && <div className="text-[10px] text-gray-500">Var: {String(item.variantId).slice(-4)}</div>}
+                                        {(item.variantSlot || item.variantName) &&
+                                            (item.variantSlot || item.variantName) !== item.name && (
+                                            <div className="text-[10px] text-gray-500">
+                                                Variant: {item.variantSlot || item.variantName}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="py-2 text-center align-top">{item.quantity}</td>
                                     <td className="py-2 text-right align-top">{(item.price).toFixed(2)}</td>

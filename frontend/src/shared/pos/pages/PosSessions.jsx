@@ -91,15 +91,25 @@ export default function PosSessions() {
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-xs">
                                     <div><span className="text-gray-500">Opened</span><p className="font-medium text-gray-800">{format(new Date(session.openedAt), 'dd MMM, hh:mm a')}</p></div>
-                                    <div><span className="text-gray-500">POS Sales</span><p className="font-bold text-gray-800">₹{(isSeller ? (session.totalCashSales || 0) + (session.totalOnlineSales || 0) : (session.totalCashSales || 0) + (session.totalCardSales || 0) + (session.totalUPISales || 0)).toFixed(2)}</p></div>
-                                    <div><span className="text-gray-500">Expected</span><p className="font-medium">₹{session.expectedCash?.toFixed(2) || '0.00'}</p></div>
-                                    <div><span className="text-gray-500">Difference</span><p className={`font-bold ${session.cashDifference < 0 ? 'text-red-500' : session.cashDifference > 0 ? 'text-green-500' : 'text-gray-400'}`}>{session.cashDifference > 0 ? '+' : ''}{session.cashDifference !== undefined ? session.cashDifference.toFixed(2) : '0.00'}</p></div>
+                                    {isSeller ? (
+                                        <>
+                                            <div><span className="text-gray-500">Cash Sales</span><p className="font-semibold text-gray-800">₹{(session.totalCashSales || 0).toFixed(2)}</p></div>
+                                            <div><span className="text-gray-500">Online Sales</span><p className="font-semibold text-gray-800">₹{(session.totalOnlineSales || 0).toFixed(2)}</p></div>
+                                            <div><span className="text-gray-500">Total Sales</span><p className="font-bold text-gray-800">₹{((session.totalCashSales || 0) + (session.totalOnlineSales || 0)).toFixed(2)}</p></div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div><span className="text-gray-500">POS Sales</span><p className="font-bold text-gray-800">₹{((session.totalCashSales || 0) + (session.totalCardSales || 0) + (session.totalUPISales || 0)).toFixed(2)}</p></div>
+                                            <div><span className="text-gray-500">Expected</span><p className="font-medium">₹{session.expectedCash?.toFixed(2) || '0.00'}</p></div>
+                                            <div><span className="text-gray-500">Difference</span><p className={`font-bold ${session.cashDifference < 0 ? 'text-red-500' : session.cashDifference > 0 ? 'text-green-500' : 'text-gray-400'}`}>{session.cashDifference > 0 ? '+' : ''}{session.cashDifference !== undefined ? session.cashDifference.toFixed(2) : '0.00'}</p></div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         ))}
                     </div>
                     <div className="hidden lg:block overflow-x-auto overscroll-x-contain">
-                        <table className="w-full text-left border-collapse min-w-[900px]">
+                        <table className={`w-full text-left border-collapse ${isSeller ? 'min-w-[720px]' : 'min-w-[900px]'}`}>
                             <thead>
                                 <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-sm">
                                     <th className="p-4 font-semibold">Terminal & Cashier</th>
@@ -108,10 +118,10 @@ export default function PosSessions() {
                                     <th className="p-4 font-semibold">Closed</th>
                                     {isSeller && <th className="p-4 font-semibold text-right">Cash Sales</th>}
                                     {isSeller && <th className="p-4 font-semibold text-right">Online Sales</th>}
-                                    <th className="p-4 font-semibold text-right">POS Sales</th>
-                                    <th className="p-4 font-semibold text-right">Expected</th>
-                                    <th className="p-4 font-semibold text-right">Actual</th>
-                                    <th className="p-4 font-semibold text-right">Difference</th>
+                                    <th className="p-4 font-semibold text-right">{isSeller ? 'Total Sales' : 'POS Sales'}</th>
+                                    {!isSeller && <th className="p-4 font-semibold text-right">Expected</th>}
+                                    {!isSeller && <th className="p-4 font-semibold text-right">Actual</th>}
+                                    {!isSeller && <th className="p-4 font-semibold text-right">Difference</th>}
                                 </tr>
                             </thead>
                             <tbody>
@@ -155,17 +165,23 @@ export default function PosSessions() {
                                                 : (session.totalCashSales || 0) + (session.totalCardSales || 0) + (session.totalUPISales || 0)
                                             ).toFixed(2)}
                                         </td>
-                                        <td className="p-4 text-right text-gray-600">
-                                            ₹{session.expectedCash?.toFixed(2) || '0.00'}
-                                        </td>
-                                        <td className="p-4 text-right font-medium text-gray-800">
-                                            ₹{session.actualCash?.toFixed(2) || '0.00'}
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <span className={`font-bold ${session.cashDifference < 0 ? 'text-red-500' : session.cashDifference > 0 ? 'text-green-500' : 'text-gray-400'}`}>
-                                                {session.cashDifference > 0 ? '+' : ''}{session.cashDifference !== undefined ? session.cashDifference.toFixed(2) : '0.00'}
-                                            </span>
-                                        </td>
+                                        {!isSeller && (
+                                            <td className="p-4 text-right text-gray-600">
+                                                ₹{session.expectedCash?.toFixed(2) || '0.00'}
+                                            </td>
+                                        )}
+                                        {!isSeller && (
+                                            <td className="p-4 text-right font-medium text-gray-800">
+                                                ₹{session.actualCash?.toFixed(2) || '0.00'}
+                                            </td>
+                                        )}
+                                        {!isSeller && (
+                                            <td className="p-4 text-right">
+                                                <span className={`font-bold ${session.cashDifference < 0 ? 'text-red-500' : session.cashDifference > 0 ? 'text-green-500' : 'text-gray-400'}`}>
+                                                    {session.cashDifference > 0 ? '+' : ''}{session.cashDifference !== undefined ? session.cashDifference.toFixed(2) : '0.00'}
+                                                </span>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>

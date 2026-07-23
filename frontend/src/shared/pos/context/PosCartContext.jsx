@@ -71,7 +71,20 @@ export const PosCartProvider = ({ children }) => {
                 name: product.name,
                 image: product.images?.[0]?.url || product.image,
                 variantId: targetVariantId,
-                variantName: variant?.name || product.variantName || null,
+                // Prefer explicit variantName from flattened search/scan results.
+                // Do not use variant.name when variant is the product object itself (same _id).
+                variantName:
+                    product.variantName ||
+                    variant?.variantName ||
+                    (variant &&
+                    variant.name &&
+                    variant._id &&
+                    product._id &&
+                    String(variant._id) !== String(product._id) &&
+                    variant.name !== product.name
+                        ? variant.name
+                        : null) ||
+                    null,
                 price: variant?.price || product.price || product.basePrice || 0, // Use resolved price
                 purchasePrice: variant?.purchasePrice || product.purchasePrice || 0,
                 gstEnabled: product.gstEnabled || false,

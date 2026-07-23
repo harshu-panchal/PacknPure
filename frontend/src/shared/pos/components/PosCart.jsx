@@ -67,8 +67,8 @@ export const PosCart = () => {
                             <tr key={index} className="hover:bg-blue-50/30 transition-colors">
                                 <td className="py-3 px-4">
                                     <div className="font-medium text-gray-900">{item.name}</div>
-                                    {item.variantName && (
-                                        <div className="text-xs text-gray-500 mt-0.5 mb-2">{item.variantName}</div>
+                                    {item.variantName && item.variantName !== item.name && (
+                                        <div className="text-xs text-gray-500 mt-0.5 mb-2">Variant: {item.variantName}</div>
                                     )}
                                     
                                     {/* PacknPure Specific: Inventory Validation Indicator */}

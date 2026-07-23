@@ -301,7 +301,9 @@ export default function PosCheckout() {
                     variantId: item.variantId,
                     quantity: item.quantity,
                     name: item.name,
-                    price: item.price
+                    price: item.price,
+                    // Human-readable variant label for receipt (order.items.variantSlot).
+                    variantSlot: item.variantName || undefined,
                 })),
                 payment: paymentDetails,
                 guestCustomer: guestCustomer.phone ? guestCustomer : undefined,
@@ -388,7 +390,9 @@ export default function PosCheckout() {
                     <div key={index} className="flex gap-3 bg-white border border-gray-100 p-3 rounded-lg shadow-sm">
                         <div className="flex-1 min-w-0">
                             <h4 className="font-semibold text-sm text-gray-800 line-clamp-2">{item.name}</h4>
-                            {item.variantName && item.variantName !== item.name && <p className="text-xs text-gray-500">{item.variantName}</p>}
+                            {item.variantName && item.variantName !== item.name && (
+                                <p className="text-xs text-gray-500">Variant: {item.variantName}</p>
+                            )}
                             {item.productData?.description && <p className="text-xs text-gray-400 line-clamp-1 mt-1">{item.productData.description}</p>}
                             <div className="mt-2 flex items-center">
                                 <span className="text-gray-500 font-bold mr-1">₹</span>
