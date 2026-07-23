@@ -377,7 +377,7 @@ export const getPosReports = async (req, res) => {
 export const searchPosProducts = async (req, res) => {
   try {
     const { search, limit = 10 } = req.query;
-    
+
     if (!search) {
       return handleResponse(res, 400, "Search term is required.");
     }
@@ -387,6 +387,9 @@ export const searchPosProducts = async (req, res) => {
 
     return handleResponse(res, 200, "Products fetched", formattedResults);
   } catch (error) {
+    if (error?.code === "POS_PRODUCT_INACTIVE") {
+      return handleResponse(res, 404, error.message);
+    }
     return handleResponse(res, 500, error.message);
   }
 };

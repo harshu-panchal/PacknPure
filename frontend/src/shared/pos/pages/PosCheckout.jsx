@@ -10,7 +10,10 @@ import {
 import { Button, TextField, CircularProgress } from '@mui/material';
 import { PaymentModal } from '../components/PaymentModal';
 import { CameraScanner } from '../components/CameraScanner';
+import { useBarcodeWedge } from '../hooks/useBarcodeWedge';
 import { cn } from '@/lib/utils';
+
+const looksLikeBarcode = (raw) => /^PNP-(ADM|SLR)-[0-9A-Z]+$/i.test(String(raw || '').trim());
 
 export default function PosCheckout() {
     const navigate = useNavigate();
@@ -24,6 +27,7 @@ export default function PosCheckout() {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showScanner, setShowScanner] = useState(false);
+    const [scannerStatus, setScannerStatus] = useState('ready'); // ready | scanning | added | error
     const [mobileCartOpen, setMobileCartOpen] = useState(false);
     
     const [currentSession, setCurrentSession] = useState(null);
@@ -39,6 +43,9 @@ export default function PosCheckout() {
     const [posSettings, setPosSettings] = useState({});
 
     const searchDebounceRef = useRef(null);
+    const scanInFlightRef = useRef(false);
+    const lastScanRef = useRef({ code: '', at: 0 });
+    const searchInputRef = useRef(null);
 
     useEffect(() => {
         if (!mobileCartOpen) return undefined;
@@ -126,19 +133,143 @@ export default function PosCheckout() {
             }
         } catch (error) {
             console.error("Search failed", error);
+            if (error?.response?.status === 404) {
+                toast.error(error.response?.data?.message || "Product not found");
+                setSearchResults([]);
+            }
         } finally {
             setIsSearching(false);
         }
     }, []);
 
+    const handleAddToCart = useCallback((product, variant, stock) => {
+        addToCart(product, variant, stock);
+        if (window.matchMedia('(max-width: 1023px)').matches) {
+            setMobileCartOpen(true);
+        }
+    }, [addToCart]);
+
+    /**
+     * Camera / USB wedge / Enter → lookup barcode → add to existing cart.
+     * Price always comes from backend search (never from the barcode payload).
+     */
+    const resolveAndAddFromBarcode = useCallback(async (rawCode) => {
+        const code = String(rawCode || '').trim();
+        if (!code || code.length < 4) return false;
+
+        // Ignore duplicate wedge bursts within 400ms
+        const now = Date.now();
+        if (
+            lastScanRef.current.code === code &&
+            now - lastScanRef.current.at < 400
+        ) {
+            return true;
+        }
+        if (scanInFlightRef.current) return false;
+
+        scanInFlightRef.current = true;
+        lastScanRef.current = { code, at: now };
+        setScannerStatus('scanning');
+        setIsSearching(true);
+
+        try {
+            const res = await posApi.searchProducts({ search: code, limit: 5 });
+            const results = res.data?.results || res.data?.data || [];
+
+            if (!res.data?.success || !results.length) {
+                setScannerStatus('error');
+                toast.error('Product not found');
+                setSearchResults([]);
+                return false;
+            }
+
+            // Prefer exact barcode match; otherwise single-result auto-add
+            const exact =
+                results.find((r) => String(r.barcode || '').trim() === code) ||
+                (results.length === 1 ? results[0] : null);
+
+            if (!exact) {
+                setSearchTerm(code);
+                setSearchResults(results);
+                setScannerStatus('ready');
+                return false;
+            }
+
+            const stock = Number(exact.availableQty || 0);
+            if (stock <= 0) {
+                setScannerStatus('error');
+                toast.error('Out of stock');
+                setSearchResults([exact]);
+                return false;
+            }
+
+            handleAddToCart(exact, exact, stock);
+            setSearchTerm('');
+            setSearchResults([]);
+            setScannerStatus('added');
+            toast.success(
+                exact.variantName
+                    ? `Added ${exact.name} (${exact.variantName})`
+                    : `Added ${exact.name}`,
+            );
+            searchInputRef.current?.focus();
+            return true;
+        } catch (error) {
+            setScannerStatus('error');
+            const msg =
+                error?.response?.data?.message ||
+                (error?.response?.status === 404
+                    ? 'Product not found'
+                    : 'Barcode lookup failed');
+            toast.error(msg);
+            setSearchResults([]);
+            return false;
+        } finally {
+            scanInFlightRef.current = false;
+            setIsSearching(false);
+            setTimeout(() => setScannerStatus('ready'), 1200);
+        }
+    }, [handleAddToCart]);
+
     const onSearchChange = (e) => {
         const val = e.target.value;
         setSearchTerm(val);
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+
+        // barcodeMode=auto: PacknPure barcodes auto-submit without waiting for Enter
+        const mode = posSettings.barcodeMode || 'auto';
+        if (mode === 'auto' && looksLikeBarcode(val)) {
+            searchDebounceRef.current = setTimeout(() => {
+                resolveAndAddFromBarcode(val);
+            }, 120);
+            return;
+        }
+
         searchDebounceRef.current = setTimeout(() => {
             handleSearch(val);
         }, 500);
     };
+
+    const onSearchKeyDown = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        const term = searchTerm.trim();
+        if (!term) return;
+
+        if (looksLikeBarcode(term) || (posSettings.barcodeMode || 'auto') === 'auto') {
+            resolveAndAddFromBarcode(term);
+        } else {
+            handleSearch(term);
+        }
+    };
+
+    useBarcodeWedge({
+        enabled: !showScanner && !checkoutModalOpen,
+        onScan: (code) => {
+            resolveAndAddFromBarcode(code);
+        },
+    });
 
     const handleCustomerPhoneBlur = async () => {
         if (guestCustomer.phone?.length === 10) {
@@ -195,13 +326,6 @@ export default function PosCheckout() {
             toast.error(error.response?.data?.message || "Checkout failed");
         } finally {
             setIsProcessing(false);
-        }
-    };
-
-    const handleAddToCart = (product, variant, stock) => {
-        addToCart(product, variant, stock);
-        if (window.matchMedia('(max-width: 1023px)').matches) {
-            setMobileCartOpen(true);
         }
     };
 
@@ -426,12 +550,15 @@ export default function PosCheckout() {
                         <div className="relative flex-1 min-w-0">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" aria-hidden />
                             <input
+                                ref={searchInputRef}
                                 type="search"
+                                data-pos-barcode-search="true"
                                 aria-label="Search products by name, SKU, or barcode"
                                 className="w-full min-h-11 pl-10 pr-4 py-2 sm:py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-base sm:text-lg"
                                 placeholder="Search name, SKU, barcode..."
                                 value={searchTerm}
                                 onChange={onSearchChange}
+                                onKeyDown={onSearchKeyDown}
                                 autoFocus
                             />
                         </div>
@@ -439,10 +566,28 @@ export default function PosCheckout() {
                             variant="outlined" 
                             className="!rounded-xl !min-w-[44px] !min-h-[44px] !px-3 flex-shrink-0"
                             onClick={() => setShowScanner(true)}
-                            aria-label="Open barcode scanner"
+                            aria-label="Scan Barcode"
+                            title="Scan Barcode"
                         >
                             <ScanLine className="w-6 h-6 text-blue-600" aria-hidden />
                         </Button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-500" aria-live="polite">
+                        <span
+                            className={cn(
+                                'inline-block w-2 h-2 rounded-full',
+                                scannerStatus === 'ready' && 'bg-emerald-500',
+                                scannerStatus === 'scanning' && 'bg-amber-400 animate-pulse',
+                                scannerStatus === 'added' && 'bg-blue-500',
+                                scannerStatus === 'error' && 'bg-rose-500',
+                            )}
+                        />
+                        <span>
+                            {scannerStatus === 'ready' && 'Scanner ready — camera or USB barcode'}
+                            {scannerStatus === 'scanning' && 'Looking up barcode…'}
+                            {scannerStatus === 'added' && 'Added to cart'}
+                            {scannerStatus === 'error' && 'Scan failed'}
+                        </span>
                     </div>
                 </div>
                 
@@ -546,9 +691,8 @@ export default function PosCheckout() {
                 <CameraScanner 
                     onClose={() => setShowScanner(false)}
                     onScan={(code) => {
-                        setSearchTerm(code);
                         setShowScanner(false);
-                        handleSearch(code);
+                        resolveAndAddFromBarcode(code);
                     }}
                 />
             )}

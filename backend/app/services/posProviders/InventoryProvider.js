@@ -10,8 +10,24 @@ import {
   buildCanonicalStockContext,
 } from "../inventoryReadService.js";
 import { normalizeVariantMatchKey } from "../../utils/productHelpers.js";
+import {
+  findVariantByBarcode,
+  getVariantBarcodeValue,
+  looksLikePacknPureBarcode,
+  normalizeBarcodeScan,
+} from "./barcodeLookup.js";
 
 const toQty = (v) => Math.max(0, Number(v || 0));
+
+function createInactiveProductError(productName) {
+  const err = new Error(
+    productName
+      ? `"${productName}" is inactive and cannot be sold`
+      : "This product is inactive and cannot be sold",
+  );
+  err.code = "POS_PRODUCT_INACTIVE";
+  return err;
+}
 
 // Base Interface Pattern
 class InventoryProvider {
@@ -22,12 +38,60 @@ class InventoryProvider {
 
 export class AdminInventoryProvider extends InventoryProvider {
     async searchProducts(search, limit) {
+        const term = normalizeBarcodeScan(search);
+        if (!term) return [];
+
+        // Fast path: exact Phase-1 barcode → single variant + latest price/stock
+        if (looksLikePacknPureBarcode(term)) {
+            const product = await Product.findOne({
+                ownerType: "admin",
+                $or: [
+                    { "variants.barcodeValue": term },
+                    { "variants.barcodeId": term },
+                ],
+            }).lean();
+
+            if (!product) return [];
+            if (product.status !== "active") {
+                throw createInactiveProductError(product.name);
+            }
+
+            const variant = findVariantByBarcode(product, term, { ownerType: "admin" });
+            if (!variant) return [];
+
+            const canonicalCtx = await buildCanonicalStockContext([product._id]);
+            const view = canonicalCtx.productViews.get(String(product._id));
+            const vv = view?.variantByKey?.get(normalizeVariantMatchKey(variant.name));
+
+            return [{
+                _id: product._id,
+                name: product.name,
+                image: product.images?.[0]?.url || product.mainImage || "",
+                gstEnabled: variant.gstEnabled ?? product.gstEnabled,
+                gstRate: variant.gstRate ?? product.gstRate,
+                variantId: variant._id,
+                variantName: variant.name,
+                sku: variant.sku,
+                barcode: getVariantBarcodeValue(variant, "admin"),
+                price: variant.salePrice || variant.price || 0,
+                stock: vv?.stock ?? toQty(variant.stock),
+                availableQty: vv?.totalAvailableQty ?? 0,
+                availableQtyHub: vv?.availableQtyHub ?? 0,
+                availableQtySeller: vv?.availableQtySeller ?? 0,
+                totalAvailableQty: vv?.totalAvailableQty ?? 0,
+                totalFulfillmentQty: vv?.totalFulfillmentQty ?? 0,
+                hubAvailableQty: vv?.availableQtyHub ?? 0,
+                sellerSupplyBreakdown: vv?.sellerSupplyBreakdown ?? [],
+            }];
+        }
+
         const query = {
             $or: [
-                { name: { $regex: search, $options: "i" } },
-                { sku: { $regex: search, $options: "i" } },
-                { "variants.sku": { $regex: search, $options: "i" } },
-                { "variants.barcode": search }
+                { name: { $regex: term, $options: "i" } },
+                { sku: { $regex: term, $options: "i" } },
+                { "variants.sku": { $regex: term, $options: "i" } },
+                { "variants.barcodeValue": term },
+                { "variants.barcodeId": term },
             ],
             ownerType: "admin",
             status: "active"
@@ -60,7 +124,7 @@ export class AdminInventoryProvider extends InventoryProvider {
                   variantId: v._id,
                   variantName: v.name,
                   sku: v.sku,
-                  barcode: v.barcode,
+                  barcode: getVariantBarcodeValue(v, "admin"),
                   price: v.salePrice || v.price || 0,
                   stock: vv?.stock ?? toQty(v.stock),
                   availableQty: vv?.totalAvailableQty ?? 0,
@@ -84,7 +148,7 @@ export class AdminInventoryProvider extends InventoryProvider {
           });
         const flatResults = formattedResults.flat();
 
-        const exactMatch = flatResults.find(r => r.barcode === search);
+        const exactMatch = flatResults.find(r => r.barcode === term);
         return exactMatch ? [exactMatch] : flatResults.slice(0, parseInt(limit));
     }
 
@@ -106,12 +170,61 @@ export class SellerInventoryProvider extends InventoryProvider {
     }
 
     async searchProducts(search, limit) {
+        const term = normalizeBarcodeScan(search);
+        if (!term) return [];
+
+        // Fast path: exact Phase-1 seller barcode → single variant + latest supply price/stock
+        if (looksLikePacknPureBarcode(term)) {
+            const product = await Product.findOne({
+                ownerType: "seller",
+                sellerId: this.sellerId,
+                $or: [
+                    { "variants.sellerBarcodeValue": term },
+                    { "variants.sellerBarcodeId": term },
+                ],
+            }).lean();
+
+            if (!product) return [];
+            if (product.status !== "active") {
+                throw createInactiveProductError(product.name);
+            }
+
+            const variant = findVariantByBarcode(product, term, { ownerType: "seller" });
+            if (!variant) return [];
+
+            const stockView = getSellerProductStockView(product);
+            const variantIndex = product.variants.findIndex(
+                (v) => String(v._id) === String(variant._id),
+            );
+            const vv = variantIndex >= 0 ? stockView.variants[variantIndex] : null;
+
+            return [{
+                _id: product._id,
+                name: product.name,
+                image: product.images?.[0]?.url || product.mainImage || "",
+                gstEnabled: variant.gstEnabled ?? product.gstEnabled,
+                gstRate: variant.gstRate ?? product.gstRate,
+                variantId: variant._id,
+                variantName: variant.name,
+                sku: variant.sku,
+                barcode: getVariantBarcodeValue(variant, "seller"),
+                // Existing seller POS price resolution (latest from DB — never from barcode).
+                price: variant.salePrice || variant.price || variant.purchasePrice || 0,
+                stock: vv?.grossStock ?? toQty(variant.stock),
+                availableQty: vv?.availableQty ?? 0,
+                availableQtySeller: vv?.availableQty ?? 0,
+                totalAvailableQty: vv?.availableQty ?? 0,
+                totalFulfillmentQty: vv?.availableQty ?? 0,
+            }];
+        }
+
         const query = {
             $or: [
-                { name: { $regex: search, $options: "i" } },
-                { sku: { $regex: search, $options: "i" } },
-                { "variants.sku": { $regex: search, $options: "i" } },
-                { "variants.barcode": search }
+                { name: { $regex: term, $options: "i" } },
+                { sku: { $regex: term, $options: "i" } },
+                { "variants.sku": { $regex: term, $options: "i" } },
+                { "variants.sellerBarcodeValue": term },
+                { "variants.sellerBarcodeId": term },
             ],
             ownerType: "seller",
             sellerId: this.sellerId,
@@ -141,7 +254,7 @@ export class SellerInventoryProvider extends InventoryProvider {
                     variantId: p.variants[idx]?._id,
                     variantName: v.name,
                     sku: p.variants[idx]?.sku,
-                    barcode: p.variants[idx]?.barcode,
+                    barcode: getVariantBarcodeValue(p.variants[idx], "seller"),
                     price: p.variants[idx]?.salePrice || p.variants[idx]?.price || p.variants[idx]?.purchasePrice || 0,
                     stock: v.grossStock,
                     availableQty: v.availableQty,
@@ -160,7 +273,7 @@ export class SellerInventoryProvider extends InventoryProvider {
             }];
         }).flat();
 
-        const exactMatch = formattedResults.find(r => r.barcode === search);
+        const exactMatch = formattedResults.find(r => r.barcode === term);
         return exactMatch ? [exactMatch] : formattedResults.slice(0, parseInt(limit));
     }
 
