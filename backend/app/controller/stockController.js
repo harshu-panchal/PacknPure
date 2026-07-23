@@ -9,6 +9,7 @@ import {
 } from "../utils/productHelpers.js";
 import { handleSellerListingChangeReview } from "../services/sellerProductReviewService.js";
 import { adjustSellerStock, InventoryError } from "../services/inventory/inventoryEngine.js";
+import { ensureProductBarcodesSafe } from "../services/barcode/barcodeService.js";
 
 /* ===============================
    ADJUST STOCK MANUALLY
@@ -88,6 +89,11 @@ export const adjustStock = async (req, res) => {
       });
       await historyEntry.save();
 
+      // First-time seller barcode for this variant (never regenerates).
+      await ensureProductBarcodesSafe(productId, {
+        variantIds: resolvedVariantId ? [String(resolvedVariantId)] : undefined,
+      });
+
       return handleResponse(res, 200, "Variant stock adjusted successfully", {
         newStock: catalogStock,
         variant: {
@@ -137,6 +143,8 @@ export const adjustStock = async (req, res) => {
     });
 
     await historyEntry.save();
+
+    await ensureProductBarcodesSafe(productId);
 
     return handleResponse(res, 200, "Stock adjusted successfully", {
       newStock: updatedProduct.stock,

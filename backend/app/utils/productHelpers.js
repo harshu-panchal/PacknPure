@@ -1035,7 +1035,52 @@ export function sanitizeSellerCatalogListingUpdate(product, productData, reqBody
     },
   );
   if (!merged.ok) return merged;
+
+  // Preserve immutable barcode fields after normalize rebuilds variant rows.
+  if (Array.isArray(merged.data?.variants) && Array.isArray(product?.variants)) {
+    merged.data.variants = preserveVariantBarcodesInline(
+      product.variants,
+      merged.data.variants,
+    );
+  }
+
   return { ok: true, data: merged.data };
+}
+
+/** Local copy to avoid circular imports with barcodeService. */
+function preserveVariantBarcodesInline(previousVariants = [], nextVariants = []) {
+  if (!Array.isArray(nextVariants) || !nextVariants.length) return nextVariants;
+  const BARCODE_KEYS = [
+    "barcodeId",
+    "barcodeValue",
+    "barcodeGeneratedAt",
+    "sellerBarcodeId",
+    "sellerBarcodeValue",
+    "sellerBarcodeGeneratedAt",
+  ];
+  return nextVariants.map((raw, index) => {
+    const next = typeof raw?.toObject === "function" ? raw.toObject() : { ...raw };
+    const nextId = next?._id || next?.id;
+    let prev = null;
+    if (nextId) {
+      prev = previousVariants.find((v) => v?._id && String(v._id) === String(nextId));
+    }
+    if (!prev) {
+      const nextName = String(next?.name || "").trim().toLowerCase();
+      if (nextName) {
+        prev = previousVariants.find(
+          (v) => String(v?.name || "").trim().toLowerCase() === nextName,
+        );
+      }
+    }
+    if (!prev) prev = previousVariants[index] || null;
+    if (prev) {
+      for (const key of BARCODE_KEYS) {
+        if (prev[key] != null && next[key] == null) next[key] = prev[key];
+      }
+    }
+    return next;
+  });
 }
 
 /** Seller supply listing: procurement price + stock only (linked to a master catalog item). */

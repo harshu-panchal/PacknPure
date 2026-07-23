@@ -67,6 +67,11 @@ import {
   applyCanonicalStockToMasterProduct,
   applyCanonicalStockToSellerListing,
 } from "../services/inventoryReadService.js";
+import {
+  ensureProductBarcodesSafe,
+  preserveVariantBarcodes,
+  stripClientBarcodeFields,
+} from "../services/barcode/barcodeService.js";
 
 function isCustomerVisibilityRequest(req) {
   // If explicitly searching master catalog, it's not a location-bound customer request
@@ -233,7 +238,7 @@ function applyVariantsToProductData(productData, ownerType = "admin") {
   productData.unit = defaultUnit;
   const role = ownerType === "seller" ? "seller" : "admin";
 
-  const rawVariants = parseVariantsField(productData.variants);
+  const rawVariants = stripClientBarcodeFields(parseVariantsField(productData.variants));
   if (rawVariants.length > 0) {
     if (role === "seller") {
       normalizeSellerProductBody(productData);
@@ -925,12 +930,35 @@ export const createProduct = async (req, res) => {
       }
     }
 
+    // Barcode generation (isolated): must never break product creation.
+    let barcodeWarning = null;
+    try {
+      const barcodeResult = await ensureProductBarcodesSafe(product._id);
+      if (barcodeResult?.error) {
+        barcodeWarning = barcodeResult.error;
+      } else if (barcodeResult?.product) {
+        product = barcodeResult.product;
+      }
+    } catch (barcodeErr) {
+      barcodeWarning = barcodeErr?.message || "Barcode generation failed";
+      console.warn("[createProduct] Barcode ensure failed:", barcodeWarning);
+    }
+
     const responsePayload =
       product.ownerType === "seller"
         ? enrichSellerProductRow(
             typeof product.toObject === "function" ? product.toObject() : product,
           )
         : product;
+
+    if (barcodeWarning) {
+      const plain =
+        typeof responsePayload?.toObject === "function"
+          ? responsePayload.toObject()
+          : { ...(responsePayload || {}) };
+      plain.barcodeWarning = barcodeWarning;
+      return handleResponse(res, 201, "Product created successfully", plain);
+    }
 
     return handleResponse(res, 201, "Product created successfully", responsePayload);
   } catch (error) {
@@ -1080,7 +1108,9 @@ export const updateProduct = async (req, res) => {
       (product.masterProductId || isSellerCatalogLinkedListing(product));
 
     if (hasVariantsPayload && !sellerCatalogOrLive) {
-      const rawVariants = parseVariantsField(req.body.variants ?? productData.variants);
+      const rawVariants = stripClientBarcodeFields(
+        parseVariantsField(req.body.variants ?? productData.variants),
+      );
       const defaultUnit = normalizeUnit(productData.unit ?? product.unit);
       productData.unit = defaultUnit;
       if (rawVariants.length > 0) {
@@ -1131,6 +1161,12 @@ export const updateProduct = async (req, res) => {
             }
           });
         }
+
+        // Preserve immutable barcodes (never regenerate on edit).
+        productData.variants = preserveVariantBarcodes(
+          product.variants,
+          productData.variants,
+        );
       } else {
         productData.variants = [];
         productData.stock = Math.max(0, Number(productData.stock ?? product.stock) || 0);
@@ -1465,6 +1501,40 @@ export const updateProduct = async (req, res) => {
       responseProduct = enrichSellerProductRow(plain);
     }
 
+    // Barcode generation for new variants only (isolated; never breaks update).
+    let barcodeWarning = null;
+    try {
+      const barcodeResult = await ensureProductBarcodesSafe(finalProduct?._id || id);
+      if (barcodeResult?.error) {
+        barcodeWarning = barcodeResult.error;
+      } else if (barcodeResult?.product) {
+        const refreshed = barcodeResult.product;
+        if (responseProduct && typeof responseProduct === "object") {
+          responseProduct = {
+            ...(typeof responseProduct.toObject === "function"
+              ? responseProduct.toObject()
+              : responseProduct),
+            variants: refreshed.variants,
+          };
+          if (refreshed.ownerType === "seller") {
+            responseProduct = enrichSellerProductRow(responseProduct);
+          }
+        }
+      }
+    } catch (barcodeErr) {
+      barcodeWarning = barcodeErr?.message || "Barcode generation failed";
+      console.warn("[updateProduct] Barcode ensure failed:", barcodeWarning);
+    }
+
+    if (barcodeWarning && responseProduct && typeof responseProduct === "object") {
+      responseProduct = {
+        ...(typeof responseProduct.toObject === "function"
+          ? responseProduct.toObject()
+          : responseProduct),
+        barcodeWarning,
+      };
+    }
+
     return handleResponse(
       res,
       200,
@@ -1735,6 +1805,8 @@ export const updateVariantStock = async (req, res) => {
         });
       }
 
+      await ensureProductBarcodesSafe(product._id);
+
       return handleResponse(res, 200, "Product stock updated", {
         productId: product._id,
         stock: nextStock,
@@ -1817,6 +1889,10 @@ export const updateVariantStock = async (req, res) => {
         reorderLevel: Number(product.lowStockAlert || 10),
       });
     }
+
+    await ensureProductBarcodesSafe(product._id, {
+      variantIds: targetVariant?._id ? [String(targetVariant._id)] : undefined,
+    });
 
     return handleResponse(res, 200, "Variant stock updated", {
       productId: product._id,
@@ -2122,6 +2198,8 @@ export const publishSellerProductGoLive = async (req, res) => {
         sellPrice: firstSell,
         reorderLevel: Number(sellerProduct.lowStockAlert || 10),
       });
+
+      await ensureProductBarcodesSafe(newMaster._id);
 
       return handleResponse(res, 200, "Master catalog copy created — product is live", {
         masterProductId: newMaster._id,

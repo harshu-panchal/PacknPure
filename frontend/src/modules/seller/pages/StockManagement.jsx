@@ -18,7 +18,9 @@ import {
     HiOutlineClipboardDocumentList,
     HiOutlineXMark,
     HiOutlineCheck,
-    HiOutlineCalendarDays
+    HiOutlineCalendarDays,
+    HiOutlinePrinter,
+    HiOutlineArrowDownTray,
 } from 'react-icons/hi2';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -27,6 +29,7 @@ import { MagicCard } from '@/components/ui/magic-card';
 import { sellerApi } from '../services/sellerApi';
 import { toast } from 'sonner';
 import { useDebouncedValue, DEBOUNCE_MS } from '@shared/hooks/useDebounce';
+import { barcodeApi } from '@core/services/barcodeApi';
 
 const StockManagement = () => {
     const navigate = useNavigate();
@@ -200,6 +203,35 @@ const StockManagement = () => {
             } else {
                 toast.error(error.response?.data?.message || "Failed to adjust stock");
             }
+        }
+    };
+
+    const handleDownloadBarcodes = async (item, { newlyCreatedOnly = false } = {}) => {
+        const productId = item?.id || item?._id;
+        if (!productId) return;
+        try {
+            await barcodeApi.downloadPdf(productId, {
+                newlyCreatedOnly,
+                filename: `seller_barcodes_${String(item.name || 'product').replace(/\s+/g, '_')}.pdf`,
+            });
+            toast.success(
+                newlyCreatedOnly
+                    ? 'New seller barcode PDF downloaded'
+                    : 'Barcode PDF downloaded',
+            );
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to download barcode PDF');
+        }
+    };
+
+    const handlePrintBarcodes = async (item, { newlyCreatedOnly = false } = {}) => {
+        const productId = item?.id || item?._id;
+        if (!productId) return;
+        try {
+            await barcodeApi.printPdf(productId, { newlyCreatedOnly });
+            toast.success('Barcode PDF opened for print');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to print barcodes');
         }
     };
 
@@ -458,12 +490,28 @@ const StockManagement = () => {
                                                                 <p className="text-sm font-black text-slate-900">₹{item.price}</p>
                                                             </td>
                                                             <td className="px-6 py-5 text-right">
-                                                                <button
-                                                                    onClick={() => openAdjustModal(item)}
-                                                                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors"
-                                                                >
-                                                                    Adjust Stock
-                                                                </button>
+                                                                <div className="flex items-center justify-end gap-2">
+                                                                    <button
+                                                                        onClick={() => openAdjustModal(item)}
+                                                                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors"
+                                                                    >
+                                                                        Adjust Stock
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDownloadBarcodes(item)}
+                                                                        className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                                                                        title="Download Barcode PDF"
+                                                                    >
+                                                                        <HiOutlineArrowDownTray className="h-4 w-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handlePrintBarcodes(item)}
+                                                                        className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                                                                        title="Print Barcode"
+                                                                    >
+                                                                        <HiOutlinePrinter className="h-4 w-4" />
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </motion.tr>
                                                     ))}

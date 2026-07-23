@@ -28,6 +28,7 @@ import productRequestRoute from "./productRequestRoutes.js";
 import dynamicPageRoute from "./dynamicPageRoutes.js";
 import posRoute from "./posRoutes.js";
 import deliveryModeRoute from "./deliveryModeRoutes.js";
+import barcodeRoute from "./barcodeRoutes.js";
 
 import express from "express";
 
@@ -35,6 +36,7 @@ const setupRoutes = (app) => {
     const router = express.Router();
 
     router.use("/upload", uploadRoute);
+    router.use("/barcodes", barcodeRoute);
     router.use("/customer", customerRoute);
     router.use("/delivery", deliveryRoute);
     router.use("/admin/categories", categoryRoute);

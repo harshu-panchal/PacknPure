@@ -77,6 +77,30 @@ const variantSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    /** Admin master: permanent Code128 identity (immutable once set). */
+    barcodeId: {
+      type: String,
+      trim: true,
+    },
+    barcodeValue: {
+      type: String,
+      trim: true,
+    },
+    barcodeGeneratedAt: {
+      type: Date,
+    },
+    /** Seller listing: permanent seller-specific Code128 identity (immutable once set). */
+    sellerBarcodeId: {
+      type: String,
+      trim: true,
+    },
+    sellerBarcodeValue: {
+      type: String,
+      trim: true,
+    },
+    sellerBarcodeGeneratedAt: {
+      type: Date,
+    },
     averageRating: {
       type: Number,
       default: 0,
@@ -234,6 +258,23 @@ productSchema.index({ ownerType: 1, status: 1, createdAt: -1 });
 productSchema.index({ ownerType: 1, name: 1, categoryId: 1 });
 productSchema.index({ masterProductId: 1, sellerId: 1 });
 productSchema.index({ name: "text", tags: "text" });
+/** Unique only when a barcode string is present (avoids null collisions). */
+productSchema.index(
+  { "variants.barcodeValue": 1 },
+  {
+    unique: true,
+    partialFilterExpression: { "variants.barcodeValue": { $type: "string" } },
+    name: "variants_barcodeValue_unique",
+  },
+);
+productSchema.index(
+  { "variants.sellerBarcodeValue": 1 },
+  {
+    unique: true,
+    partialFilterExpression: { "variants.sellerBarcodeValue": { $type: "string" } },
+    name: "variants_sellerBarcodeValue_unique",
+  },
+);
 
 /** Seller listings: canonical supply price (API alias for purchasePrice on variants). */
 productSchema.virtual("supplyPrice").get(function supplyPriceVirtual() {

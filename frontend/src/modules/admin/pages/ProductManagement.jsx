@@ -30,6 +30,8 @@ import {
     HiOutlinePhone,
     HiOutlineEnvelope,
     HiOutlineArrowLeft,
+    HiOutlinePrinter,
+    HiOutlineArrowDownTray,
 } from 'react-icons/hi2';
 import Modal from '@shared/components/ui/Modal';
 import Pagination from '@shared/components/ui/Pagination';
@@ -38,6 +40,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { HiOutlineLink } from 'react-icons/hi2';
 import SearchableCategorySelect from '../components/SearchableCategorySelect';
 import PurchaseRequestListPanel from '../components/PurchaseRequestListPanel';
+import { barcodeApi } from '@core/services/barcodeApi';
 import { PRODUCT_UNITS, DEFAULT_PRODUCT_UNIT } from '@shared/constants/productUnits';
 import { useDebouncedValue, useDebouncedCallback, DEBOUNCE_MS } from '@shared/hooks/useDebounce';
 import {
@@ -347,6 +350,28 @@ const ProductManagement = () => {
             fetchProducts(page);
         } catch (error) {
             toast.error('Failed to delete product');
+        }
+    };
+
+    const handleDownloadBarcodes = async (product) => {
+        if (!product?._id) return;
+        try {
+            await barcodeApi.downloadPdf(product._id, {
+                filename: `barcodes_${String(product.name || 'product').replace(/\s+/g, '_')}.pdf`,
+            });
+            toast.success('Barcode PDF downloaded');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to download barcode PDF');
+        }
+    };
+
+    const handlePrintBarcodes = async (product) => {
+        if (!product?._id) return;
+        try {
+            await barcodeApi.printPdf(product._id);
+            toast.success('Barcode PDF opened for print');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to print barcodes');
         }
     };
 
@@ -1368,6 +1393,20 @@ const ProductManagement = () => {
                                             >
                                                 <HiOutlinePencilSquare className="h-3.5 w-3.5" />
                                             </button>
+                                            <button
+                                                onClick={() => handleDownloadBarcodes(p)}
+                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
+                                                title="Download Barcode PDF"
+                                            >
+                                                <HiOutlineArrowDownTray className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handlePrintBarcodes(p)}
+                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
+                                                title="Print Barcode"
+                                            >
+                                                <HiOutlinePrinter className="h-3.5 w-3.5" />
+                                            </button>
                                             {sellerNeedsGoLive(p) && (
                                                 <button
                                                     onClick={() => openGoLiveModal(p)}
@@ -2371,13 +2410,35 @@ const ProductManagement = () => {
                                         NEXT
                                     </button>
                                 ) : (
-                                    <button
-                                        onClick={handleSave}
-                                        disabled={isSaving}
-                                        className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-xs font-bold shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50"
-                                    >
-                                        {isSaving ? 'SAVING...' : (editingItem ? 'SAVE CHANGES' : 'CREATE PRODUCT')}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        {editingItem?._id && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDownloadBarcodes(editingItem)}
+                                                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 transition-all"
+                                                    title="Download Barcode PDF"
+                                                >
+                                                    Download Barcode PDF
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handlePrintBarcodes(editingItem)}
+                                                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 transition-all"
+                                                    title="Print Barcode"
+                                                >
+                                                    Print Barcode
+                                                </button>
+                                            </>
+                                        )}
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={isSaving}
+                                            className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-xs font-bold shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                                        >
+                                            {isSaving ? 'SAVING...' : (editingItem ? 'SAVE CHANGES' : 'CREATE PRODUCT')}
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </motion.div>
