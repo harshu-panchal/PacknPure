@@ -21,7 +21,9 @@ export function buildTripPlan(rows = [], getDraft = () => ({})) {
 
   let preferredId = null;
   try {
-    preferredId = sessionStorage.getItem("pickup_active_assignment");
+    preferredId =
+      localStorage.getItem("pickup_active_assignment") ||
+      sessionStorage.getItem("pickup_active_assignment");
   } catch {
     preferredId = null;
   }

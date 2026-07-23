@@ -10,6 +10,14 @@ import {
 import { compressImageFiles } from "../utils/imageCompress";
 import { enqueueOfflineAction } from "../utils/offlineQueue";
 import { hasBackendProgress } from "../utils/workflowPhases";
+import {
+  readPersistFlag,
+  readStoredImages,
+  readPersistedDraft,
+  writePersistedDraft,
+  setActiveAssignmentId,
+  getActiveAssignmentId,
+} from "../utils/workflowPersist";
 
 function isOfflineError(err) {
   if (typeof navigator !== "undefined" && !navigator.onLine) return true;
@@ -30,56 +38,13 @@ function isValidCoord(lat, lng) {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-function readSessionFlag(key) {
-  try {
-    return sessionStorage.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeSessionFlag(key, on) {
-  try {
-    if (on) sessionStorage.setItem(key, "1");
-    else sessionStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-}
-
-function readStoredImages(key) {
-  try {
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((x) => x && typeof x.url === "string" && x.url.trim())
-      .slice(0, 4)
-      .map((x) => ({ url: x.url.trim(), source: x.source === "camera" ? "camera" : "gallery" }));
-  } catch {
-    return [];
-  }
-}
-
-function writeStoredImages(key, images) {
-  try {
-    const payload = (images || [])
-      .filter((x) => x?.url)
-      .slice(0, 4)
-      .map((x) => ({ url: x.url, source: x.source || "gallery" }));
-    if (!payload.length) sessionStorage.removeItem(key);
-    else sessionStorage.setItem(key, JSON.stringify(payload));
-  } catch {
-    /* ignore */
-  }
-}
-
 const emptyUi = () => ({
   accepted: false,
   acceptedAt: null,
   navigating: false,
   navStartedAt: null,
+  sellerReached: false,
+  sellerReachedAt: null,
   hubReached: false,
   hubReachedAt: null,
   hubNavigating: false,
@@ -91,6 +56,7 @@ const emptyUi = () => ({
   pickedQty: {},
   photosUploadedAt: null,
   hubPhotosAt: null,
+  requireOtpRegen: false,
 });
 
 export function useAssignmentDrafts(rows) {
@@ -100,12 +66,7 @@ export function useAssignmentDrafts(rows) {
   const patchDraft = useCallback((id, patch) => {
     setDrafts((prev) => {
       const nextDraft = { ...(prev[id] || emptyUi()), ...patch };
-      if (Object.prototype.hasOwnProperty.call(patch, "vendorImages")) {
-        writeStoredImages(`pickup_vendor_imgs_${id}`, nextDraft.vendorImages);
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, "hubImages")) {
-        writeStoredImages(`pickup_hub_imgs_${id}`, nextDraft.hubImages);
-      }
+      writePersistedDraft(id, nextDraft);
       return { ...prev, [id]: nextDraft };
     });
   }, []);
@@ -120,28 +81,62 @@ export function useAssignmentDrafts(rows) {
         const id = row._id;
         if (!id) continue;
         const cur = next[id] || emptyUi();
+        const saved = !hydratedRef.current.has(id) ? readPersistedDraft(id) : null;
+
         let navigating = cur.navigating;
         let accepted = cur.accepted;
         let hubReached = cur.hubReached;
+        let sellerReached = cur.sellerReached;
         let acceptedAt = cur.acceptedAt;
         let navStartedAt = cur.navStartedAt;
         let hubReachedAt = cur.hubReachedAt;
+        let sellerReachedAt = cur.sellerReachedAt;
         let photosUploadedAt = cur.photosUploadedAt;
         let hubPhotosAt = cur.hubPhotosAt;
+        let requireOtpRegen = Boolean(cur.requireOtpRegen);
+        let otp = cur.otp || "";
+        let notes = cur.notes || "";
+        let pickedQty = { ...cur.pickedQty };
+        let hubNavigating = cur.hubNavigating;
+        let hubNavStartedAt = cur.hubNavStartedAt;
 
-        if (!hydratedRef.current.has(id)) {
-          navigating = readSessionFlag(`pickup_nav_${id}`);
-          accepted = readSessionFlag(`pickup_accepted_${id}`);
-          hubReached = readSessionFlag(`pickup_hub_reached_${id}`);
+        if (saved) {
+          navigating = Boolean(saved.navigating);
+          accepted = Boolean(saved.accepted);
+          hubReached = Boolean(saved.hubReached);
+          sellerReached = Boolean(saved.sellerReached);
+          acceptedAt = saved.acceptedAt || acceptedAt;
+          navStartedAt = saved.navStartedAt || navStartedAt;
+          hubReachedAt = saved.hubReachedAt || hubReachedAt;
+          sellerReachedAt = saved.sellerReachedAt || sellerReachedAt;
+          photosUploadedAt = saved.photosUploadedAt || photosUploadedAt;
+          hubPhotosAt = saved.hubPhotosAt || hubPhotosAt;
+          requireOtpRegen = Boolean(saved.requireOtpRegen);
+          otp = saved.otp || otp;
+          notes = saved.notes || notes;
+          pickedQty = { ...(saved.pickedQty || {}), ...pickedQty };
+          hubNavigating = Boolean(saved.hubNavigating);
+          hubNavStartedAt = saved.hubNavStartedAt || hubNavStartedAt;
+        } else if (!hydratedRef.current.has(id)) {
+          navigating = readPersistFlag(`pickup_nav_${id}`);
+          accepted = readPersistFlag(`pickup_accepted_${id}`);
+          hubReached = readPersistFlag(`pickup_hub_reached_${id}`);
+          sellerReached = readPersistFlag(`pickup_seller_reached_${id}`);
+          hubNavigating = readPersistFlag(`pickup_hub_nav_${id}`);
         }
 
         const fromProof = parseVendorImageUrls(row.pickupProof);
         const fromHub = parseHubImages(row.hubDropProof);
-        const notes = parseAssignmentNotes(row.pickupProof, row.notes);
-        const storedVendor = readStoredImages(`pickup_vendor_imgs_${id}`);
-        const storedHub = readStoredImages(`pickup_hub_imgs_${id}`);
+        const rowNotes = parseAssignmentNotes(row.pickupProof, row.notes);
+        const storedVendor =
+          saved?.vendorImages?.length > 0
+            ? saved.vendorImages
+            : readStoredImages(`pickup_vendor_imgs_${id}`);
+        const storedHub =
+          saved?.hubImages?.length > 0
+            ? saved.hubImages
+            : readStoredImages(`pickup_hub_imgs_${id}`);
 
-        // Prefer in-memory → backend proof → session-cached uploads (pre-OTP refresh)
         const vendorImages =
           cur.vendorImages?.length > 0
             ? cur.vendorImages
@@ -165,29 +160,62 @@ export function useAssignmentDrafts(rows) {
           hubPhotosAt = row.hubDropProof?.droppedAt || Date.now();
         }
 
-        const progressed = hasBackendProgress(row, { vendorImages });
+        const progressed = hasBackendProgress(row, {
+          vendorImages,
+          sellerReached,
+        });
         const reached = Boolean(
-          row.reachedSellerAt || row.pickupProof?.reachedSellerAt,
+          row.reachedSellerAt ||
+            row.pickupProof?.reachedSellerAt ||
+            sellerReached,
         );
 
-        // Restore workflow after refresh from backend status (not only session flags)
         if (progressed && row.status === "pickup_assigned") {
           accepted = true;
           if (!acceptedAt) acceptedAt = row.pickupAssignedAt || Date.now();
-          writeSessionFlag(`pickup_accepted_${id}`, true);
         }
         if (reached && row.status === "pickup_assigned") {
-          navigating = true;
-          if (!navStartedAt) {
-            navStartedAt = row.reachedSellerAt || row.pickupProof?.reachedSellerAt || Date.now();
+          sellerReached = true;
+          if (!sellerReachedAt) {
+            sellerReachedAt =
+              row.reachedSellerAt ||
+              row.pickupProof?.reachedSellerAt ||
+              Date.now();
           }
-          writeSessionFlag(`pickup_nav_${id}`, true);
+          navigating = true;
+          if (!navStartedAt) navStartedAt = sellerReachedAt || Date.now();
         }
-        if (row.status === "picked" && hubReached) {
-          writeSessionFlag(`pickup_hub_reached_${id}`, true);
+        // Keep active assignment on navigating after refresh (not Start Navigation)
+        if (
+          accepted &&
+          row.status === "pickup_assigned" &&
+          !sellerReached &&
+          (navigating || getActiveAssignmentId() === id)
+        ) {
+          navigating = true;
+          if (!navStartedAt) navStartedAt = acceptedAt || Date.now();
         }
 
-        const pickedQty = { ...cur.pickedQty };
+        // Picked → restore hub navigation step after refresh (Slide · Reached hub)
+        if (row.status === "picked") {
+          if (!hydratedRef.current.has(id)) {
+            hubNavigating =
+              hubNavigating ||
+              readPersistFlag(`pickup_hub_nav_${id}`) ||
+              Boolean(saved?.hubNavigating);
+            hubReached =
+              hubReached || readPersistFlag(`pickup_hub_reached_${id}`);
+          }
+          if (hubNavigating && !hubReached) {
+            navigating = true;
+            if (!hubNavStartedAt) hubNavStartedAt = Date.now();
+          }
+          // Seller-nav flag must not fake hub-nav after refresh unless hub nav was started
+          if (!hubNavigating && !hubReached) {
+            navigating = false;
+          }
+        }
+
         if (row.status === "pickup_assigned") {
           for (const p of row.products || []) {
             const key = String(p.productId);
@@ -195,27 +223,56 @@ export function useAssignmentDrafts(rows) {
           }
         }
 
-        // Persist restored images so subsequent refresh still shows them
-        if (vendorImages.length) writeStoredImages(`pickup_vendor_imgs_${id}`, vendorImages);
-        if (hubImages.length) writeStoredImages(`pickup_hub_imgs_${id}`, hubImages);
+        if (!otp && !hydratedRef.current.has(id)) {
+          try {
+            otp =
+              localStorage.getItem(`pickup_otp_${id}`) ||
+              sessionStorage.getItem(`pickup_otp_${id}`) ||
+              "";
+          } catch {
+            /* ignore */
+          }
+        }
 
-        next[id] = {
+        const photosPresent = vendorImages.length > 0;
+        if (
+          !hydratedRef.current.has(id) &&
+          row.status === "pickup_assigned" &&
+          photosPresent &&
+          (!row.pickupOtpGenerated || (row.pickupOtpVerified && !otp))
+        ) {
+          requireOtpRegen = !row.pickupOtpGenerated || !otp;
+        }
+        if (row.pickupOtpGenerated && !row.pickupOtpVerified) {
+          requireOtpRegen = false;
+        }
+
+        const nextDraft = {
           ...cur,
           vendorImages,
           hubImages,
-          notes: cur.notes || notes,
+          notes: notes || rowNotes,
           pickedQty,
           acceptedAt,
           navStartedAt,
           hubReachedAt,
+          sellerReachedAt,
           photosUploadedAt,
           hubPhotosAt,
+          otp,
+          requireOtpRegen,
+          sellerReached,
+          hubNavigating,
+          hubNavStartedAt,
           accepted: row.status === "pickup_assigned" ? accepted : true,
           hubReached: row.status === "picked" ? hubReached : false,
           navigating: ["pickup_assigned", "picked"].includes(row.status)
             ? navigating
             : false,
         };
+
+        next[id] = nextDraft;
+        writePersistedDraft(id, nextDraft);
         hydratedRef.current.add(id);
       }
       return next;
@@ -228,27 +285,33 @@ export function useAssignmentDrafts(rows) {
         navigating,
         navStartedAt: navigating ? Date.now() : null,
       });
-      writeSessionFlag(`pickup_nav_${id}`, navigating);
-      if (navigating) {
-        try {
-          sessionStorage.setItem("pickup_active_assignment", id);
-        } catch {
-          /* ignore */
-        }
-      }
+      if (navigating) setActiveAssignmentId(id);
+    },
+    [patchDraft],
+  );
+
+  /** Start hub navigation — separate from seller nav so refresh keeps hub step. */
+  const startHubNavigation = useCallback(
+    (id) => {
+      patchDraft(id, {
+        hubNavigating: true,
+        hubNavStartedAt: Date.now(),
+        navigating: true,
+      });
+      setActiveAssignmentId(id);
     },
     [patchDraft],
   );
 
   const acceptAssignment = useCallback(
     (id) => {
-      patchDraft(id, { accepted: true, acceptedAt: Date.now() });
-      writeSessionFlag(`pickup_accepted_${id}`, true);
-      try {
-        sessionStorage.setItem("pickup_active_assignment", id);
-      } catch {
-        /* ignore */
-      }
+      patchDraft(id, {
+        accepted: true,
+        acceptedAt: Date.now(),
+        navigating: true,
+        navStartedAt: Date.now(),
+      });
+      setActiveAssignmentId(id);
     },
     [patchDraft],
   );
@@ -258,14 +321,10 @@ export function useAssignmentDrafts(rows) {
       patchDraft(id, {
         hubReached: reached,
         hubReachedAt: reached ? Date.now() : null,
-        navigating: false,
+        hubNavigating: reached ? false : true,
+        navigating: reached ? false : true,
       });
-      if (reached) {
-        writeSessionFlag(`pickup_hub_reached_${id}`, true);
-        writeSessionFlag(`pickup_nav_${id}`, false);
-      } else {
-        writeSessionFlag(`pickup_hub_reached_${id}`, false);
-      }
+      if (reached) setActiveAssignmentId(id);
     },
     [patchDraft],
   );
@@ -275,6 +334,7 @@ export function useAssignmentDrafts(rows) {
     getDraft,
     patchDraft,
     setNavigating,
+    startHubNavigation,
     acceptAssignment,
     setHubReached,
   };
@@ -293,8 +353,8 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
   }, []);
 
   const refreshSilent = useCallback(() => {
-    // Do not block slide/loading on list refresh — fire and forget
-    Promise.resolve(fetchAssignments({ silent: true })).catch(() => {});
+    // Force refresh after mutations — do not skip when a poll is in flight
+    return Promise.resolve(fetchAssignments({ silent: true, force: true })).catch(() => {});
   }, [fetchAssignments]);
 
   const uploadOne = useCallback(async (file, type, source) => {
@@ -357,16 +417,32 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
           } catch {
             // Arrival GPS is optional on backend — proceed without coords
           }
-          if (queueIfOffline("mark_reached", { id: row._id, body })) return;
-          await pickupApi.markReachedSeller(row._id, body);
+          if (queueIfOffline("mark_reached", { id: row._id, body })) {
+            const at = Date.now();
+            patchDraft(row._id, { sellerReached: true, sellerReachedAt: at, navigating: true });
+            setActiveAssignmentId(row._id);
+            return;
+          }
+          const res = await pickupApi.markReachedSeller(row._id, body);
+          const at =
+            res?.data?.result?.reachedSellerAt || new Date().toISOString();
+          patchDraft(row._id, {
+            sellerReached: true,
+            sellerReachedAt: at,
+            navigating: true,
+          });
+          setActiveAssignmentId(row._id);
           toast.success("Reached seller — capture parcel photos");
-          refreshSilent();
+          await refreshSilent();
         } catch (err) {
           if (isOfflineError(err)) {
             queueIfOffline("mark_reached", {
               id: row._id,
               body: {},
             });
+            const at = Date.now();
+            patchDraft(row._id, { sellerReached: true, sellerReachedAt: at, navigating: true });
+            setActiveAssignmentId(row._id);
           } else {
             toast.error(getApiErrorMessage(err, "Could not mark reached"));
           }
@@ -376,7 +452,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [guard, refreshSilent],
+    [guard, refreshSilent, patchDraft],
   );
 
   const addVendorImages = useCallback(
@@ -400,7 +476,15 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         patchDraft(rowId, {
           vendorImages: [...draft.vendorImages, ...uploaded].slice(0, 4),
           photosUploadedAt: Date.now(),
+          // New photos must re-run Generate OTP → Verify before mark-picked
+          requireOtpRegen: true,
+          otp: "",
         });
+        try {
+          sessionStorage.removeItem(`pickup_otp_${rowId}`);
+        } catch {
+          /* ignore */
+        }
         toast.success(`${uploaded.length} photo(s) uploaded`);
       } catch (err) {
         toast.error(getApiErrorMessage(err, "Upload failed"));
@@ -422,7 +506,16 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         const draft = getDraft(rowId);
         const images = [...draft.vendorImages];
         images[index] = uploaded;
-        patchDraft(rowId, { vendorImages: images });
+        patchDraft(rowId, {
+          vendorImages: images,
+          requireOtpRegen: true,
+          otp: "",
+        });
+        try {
+          sessionStorage.removeItem(`pickup_otp_${rowId}`);
+        } catch {
+          /* ignore */
+        }
         toast.success("Photo updated");
       } catch (err) {
         toast.error(getApiErrorMessage(err, "Replace failed"));
@@ -446,12 +539,21 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
       return guard(key, async () => {
         try {
           setActionLoadingId(key);
+          // ONLY generatePickupOtp — never verify or mark-picked from this slide
           const res = await pickupApi.generatePickupOtp(row._id, {
             vendorImageUrl: urls[0],
             vendorImageUrls: urls,
           });
-          patchDraft(row._id, { otp: "" });
-          toast.success("OTP generated — ask seller for the code");
+          patchDraft(row._id, {
+            otp: "",
+            requireOtpRegen: false,
+          });
+          try {
+            sessionStorage.removeItem(`pickup_otp_${row._id}`);
+          } catch {
+            /* ignore */
+          }
+          toast.success("OTP generated — enter the seller code");
           if (res?.data?.result?.devMode && import.meta.env.DEV) {
             toast.message("Dev mode: seller OTP is 1234");
           }
@@ -467,7 +569,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
   );
 
   const verifyOtp = useCallback(
-    async (row) => {
+    async (row, getCurrentPosition) => {
       const key = `${row._id}:verify`;
       const draft = getDraft(row._id);
       const otp = String(draft.otp || "").trim();
@@ -475,25 +577,59 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         toast.error("Enter the OTP from the seller");
         return;
       }
+      if (otp.length < 4) {
+        toast.error("Enter the full 4-digit OTP");
+        return;
+      }
       return guard(key, async () => {
         try {
           setActionLoadingId(key);
+          // Step 1: ONLY verifyPickupOtp
           await pickupApi.verifyPickupOtp(row._id, { otp });
-          try {
-            sessionStorage.setItem(`pickup_otp_${row._id}`, otp);
-          } catch {
-            /* ignore */
+          patchDraft(row._id, { requireOtpRegen: false, otp });
+          setActiveAssignmentId(row._id);
+
+          // Step 2: markPicked ONLY after verify succeeds (same OTP)
+          const urls = draft.vendorImages.map((i) => i.url).filter(Boolean);
+          if (!urls.length) {
+            toast.success("OTP verified — upload photos then confirm");
+            refreshSilent();
+            return;
           }
-          toast.success("OTP verified — confirm pickup");
+
+          const coords = await resolveRequiredCoords(getCurrentPosition);
+          const items = Object.entries(draft.pickedQty || {}).map(
+            ([productId, actualPickedQty]) => ({
+              productId,
+              actualPickedQty: Number(actualPickedQty),
+            }),
+          );
+          await pickupApi.markPicked(row._id, {
+            otp,
+            lat: coords.lat,
+            lng: coords.lng,
+            notes: draft.notes || "",
+            vendorImageUrl: urls[0],
+            vendorImageUrls: urls,
+            items,
+          });
+          // Clear seller-nav; hub starts only after "Start hub navigation"
+          patchDraft(row._id, {
+            navigating: false,
+            hubNavigating: false,
+            sellerReached: true,
+          });
+          toast.success(`Pickup complete from ${row.vendor?.name || "Seller"}`);
           refreshSilent();
         } catch (err) {
-          toast.error(getApiErrorMessage(err, "Invalid OTP"));
+          toast.error(getApiErrorMessage(err, "OTP verification failed"));
+          refreshSilent();
         } finally {
           setActionLoadingId("");
         }
       });
     },
-    [getDraft, guard, refreshSilent],
+    [getDraft, guard, patchDraft, refreshSilent, resolveRequiredCoords],
   );
 
   const confirmPickup = useCallback(
@@ -509,16 +645,14 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
           otp = "";
         }
       }
-      // Dev OTP is always 1234 — avoid "Invalid pickup OTP" after refresh when draft.otp is empty
-      if (!otp && row.pickupOtpVerified && import.meta.env.DEV) {
-        otp = "1234";
-      }
       if (!row.pickupOtpVerified) {
         toast.error("Verify OTP before confirming pickup");
         return;
       }
       if (!otp) {
-        toast.error("OTP missing — enter and verify OTP again");
+        // Cannot mark-picked without OTP code — send user back to generate/verify
+        patchDraft(row._id, { requireOtpRegen: true, otp: "" });
+        toast.error("OTP missing — generate and verify OTP again");
         return;
       }
       if (!urls.length) {
@@ -544,6 +678,11 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
             vendorImageUrls: urls,
             items,
           });
+          patchDraft(row._id, {
+            navigating: false,
+            hubNavigating: false,
+            sellerReached: true,
+          });
           toast.success(`Pickup complete from ${row.vendor?.name || "Seller"}`);
           refreshSilent();
         } catch (err) {
@@ -553,7 +692,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [getDraft, guard, refreshSilent, resolveRequiredCoords],
+    [getDraft, guard, patchDraft, refreshSilent, resolveRequiredCoords],
   );
 
   const cancelAssignment = useCallback(

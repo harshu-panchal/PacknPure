@@ -53,7 +53,11 @@ const Dashboard = () => {
   );
   const [focusedAssignmentId, setFocusedAssignmentId] = useState(() => {
     try {
-      return sessionStorage.getItem("pickup_active_assignment") || null;
+      return (
+        localStorage.getItem("pickup_active_assignment") ||
+        sessionStorage.getItem("pickup_active_assignment") ||
+        null
+      );
     } catch {
       return null;
     }
@@ -80,13 +84,18 @@ const Dashboard = () => {
     if (!rows?.length) return;
     let stored = null;
     try {
-      stored = sessionStorage.getItem("pickup_active_assignment");
+      stored =
+        localStorage.getItem("pickup_active_assignment") ||
+        sessionStorage.getItem("pickup_active_assignment");
     } catch {
       stored = null;
     }
-    const stillActive = stored && rows.some(
-      (r) => r._id === stored && ["pickup_assigned", "picked"].includes(r.status),
-    );
+    const stillActive =
+      stored &&
+      rows.some(
+        (r) =>
+          r._id === stored && ["pickup_assigned", "picked"].includes(r.status),
+      );
     if (stillActive) {
       setFocusedAssignmentId(stored);
       return;
@@ -97,6 +106,7 @@ const Dashboard = () => {
     if (nextActive) {
       setFocusedAssignmentId(nextActive);
       try {
+        localStorage.setItem("pickup_active_assignment", nextActive);
         sessionStorage.setItem("pickup_active_assignment", nextActive);
       } catch {
         /* ignore */
@@ -109,7 +119,7 @@ const Dashboard = () => {
   const hubLoc = useMemo(() => getHubLocation(), []);
   const hubAddress = getHubAddress();
 
-  const { getDraft, patchDraft, setNavigating, acceptAssignment, setHubReached } =
+  const { getDraft, patchDraft, setNavigating, startHubNavigation, acceptAssignment, setHubReached } =
     useAssignmentDrafts(rows);
 
   const actions = useAssignmentActions({
@@ -146,16 +156,22 @@ const Dashboard = () => {
   const mapStops = useMemo(() => getSellerStopsForMap(trip, hubLoc), [trip, hubLoc]);
 
   const displayRows = useMemo(() => {
-    if (!focusMode || statusFilter !== "active" || !trip.current) return rows;
     const currentId =
-      (focusedAssignmentId && rows.some((r) => r._id === focusedAssignmentId)
+      (focusedAssignmentId &&
+      rows.some((r) => r._id === focusedAssignmentId)
         ? focusedAssignmentId
-        : null) || trip.current._id;
+        : null) ||
+      trip.current?._id ||
+      null;
+    if (!currentId) return rows;
     const current = rows.find((r) => r._id === currentId);
-    const others = rows.filter(
-      (r) => r._id !== currentId && r.status !== "hub_delivered",
-    );
-    return current ? [current, ...others] : rows;
+    if (!current) return rows;
+    // Always keep active in-progress assignment first after refresh
+    const others = rows.filter((r) => r._id !== currentId);
+    if (focusMode && statusFilter === "active") {
+      return [current, ...others.filter((r) => r.status !== "hub_delivered")];
+    }
+    return [current, ...others];
   }, [rows, trip, focusMode, statusFilter, focusedAssignmentId]);
 
   const statCards = useMemo(
@@ -169,16 +185,23 @@ const Dashboard = () => {
 
   const handleNavigate = useCallback(
     (row) => {
-      setNavigating(row._id, true);
+      if (row.status === "picked") {
+        startHubNavigation(row._id);
+      } else {
+        setNavigating(row._id, true);
+      }
       setFocusedAssignmentId(row._id);
       try {
+        localStorage.setItem("pickup_active_assignment", row._id);
         sessionStorage.setItem("pickup_active_assignment", row._id);
       } catch {
         /* ignore */
       }
-      toast.message("Navigation started");
+      toast.message(
+        row.status === "picked" ? "Hub navigation started" : "Navigation started",
+      );
     },
-    [setNavigating],
+    [setNavigating, startHubNavigation],
   );
 
   const handleAccept = useCallback(
@@ -186,11 +209,12 @@ const Dashboard = () => {
       acceptAssignment(row._id);
       setFocusedAssignmentId(row._id);
       try {
+        localStorage.setItem("pickup_active_assignment", row._id);
         sessionStorage.setItem("pickup_active_assignment", row._id);
       } catch {
         /* ignore */
       }
-      toast.success("Assignment accepted");
+      toast.success("Assignment accepted — navigation started");
     },
     [acceptAssignment],
   );
@@ -225,7 +249,17 @@ const Dashboard = () => {
   const handleRemoveVendorImage = useCallback(
     (rowId, index) => {
       const draft = getDraft(rowId);
-      patchDraft(rowId, { vendorImages: draft.vendorImages.filter((_, i) => i !== index) });
+      const vendorImages = draft.vendorImages.filter((_, i) => i !== index);
+      patchDraft(rowId, {
+        vendorImages,
+        requireOtpRegen: true,
+        otp: "",
+      });
+      try {
+        sessionStorage.removeItem(`pickup_otp_${rowId}`);
+      } catch {
+        /* ignore */
+      }
     },
     [getDraft, patchDraft],
   );
@@ -283,7 +317,7 @@ const Dashboard = () => {
       onReplaceVendorImage: actions.replaceVendorImage,
       onRemoveVendorImage: handleRemoveVendorImage,
       onGenerateOtp: actions.generateOtp,
-      onVerifyOtp: actions.verifyOtp,
+      onVerifyOtp: (row) => actions.verifyOtp(row, getCurrentPosition),
       onConfirmPickup: handleConfirmPickup,
       onCancel: handleCancelOpen,
       onAddHubImages: actions.addHubImages,
@@ -299,6 +333,7 @@ const Dashboard = () => {
       hubAddress,
       mapStops,
       actions,
+      getCurrentPosition,
       handleNavigate,
       handleAccept,
       handleMarkReached,

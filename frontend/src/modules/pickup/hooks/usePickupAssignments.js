@@ -22,7 +22,17 @@ export function usePickupAssignments(statusFilter = "active", pollMs = DEFAULT_P
   const fetchAssignments = useCallback(
     async (opts = {}) => {
       const silent = Boolean(opts.silent);
-      if (inFlightRef.current && silent) return;
+      const force = Boolean(opts.force);
+      // Silent polls can skip when busy — forced refreshes after actions must always run
+      if (inFlightRef.current && silent && !force) return;
+      // If a poll is in flight and we need fresh data, wait briefly then fetch
+      if (inFlightRef.current && force) {
+        let waits = 0;
+        while (inFlightRef.current && waits < 20) {
+          await new Promise((r) => setTimeout(r, 50));
+          waits += 1;
+        }
+      }
       inFlightRef.current = true;
       try {
         if (!silent) setLoading(true);

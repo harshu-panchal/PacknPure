@@ -1,5 +1,8 @@
 /**
  * Workflow phases derived from backend assignment state + UI flags.
+ *
+ * Strict pickup order while status is pickup_assigned:
+ * Reach → Photos → Generate OTP → Enter/Verify OTP → Confirm (mark-picked)
  */
 export const WORKFLOW_PHASE = {
   PENDING_ACCEPT: "PENDING_ACCEPT",
@@ -54,6 +57,7 @@ export function hasBackendProgress(assignment, ui = {}) {
   if (!assignment) return false;
   if (assignment.status === "picked" || assignment.status === "hub_delivered") return true;
   if (assignment.reachedSellerAt || assignment.pickupProof?.reachedSellerAt) return true;
+  if (ui.sellerReached) return true;
   if (assignment.pickupOtpGenerated || assignment.pickupOtpVerified) return true;
   return hasParcelPhotos(assignment, ui);
 }
@@ -70,7 +74,10 @@ export function deriveWorkflowPhase(assignment, ui = {}) {
 
   if (status === "picked") {
     if (hubReached) return WORKFLOW_PHASE.HUB_AT_HUB;
-    if (navigating) return WORKFLOW_PHASE.HUB_NAVIGATING;
+    // Hub nav is a separate UI flag — must survive refresh (do not rely on seller `navigating`)
+    if (Boolean(ui.hubNavigating) || Boolean(ui.navigating)) {
+      return WORKFLOW_PHASE.HUB_NAVIGATING;
+    }
     return WORKFLOW_PHASE.PICKED;
   }
 
@@ -79,20 +86,39 @@ export function deriveWorkflowPhase(assignment, ui = {}) {
   if (!accepted) return WORKFLOW_PHASE.PENDING_ACCEPT;
 
   const reached = Boolean(
-    assignment.reachedSellerAt || assignment.pickupProof?.reachedSellerAt,
+    assignment.reachedSellerAt ||
+      assignment.pickupProof?.reachedSellerAt ||
+      ui.sellerReached,
   );
   const photosReady = hasParcelPhotos(assignment, ui);
+  // New/changed photos (or missing OTP code) must re-run generate → verify before mark-picked
+  const mustRegenOtp = Boolean(ui.requireOtpRegen);
+  const hasOtpCode = Boolean(String(ui.otp || "").trim());
 
-  // Photos are required before OTP UI — assign-time OTP must not skip this step.
-  if (reached && !photosReady) return WORKFLOW_PHASE.PHOTO_CAPTURE;
+  if (!reached) {
+    if (navigating) return WORKFLOW_PHASE.NAVIGATING;
+    return WORKFLOW_PHASE.ASSIGNED;
+  }
 
-  if (assignment.pickupOtpVerified && photosReady) return WORKFLOW_PHASE.OTP_VERIFIED;
-  if (assignment.pickupOtpGenerated && photosReady) return WORKFLOW_PHASE.OTP_GENERATED;
+  // Must capture photos before any OTP / confirm step
+  if (!photosReady) return WORKFLOW_PHASE.PHOTO_CAPTURE;
 
-  if (reached) return WORKFLOW_PHASE.PHOTO_CAPTURE;
-  if (navigating) return WORKFLOW_PHASE.NAVIGATING;
+  // After photos: force Generate OTP slide (do not jump to Confirm on stale verified / missing OTP code)
+  if (
+    mustRegenOtp ||
+    !assignment.pickupOtpGenerated ||
+    (assignment.pickupOtpVerified && !hasOtpCode)
+  ) {
+    return WORKFLOW_PHASE.PHOTO_CAPTURE;
+  }
 
-  return WORKFLOW_PHASE.ASSIGNED;
+  // OTP generated but not verified → entry UI (never mark-picked yet)
+  if (!assignment.pickupOtpVerified) {
+    return WORKFLOW_PHASE.OTP_GENERATED;
+  }
+
+  // Verified + OTP code available → confirm / mark-picked
+  return WORKFLOW_PHASE.OTP_VERIFIED;
 }
 
 export function getWorkflowStepIndex(phase) {

@@ -22,7 +22,11 @@ export function enrichTimeline(row, draft = {}) {
 
   const progressed = hasBackendProgress(row, draft);
   const accepted = Boolean(draft.accepted) || progressed;
-  const reachedAt = row.reachedSellerAt || row.pickupProof?.reachedSellerAt;
+  const reachedAt =
+    row.reachedSellerAt ||
+    row.pickupProof?.reachedSellerAt ||
+    draft.sellerReachedAt ||
+    (draft.sellerReached ? Date.now() : null);
 
   if (accepted) {
     push(

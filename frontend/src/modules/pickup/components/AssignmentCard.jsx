@@ -146,7 +146,10 @@ const AssignmentCard = function AssignmentCard({
                 onReplaceVendorImage(row._id, index, file, source)
               }
             />
-            {draft.vendorImages.length > 0 && !row.pickupOtpGenerated && (
+            {draft.vendorImages.length > 0 &&
+              (!row.pickupOtpGenerated ||
+                draft.requireOtpRegen ||
+                (row.pickupOtpVerified && !String(draft.otp || "").trim())) && (
               <SlideToAction
                 label="Slide to generate OTP"
                 colorClass="bg-indigo-600"
@@ -164,9 +167,17 @@ const AssignmentCard = function AssignmentCard({
               Verify OTP
             </p>
             {otpExpired ? (
-              <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                <AlertTriangle size={14} />
-                OTP expired — generate a new one after re-uploading photos.
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                  <AlertTriangle size={14} />
+                  OTP expired — slide to generate a new one.
+                </div>
+                <SlideToAction
+                  label="Slide to generate OTP"
+                  colorClass="bg-indigo-600"
+                  loading={actionLoadingId === `${row._id}:otp`}
+                  onConfirm={() => onGenerateOtp(row)}
+                />
               </div>
             ) : (
               <>
@@ -220,12 +231,26 @@ const AssignmentCard = function AssignmentCard({
             <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
               Confirm pickup
             </p>
+            <p className="text-xs font-medium text-slate-600">
+              OTP verified. Slide to finish pickup, or regenerate OTP if confirm fails.
+            </p>
             <SlideToAction
               label="Slide to confirm pickup"
               colorClass="bg-slate-900"
               loading={actionLoadingId === `${row._id}:confirm`}
               onConfirm={() => onConfirmPickup(row)}
             />
+            <PickupButton
+              size="sm"
+              variant="ghost"
+              fullWidth
+              onClick={() => {
+                onPatchDraft(row._id, { requireOtpRegen: true, otp: "" });
+              }}
+              className="text-slate-500"
+            >
+              Regenerate OTP
+            </PickupButton>
           </PickupCard>
         );
 
