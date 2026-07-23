@@ -46,24 +46,26 @@ const DeliveryConfirmation = () => {
   }, [orderId]);
 
   const handleOtpGenerated = (data) => {
-    console.log("OTP generated successfully:", data);
     setOtpGenerated(true);
   };
 
   const handleOtpGenerationError = (error) => {
-    console.error("Failed to generate OTP:", error);
     // Error is already displayed via toast in DeliverySlideButton
   };
 
   const handleOtpValidationSuccess = (data) => {
-    console.log("OTP validated successfully:", data);
     setIsCompleted(true);
-    confetti({
-      particleCount: 150,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ["#22c55e", "#3b82f6", "#f59e0b"],
-    });
+    const preferReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (!preferReduced) {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#22c55e", "#3b82f6", "#f59e0b"],
+      });
+    }
 
     setTimeout(() => {
       navigate("/delivery/dashboard");
@@ -71,12 +73,16 @@ const DeliveryConfirmation = () => {
   };
 
   const handleOtpValidationError = (error) => {
-    console.error("OTP validation error:", error);
     // Error is already displayed via toast in OtpInput
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-white dark:bg-gray-900">
+        <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" aria-hidden />
+        <p className="text-sm font-medium text-gray-500">Loading...</p>
+      </div>
+    );
   }
 
   const orderAmount = order?.pricing?.total || 0;
@@ -121,11 +127,11 @@ const DeliveryConfirmation = () => {
   }
 
   return (
-    <div className="bg-gray-100 dark:bg-gray-900 transition-colors min-h-screen flex flex-col p-6">
+    <div className="bg-gray-100 dark:bg-gray-900 transition-colors min-h-screen flex flex-col p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       {/* Header */}
       <div className="flex justify-between items-center mb-6 pt-2">
         <h1 className="ds-h2 text-gray-900 dark:text-white">Confirm Delivery</h1>
-        <div className="text-xs font-bold text-gray-400">Order: #{orderId}</div>
+        <div className="text-xs font-bold text-gray-400 truncate max-w-[40%]">Order: #{orderId}</div>
       </div>
 
       <div className="flex-1 space-y-6 max-w-lg mx-auto w-full">
@@ -158,7 +164,7 @@ const DeliveryConfirmation = () => {
 
             {!isPrepaid && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-orange-100 shadow-sm mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="cash-received" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Cash Received
                 </label>
                 <div className="relative rounded-md shadow-sm">
@@ -168,11 +174,14 @@ const DeliveryConfirmation = () => {
                     </span>
                   </div>
                   <input
+                    id="cash-received"
                     type="number"
-                    className="block w-full rounded-lg border-gray-300 pl-8 pr-4 py-3 focus:border-orange-500 focus:ring-orange-500 text-lg font-bold bg-gray-100 dark:bg-gray-900 focus:bg-white dark:bg-gray-800 transition-all outline-none"
+                    inputMode="decimal"
+                    className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 pl-8 pr-4 py-3 min-h-12 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/40 text-lg font-bold bg-gray-100 dark:bg-gray-900 focus:bg-white dark:focus:bg-gray-800 transition-all outline-none"
                     placeholder="0.00"
                     value={cashCollected}
                     onChange={(e) => setCashCollected(e.target.value)}
+                    aria-label="Cash received amount"
                   />
                 </div>
                 {Number(cashCollected) > orderAmount && (

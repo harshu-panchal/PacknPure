@@ -66,7 +66,7 @@ const DeliveryLayout = () => {
         }
       }
     } catch (e) {
-      console.error("Failed to initialize dark mode", e);
+      // ignore dark-mode init errors
     }
   }, []);
 
@@ -160,21 +160,13 @@ const DeliveryLayout = () => {
       if (!user?.isOnline || activeOrder || suppressIncomingModal) return;
 
       try {
-        console.group("Delivery Polling Log");
-        console.log("UserID:", user?._id || user?.id);
         const res = await deliveryApi.getAvailableOrders();
         if (res.data.success) {
           const availableOrders = res.data.results || res.data.result || [];
-          console.log(`Available orders in range: ${availableOrders.length}`);
-          const before = shownOrderIdsRef.current.size;
           applyAvailableOrdersList(availableOrders);
-          if (availableOrders.length > 0 && shownOrderIdsRef.current.size === before) {
-            console.log("Orders found but already shown:", availableOrders.map((o) => o.orderId));
-          }
         }
-        console.groupEnd();
       } catch (error) {
-        console.error("Delivery Polling Error:", error);
+        // polling failures are non-blocking
       } finally {
         if (isFirstLoad) setIsFirstLoad(false);
       }
@@ -267,17 +259,34 @@ const DeliveryLayout = () => {
     const current = activeOrderRef.current;
     if (!current || acceptInFlightRef.current) return;
     try {
-      console.log("Delivery Alert - Skipping order:", current.id);
       await deliveryApi.skipOrder(current.id);
       shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(current.id);
       markIncomingOrderHandled(current.id);
       setActiveOrder(null);
       toast.info("Order skipped");
     } catch (error) {
-      console.error("Delivery Alert - Skip failed:", error);
       setActiveOrder(null);
     }
   }, []);
+
+  // Incoming-order modal: scroll lock + Escape rejects (same as Reject)
+  useEffect(() => {
+    if (!activeOrder) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape" && !acceptInFlightRef.current) {
+        e.preventDefault();
+        skipOrder();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeOrder, skipOrder]);
 
   // Countdown from server deadline (same idea as seller panel)
   useEffect(() => {
@@ -319,7 +328,6 @@ const DeliveryLayout = () => {
     acceptInFlightRef.current = true;
     setIsAcceptingOrder(true);
     try {
-      console.log("Delivery Alert - Accepting order:", activeOrder.id);
       const idem =
         typeof crypto !== "undefined" && crypto.randomUUID
           ? crypto.randomUUID()
@@ -332,7 +340,6 @@ const DeliveryLayout = () => {
       setActiveOrder(null);
       navigate(`/delivery/order-details/${orderId}`);
     } catch (error) {
-      console.error("Delivery Alert - Accept failed:", error);
       const msg =
         error.response?.data?.message ||
         (typeof error.response?.data === "string" ? error.response.data : null);
@@ -345,15 +352,18 @@ const DeliveryLayout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white dark:text-gray-100 font-sans max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-gray-100 dark:border-gray-700 dark:border-gray-800 transition-colors">
-      {/* Status Bar / Safe Area Placeholder - Removed as it's not defined and causes spacing issues */}
-
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-gray-100 dark:border-gray-800 transition-colors">
       {/* Full-screen order alert — portaled so it always stacks above nav/content */}
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
             {activeOrder && (
-              <div
+              <motion.div
+                key={`overlay-${activeOrder.id}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
                 className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
                 role="dialog"
                 aria-modal="true"
@@ -365,20 +375,20 @@ const DeliveryLayout = () => {
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.96, opacity: 0, y: 16 }}
                   transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  className="bg-white dark:bg-gray-800 rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20"
+                  className="bg-white dark:bg-gray-800 rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20 max-h-[90vh] overflow-y-auto"
                 >
                   <div className="flex flex-col items-center">
-                    <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce">
+                    <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce" aria-hidden>
                       <BellRing className="h-8 w-8 text-primary" />
                     </div>
 
                     <h2
                       id="delivery-order-alert-title"
-                      className="text-xl font-black text-slate-900 mb-1"
+                      className="text-xl font-black text-slate-900 dark:text-white mb-1"
                     >
                       New order request
                     </h2>
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                    <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
                       Accept or reject
                     </p>
                     <div className="flex items-center gap-2 mb-6">
@@ -390,24 +400,24 @@ const DeliveryLayout = () => {
 
                     <div className="w-full space-y-4 mb-6">
                       <div className="flex items-start gap-3">
-                        <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center mt-1">
+                        <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center mt-1" aria-hidden>
                           <div className="w-2 h-2 rounded-full bg-green-600" />
                         </div>
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase">Pickup</p>
-                          <p className="text-sm font-bold text-slate-900">{activeOrder.pickup}</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{activeOrder.pickup}</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
-                        <MapPin className="h-5 w-5 text-rose-500 mt-1 shrink-0" />
+                        <MapPin className="h-5 w-5 text-rose-500 mt-1 shrink-0" aria-hidden />
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase">Drop</p>
-                          <p className="text-sm font-bold text-slate-900 line-clamp-2">{activeOrder.drop}</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2">{activeOrder.drop}</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="w-full h-1.5 bg-slate-100 rounded-full mb-2 overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 dark:bg-gray-700 rounded-full mb-2 overflow-hidden" aria-hidden>
                       <motion.div
                         key={`${activeOrder.id}-${acceptWindowTotal}`}
                         initial={{ width: "100%" }}
@@ -419,7 +429,7 @@ const DeliveryLayout = () => {
                         className={timeLeft < 10 ? "bg-rose-500 h-full" : "bg-primary h-full"}
                       />
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 mb-4 w-full text-center">
+                    <p className="text-[10px] font-bold text-slate-400 mb-4 w-full text-center" aria-live="polite">
                       {timeLeft}s left to respond
                     </p>
 
@@ -428,7 +438,7 @@ const DeliveryLayout = () => {
                         type="button"
                         onClick={skipOrder}
                         disabled={isAcceptingOrder}
-                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 disabled:opacity-50 disabled:pointer-events-none"
+                        className="py-4 rounded-2xl bg-slate-100 dark:bg-gray-700 text-slate-700 dark:text-gray-200 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 dark:hover:bg-gray-600 active:scale-[0.98] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-50 disabled:pointer-events-none cursor-pointer disabled:cursor-not-allowed"
                       >
                         Reject
                       </button>
@@ -436,21 +446,26 @@ const DeliveryLayout = () => {
                         type="button"
                         onClick={handleAcceptOrder}
                         disabled={isAcceptingOrder}
-                        className="py-4 rounded-2xl bg-primary text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
+                        autoFocus
+                        className="py-4 rounded-2xl bg-primary text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 hover:brightness-105 active:scale-[0.98] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none cursor-pointer disabled:cursor-not-allowed"
                       >
                         {isAcceptingOrder ? "Accepting…" : "Accept"}
                       </button>
                     </div>
                   </div>
                 </motion.div>
-              </div>
+              </motion.div>
             )}
           </AnimatePresence>,
           document.body,
         )}
 
       <main
-        className={`h-full min-h-screen overflow-y-auto ${shouldShowBottomNav ? "pb-24" : ""} no-scrollbar`}>
+        className={`h-full min-h-screen overflow-y-auto overscroll-contain ${
+          shouldShowBottomNav
+            ? "pb-[calc(6rem+env(safe-area-inset-bottom,0px))]"
+            : ""
+        } no-scrollbar`}>
         <Outlet />
       </main>
 

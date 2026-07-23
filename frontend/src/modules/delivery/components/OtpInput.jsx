@@ -72,6 +72,16 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       inputRefs[index - 1].current?.focus();
+      return;
+    }
+    if (e.key === "ArrowLeft" && index > 0) {
+      e.preventDefault();
+      inputRefs[index - 1].current?.focus();
+      return;
+    }
+    if (e.key === "ArrowRight" && index < 3) {
+      e.preventDefault();
+      inputRefs[index + 1].current?.focus();
     }
   };
 
@@ -192,7 +202,7 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
       </div>
 
       {/* OTP Input Fields */}
-      <div className="flex justify-center gap-3">
+      <div className="flex justify-center gap-3" role="group" aria-label="One-time password">
         {otp.map((digit, index) => (
           <input
             key={index}
@@ -201,11 +211,13 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={1}
+            autoComplete={index === 0 ? "one-time-code" : "off"}
             value={digit}
             onChange={(e) => handleChange(index, e.target.value)}
             onKeyDown={(e) => handleKeyDown(index, e)}
-            onPaste={index === 0 ? handlePaste : undefined}
+            onPaste={handlePaste}
             disabled={isLoading}
+            aria-invalid={!!error}
             className={`w-14 h-16 text-center text-2xl font-bold font-mono border-2 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               error
                 ? "border-red-300 bg-red-50 text-red-900 focus:border-red-500 focus:ring-red-500"
@@ -213,7 +225,7 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
                 ? "border-green-500 bg-green-50 text-green-900 focus:border-green-600 focus:ring-green-500"
                 : "border-gray-300 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500"
             } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
-            aria-label={`Digit ${index + 1}`}
+            aria-label={`Digit ${index + 1} of 4`}
           />
         ))}
       </div>

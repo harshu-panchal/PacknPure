@@ -50,8 +50,10 @@ const HelpSupport = () => {
       <div className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
         <div className="flex items-center p-4">
           <button
+            type="button"
             onClick={() => navigate(-1)}
-            className="p-2 rounded-full hover:bg-gray-100 dark:bg-gray-700 transition-colors mr-2">
+            aria-label="Go back"
+            className="p-2 rounded-full hover:bg-gray-100 dark:bg-gray-700 transition-colors mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
             <ArrowLeft size={20} className="text-gray-600 dark:text-gray-300" />
           </button>
           <h1 className="ds-h3 text-gray-900 dark:text-white">Help & Support</h1>

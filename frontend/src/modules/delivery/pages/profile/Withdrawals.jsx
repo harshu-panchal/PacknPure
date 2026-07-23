@@ -92,8 +92,10 @@ const Withdrawals = () => {
             {/* Top Header */}
             <div className="bg-white dark:bg-gray-800 px-6 py-4 flex items-center shadow-sm sticky top-0 z-50">
                 <button
+                    type="button"
                     onClick={() => navigate(-1)}
-                    className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-700 transition-colors mr-2"
+                    aria-label="Go back"
+                    className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-700 transition-colors mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
                     <ArrowLeft className="text-gray-900 dark:text-white" size={24} />
                 </button>

@@ -94,14 +94,17 @@ const Earnings = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
+        <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl" role="tablist" aria-label="Earnings period">
           {["today", "weekly", "monthly"].map((tab) => (
             <button
               key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all capitalize ${activeTab === tab
+              className={`flex-1 py-2.5 min-h-10 text-sm font-bold rounded-lg transition-all duration-200 capitalize cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${activeTab === tab
                 ? "bg-white dark:bg-gray-800 text-primary shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 }`}>
               {tab}
             </button>

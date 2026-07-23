@@ -44,7 +44,6 @@ const Dashboard = () => {
     try {
       const response = await deliveryApi.getStats();
       if (response.data.success) {
-        console.log("Stats Fetched:", response.data.result);
         setEarnings((prev) => ({
           ...prev,
           ...response.data.result,
@@ -129,46 +128,52 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="bg-gray-100 dark:bg-gray-900 min-h-screen pb-24 relative overflow-hidden font-sans transition-colors">
+    <div className="bg-gray-100 dark:bg-gray-900 min-h-screen pb-24 relative overflow-x-hidden font-sans transition-colors">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-700 dark:border-gray-800 px-6 pt-12 pb-4 flex justify-between items-center sticky top-0 z-30 transition-all duration-300">
-        <div className="flex items-center space-x-3">
-          <div
-            className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary ring-2 ring-primary/20 shadow-sm cursor-pointer"
-            onClick={() => navigate("/delivery/profile")}>
+      <header className="bg-white dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 px-6 pt-12 pb-4 flex justify-between items-center sticky top-0 z-30 transition-all duration-300">
+        <div className="flex items-center space-x-3 min-w-0">
+          <button
+            type="button"
+            className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary ring-2 ring-primary/20 shadow-sm cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-transform active:scale-95"
+            onClick={() => navigate("/delivery/profile")}
+            aria-label="Open profile">
             <img
               src={user?.documents?.profileImage || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name || 'User'}`}
-              alt="Profile"
+              alt=""
               className="w-full h-full object-cover"
             />
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={() => navigate("/delivery/profile")}
-            className="cursor-pointer">
-            <h2 className="ds-h2 leading-tight dark:text-white">
+            className="cursor-pointer text-left min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-lg">
+            <h2 className="ds-h2 leading-tight dark:text-white truncate">
               {user?.name || "Delivery Partner"}
             </h2>
             <div className="flex items-center text-sm font-medium">
               <span className="flex items-center bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-100 dark:border-yellow-900/30">
-                <Star size={12} fill="currentColor" className="mr-1" />
+                <Star size={12} fill="currentColor" className="mr-1" aria-hidden />
                 {user?.rating || "New"}
               </span>
-              <span className="text-gray-300 dark:text-gray-600 mx-2">•</span>
+              <span className="text-gray-300 dark:text-gray-600 mx-2" aria-hidden>•</span>
               <span className="ds-caption text-gray-500 dark:text-gray-400">ID: {user?._id?.slice(-6).toUpperCase() || '-----'}</span>
             </div>
-          </div>
+          </button>
         </div>
-        <div
-          className="relative p-2.5 bg-gray-100 dark:bg-gray-900 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-700 transition-colors cursor-pointer group"
-          onClick={() => navigate("/delivery/notifications")}>
+        <button
+          type="button"
+          className="relative p-2.5 min-h-11 min-w-11 bg-gray-100 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          onClick={() => navigate("/delivery/notifications")}
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}>
           <Bell
             size={20}
             className="text-gray-600 dark:text-gray-300 group-hover:text-primary transition-colors"
+            aria-hidden
           />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 border-2 border-white rounded-full animate-pulse"></span>
+            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 border-2 border-white rounded-full animate-pulse" aria-hidden></span>
           )}
-        </div>
+        </button>
       </header>
 
       {/* Verification Status Banner */}
@@ -192,9 +197,13 @@ const Dashboard = () => {
 
       {/* Online/Offline Toggle */}
       <div className="px-6 py-6">
-        <motion.div
+        <motion.button
+          type="button"
+          role="switch"
+          aria-checked={isOnline}
+          aria-label={isOnline ? "Go offline" : "Go online"}
           onClick={handleOnlineToggle}
-          className={`relative w-full h-16 rounded-full flex items-center p-1 cursor-pointer shadow-inner transition-colors duration-500 ${
+          className={`relative w-full h-16 rounded-full flex items-center p-1 cursor-pointer shadow-inner transition-colors duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 ${
             isOnline
               ? "bg-green-500/10 border border-green-200 dark:border-green-900/50"
               : "bg-red-500/10 border border-red-200 dark:border-red-900/50"
@@ -203,14 +212,14 @@ const Dashboard = () => {
           
           {/* Background Pill */}
           <motion.div
-            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full shadow-lg border transition-colors duration-300 z-0 ${
+            className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full shadow-lg border transition-colors duration-300 z-0 ${
               isOnline
                 ? "bg-green-500 border-green-400"
                 : "bg-red-500 border-red-400"
             }`}
-            animate={{ x: isOnline ? "0%" : "100%" }}
+            animate={{ x: isOnline ? 0 : "100%" }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            style={{ x: isOnline ? "2px" : "0" }} // Offset adjustment
+            aria-hidden
           />
 
           {/* Texts (Rendered on top of the pill) */}
@@ -228,7 +237,7 @@ const Dashboard = () => {
             {!isOnline && <XCircle size={20} />}
             OFFLINE
           </div>
-        </motion.div>
+        </motion.button>
       </div>
 
       {/* Main Content */}

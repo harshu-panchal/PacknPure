@@ -168,30 +168,35 @@ const OrderHistory = () => {
               size={18}
             />
             <input
-              type="text"
+              type="search"
               placeholder="Search Order ID, Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-transparent focus:border-primary/20"
+              aria-label="Search orders"
+              className="w-full pl-10 pr-4 py-2.5 min-h-11 bg-gray-100 dark:bg-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-transparent focus:border-primary/20"
             />
           </div>
           <Button
             variant="outline"
             size="icon"
-            className="bg-gray-100 dark:bg-gray-700 border-transparent hover:bg-gray-200">
-            <Filter size={20} className="text-gray-600 dark:text-gray-300" />
+            aria-label="Filter orders"
+            className="bg-gray-100 dark:bg-gray-700 border-transparent hover:bg-gray-200 min-h-11 min-w-11 focus-visible:ring-2 focus-visible:ring-primary/40">
+            <Filter size={20} className="text-gray-600 dark:text-gray-300" aria-hidden />
           </Button>
         </div>
 
         {/* Status Filters */}
-        <div className="flex space-x-2 overflow-x-auto pb-2 no-scrollbar">
+        <div className="flex space-x-2 overflow-x-auto pb-2 no-scrollbar" role="tablist" aria-label="Order status filters">
           {["All", "Delivered", "Cancelled", "Returns"].map((status) => (
             <button
               key={status}
+              type="button"
+              role="tab"
+              aria-selected={filter === status.toLowerCase()}
               onClick={() => setFilter(status.toLowerCase())}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${filter === status.toLowerCase()
+              className={`px-4 py-2.5 min-h-10 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${filter === status.toLowerCase()
                 ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
-                : "bg-white dark:bg-gray-800 border border-gray-200 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:bg-gray-900"
+                : "bg-white dark:bg-gray-800 border border-gray-200 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 }`}>
               {status}
             </button>

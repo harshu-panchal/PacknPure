@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Phone,
@@ -143,6 +143,13 @@ const OrderDetails = () => {
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const [isSlideComplete, setIsSlideComplete] = useState(false);
   const [dragX, setDragX] = useState(0);
+  const [isSlideProcessing, setIsSlideProcessing] = useState(false);
+  const slideTrackRef = useRef(null);
+  const [slideTrackWidth, setSlideTrackWidth] = useState(0);
+  const SLIDE_THUMB = 56;
+  const SLIDE_PAD = 4;
+  const slideMaxDrag = Math.max(0, slideTrackWidth - SLIDE_THUMB - SLIDE_PAD * 2);
+  const slideCompleteAt = slideMaxDrag * 0.75;
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
@@ -172,6 +179,24 @@ const OrderDetails = () => {
     const iv = setInterval(() => setClockTick(Date.now()), 30000);
     return () => clearInterval(iv);
   }, []);
+
+  const measureSlideTrack = useCallback(() => {
+    if (slideTrackRef.current) {
+      setSlideTrackWidth(slideTrackRef.current.offsetWidth);
+    }
+  }, []);
+
+  useEffect(() => {
+    measureSlideTrack();
+    const el = slideTrackRef.current;
+    if (!el || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measureSlideTrack);
+      return () => window.removeEventListener("resize", measureSlideTrack);
+    }
+    const ro = new ResizeObserver(measureSlideTrack);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureSlideTrack, step]);
 
   const steps = [
     {
@@ -310,6 +335,8 @@ const OrderDetails = () => {
   ]);
 
   const handleNextStep = async () => {
+    if (isSlideProcessing) return;
+    setIsSlideProcessing(true);
     const currentStep = steps[step - 1];
 
     try {
@@ -369,8 +396,11 @@ const OrderDetails = () => {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (error) {
-      console.error("Failed to update return status", error);
       toast.error("Failed to update status");
+      setIsSlideComplete(false);
+      setDragX(0);
+    } finally {
+      setIsSlideProcessing(false);
     }
   };
 
@@ -409,17 +439,15 @@ const OrderDetails = () => {
   };
 
   const handleOtpGenerated = (data) => {
-    console.log("OTP generated successfully:", data);
     setShowOtpInput(true);
     toast.success("OTP sent to customer!");
   };
 
   const handleOtpGenerationError = (error) => {
-    console.error("Failed to generate OTP:", error);
+    // Error toast handled by DeliverySlideButton
   };
 
   const handleOtpValidationSuccess = (data) => {
-    console.log("OTP validated successfully:", data);
     toast.success("Delivery confirmed!");
     setTimeout(() => {
       navigate("/delivery/dashboard");
@@ -427,7 +455,7 @@ const OrderDetails = () => {
   };
 
   const handleOtpValidationError = (error) => {
-    console.error("OTP validation error:", error);
+    // Error toast handled by OtpInput
   };
 
   // Determine current phase for map
@@ -447,7 +475,7 @@ const OrderDetails = () => {
     typeof order.orderId === "string" ? order.orderId.slice(-8) : order.orderId;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-28 font-sans">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-gray-900 dark:to-gray-900 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] font-sans">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800/85 backdrop-blur-md sticky top-0 z-30 px-4 py-3 flex items-center justify-between border-b border-slate-100">
         <div className="flex items-center">
@@ -836,48 +864,78 @@ const OrderDetails = () => {
       </div>
 
       {step <= 2 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white dark:bg-gray-800/95 backdrop-blur-md shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)]">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white dark:bg-gray-800/95 backdrop-blur-md shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] pb-[max(0px,env(safe-area-inset-bottom))]">
           <div className="max-w-2xl mx-auto p-4">
-            <div className="relative h-16 bg-slate-100 rounded-full overflow-hidden select-none">
+            <div
+              ref={slideTrackRef}
+              role="slider"
+              aria-label={`Slide to ${steps[step - 1].action}`}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(slideMaxDrag) || 100}
+              aria-valuenow={Math.round(dragX)}
+              aria-disabled={isSlideProcessing}
+              className="relative h-16 bg-slate-100 dark:bg-gray-700 rounded-full overflow-hidden select-none touch-pan-y">
               <motion.div
-                className={`absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-lg pointer-events-none transition-opacity duration-300 ${
-                  dragX > 50 ? "opacity-0" : "opacity-100"
+                className={`absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-sm sm:text-lg pointer-events-none transition-opacity duration-300 px-16 text-center ${
+                  dragX > 50 || isSlideProcessing ? "opacity-0" : "opacity-100"
                 }`}
                 animate={{ x: [0, 5, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
+                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
               >
-                Slide to {steps[step - 1].action} <ChevronRight className="ml-1" />
+                Slide to {steps[step - 1].action} <ChevronRight className="ml-1 shrink-0" aria-hidden />
               </motion.div>
 
+              {isSlideProcessing && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-100/80 dark:bg-gray-700/80">
+                  <Loader2 className="animate-spin text-primary" size={24} aria-hidden />
+                </div>
+              )}
+
               <motion.div
-                className={`absolute inset-y-0 left-0 ${steps[step - 1].bg} opacity-50`}
-                style={{ width: dragX + 60 }}
+                className={`absolute inset-y-0 left-0 ${steps[step - 1].bg} opacity-50 pointer-events-none`}
+                style={{ width: Math.min(dragX + SLIDE_THUMB, slideTrackWidth || 0) }}
               />
 
               <motion.div
-                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 ${
+                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
                   steps[step - 1].color || "bg-primary"
                 }`}
-                drag="x"
-                dragConstraints={{ left: 0, right: 280 }}
+                drag={isSlideProcessing ? false : "x"}
+                dragConstraints={{ left: 0, right: slideMaxDrag }}
                 dragElastic={0.05}
                 dragMomentum={false}
-                onDrag={(event, info) => {
-                  setDragX(info.point.x);
+                onDrag={(_, info) => {
+                  if (!isSlideProcessing) {
+                    setDragX(Math.max(0, Math.min(info.offset.x, slideMaxDrag)));
+                  }
                 }}
-                onDragEnd={(event, info) => {
-                  if (info.offset.x > 150) {
+                onDragEnd={(_, info) => {
+                  if (isSlideProcessing) return;
+                  if (info.offset.x > slideCompleteAt) {
                     setIsSlideComplete(true);
+                    setDragX(slideMaxDrag);
                     handleNextStep();
                   } else {
                     setDragX(0);
                   }
                 }}
-                animate={{ x: isSlideComplete ? 280 : 0 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                animate={{ x: isSlideComplete ? slideMaxDrag : 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                whileHover={{ scale: isSlideProcessing ? 1 : 1.04 }}
+                whileTap={{ scale: isSlideProcessing ? 1 : 0.96 }}
+                tabIndex={isSlideProcessing ? -1 : 0}
+                onKeyDown={(e) => {
+                  if (isSlideProcessing || isSlideComplete) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setIsSlideComplete(true);
+                    setDragX(slideMaxDrag);
+                    handleNextStep();
+                  }
+                }}
+                style={{ pointerEvents: isSlideProcessing ? "none" : "auto" }}
               >
-                <ChevronRight className="text-white" size={24} />
+                <ChevronRight className="text-white" size={24} aria-hidden />
               </motion.div>
             </div>
           </div>
