@@ -3,13 +3,15 @@ import NotificationCenter from "@core/components/notifications/NotificationCente
 import { sellerApi } from "../services/sellerApi";
 
 const Notifications = () => (
-  <div className="min-h-app bg-slate-50 px-0 sm:px-4 py-2 sm:py-6">
+  <div className="p-4 sm:p-8 bg-slate-50/50 min-h-screen font-['Outfit',_sans-serif]">
     <div className="mx-auto max-w-6xl min-w-0">
       <NotificationCenter
         api={sellerApi}
-        title="Seller Notifications"
-        description="Procurement, acceptance, payment, and operational alerts for your store."
+        title="Notifications"
+        description="Procurement, pickup OTP, payment, and operational alerts for your store."
         showPreferences
+        panelBasePath="/seller"
+        variant="panel"
       />
     </div>
   </div>

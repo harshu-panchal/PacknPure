@@ -134,6 +134,9 @@ const SellerRoutes = () => {
         <Route path="/tracking" element={<DeliveryTracking />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/withdrawals" element={<Withdrawals />} />
+        <Route path="/transactions" element={<Transactions />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/earnings" element={<Earnings />} />
         <Route path="/profile" element={<Profile />} />
 
         {/* POS Routes wrapped in PosLayout */}
@@ -154,7 +157,7 @@ const SellerRoutes = () => {
           <Route path="settings" element={<PosSettings />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/seller" replace />} />
       </Routes>
     </DashboardLayout>
   );
