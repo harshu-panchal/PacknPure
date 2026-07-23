@@ -49,8 +49,15 @@ const Dashboard = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [celebrate, setCelebrate] = useState(false);
   const [focusMode, setFocusMode] = useState(
-    () => localStorage.getItem("pickup_focus_mode") !== "0",
+    () => localStorage.getItem("pickup_focus_mode") === "1",
   );
+  const [focusedAssignmentId, setFocusedAssignmentId] = useState(() => {
+    try {
+      return sessionStorage.getItem("pickup_active_assignment") || null;
+    } catch {
+      return null;
+    }
+  });
 
   const { rows, loading, refreshing, error, stats, fetchAssignments } =
     usePickupAssignments(statusFilter);
@@ -61,9 +68,41 @@ const Dashboard = () => {
   }, [alerts, unreadCount, markAllRead, setAlertState]);
 
   const activeAssignmentId = useMemo(
-    () => rows.find((r) => ["pickup_assigned", "picked"].includes(r.status))?._id || null,
-    [rows],
+    () =>
+      focusedAssignmentId ||
+      rows.find((r) => ["pickup_assigned", "picked"].includes(r.status))?._id ||
+      null,
+    [rows, focusedAssignmentId],
   );
+
+  // Keep active assignment sticky across refresh when still in-progress
+  React.useEffect(() => {
+    if (!rows?.length) return;
+    let stored = null;
+    try {
+      stored = sessionStorage.getItem("pickup_active_assignment");
+    } catch {
+      stored = null;
+    }
+    const stillActive = stored && rows.some(
+      (r) => r._id === stored && ["pickup_assigned", "picked"].includes(r.status),
+    );
+    if (stillActive) {
+      setFocusedAssignmentId(stored);
+      return;
+    }
+    const nextActive = rows.find((r) =>
+      ["pickup_assigned", "picked"].includes(r.status),
+    )?._id;
+    if (nextActive) {
+      setFocusedAssignmentId(nextActive);
+      try {
+        sessionStorage.setItem("pickup_active_assignment", nextActive);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [rows]);
 
   const { liveLoc, gpsError, gpsAccuracy, getCurrentPosition } =
     useLiveLocation(activeAssignmentId);
@@ -108,13 +147,16 @@ const Dashboard = () => {
 
   const displayRows = useMemo(() => {
     if (!focusMode || statusFilter !== "active" || !trip.current) return rows;
-    const currentId = trip.current._id;
+    const currentId =
+      (focusedAssignmentId && rows.some((r) => r._id === focusedAssignmentId)
+        ? focusedAssignmentId
+        : null) || trip.current._id;
     const current = rows.find((r) => r._id === currentId);
     const others = rows.filter(
       (r) => r._id !== currentId && r.status !== "hub_delivered",
     );
     return current ? [current, ...others] : rows;
-  }, [rows, trip, focusMode, statusFilter]);
+  }, [rows, trip, focusMode, statusFilter, focusedAssignmentId]);
 
   const statCards = useMemo(
     () => [
@@ -128,6 +170,12 @@ const Dashboard = () => {
   const handleNavigate = useCallback(
     (row) => {
       setNavigating(row._id, true);
+      setFocusedAssignmentId(row._id);
+      try {
+        sessionStorage.setItem("pickup_active_assignment", row._id);
+      } catch {
+        /* ignore */
+      }
       toast.message("Navigation started");
     },
     [setNavigating],
@@ -136,6 +184,12 @@ const Dashboard = () => {
   const handleAccept = useCallback(
     (row) => {
       acceptAssignment(row._id);
+      setFocusedAssignmentId(row._id);
+      try {
+        sessionStorage.setItem("pickup_active_assignment", row._id);
+      } catch {
+        /* ignore */
+      }
       toast.success("Assignment accepted");
     },
     [acceptAssignment],
@@ -356,14 +410,32 @@ const Dashboard = () => {
               />
             ) : (
               displayRows.map((row, idx) => {
-                const isCurrent = trip.current?._id === row._id;
+                const activeId =
+                  (focusedAssignmentId &&
+                  rows.some((r) => r._id === focusedAssignmentId)
+                    ? focusedAssignmentId
+                    : null) || trip.current?._id;
+                const isCurrent = activeId === row._id;
                 const collapsed = focusMode && trip.hasActiveTrip && !isCurrent && idx > 0;
                 if (collapsed) {
                   return (
-                    <PickupCard key={row._id} padding="sm" className="opacity-60">
-                      <p className="truncate text-xs font-semibold text-slate-600">
-                        {row.vendor?.name} · {row.requestId} · {row.status?.replace(/_/g, " ")}
+                    <PickupCard
+                      key={row._id}
+                      padding="sm"
+                      className="flex items-center justify-between gap-3 opacity-90"
+                    >
+                      <p className="min-w-0 truncate text-xs font-semibold text-slate-600">
+                        {row.vendor?.name} · {row.requestId} ·{" "}
+                        {row.status?.replace(/_/g, " ")}
                       </p>
+                      <PickupButton
+                        size="sm"
+                        variant="secondary"
+                        className="shrink-0"
+                        onClick={() => setFocusedAssignmentId(row._id)}
+                      >
+                        View Task
+                      </PickupButton>
                     </PickupCard>
                   );
                 }

@@ -42,11 +42,29 @@ const PHASE_TO_STEP_INDEX = {
  * @param {object} assignment - API assignment row
  * @param {object} ui - draft flags
  */
+function hasParcelPhotos(assignment, ui = {}) {
+  if (Array.isArray(ui.vendorImages) && ui.vendorImages.length > 0) return true;
+  if (assignment?.pickupProof?.vendorImageUrl) return true;
+  const notes = String(assignment?.pickupProof?.notes || "");
+  return notes.includes("VENDOR_IMAGES:");
+}
+
+/** Backend already advanced past accept — restore mid-flow after refresh. */
+export function hasBackendProgress(assignment, ui = {}) {
+  if (!assignment) return false;
+  if (assignment.status === "picked" || assignment.status === "hub_delivered") return true;
+  if (assignment.reachedSellerAt || assignment.pickupProof?.reachedSellerAt) return true;
+  if (assignment.pickupOtpGenerated || assignment.pickupOtpVerified) return true;
+  return hasParcelPhotos(assignment, ui);
+}
+
 export function deriveWorkflowPhase(assignment, ui = {}) {
   const status = assignment?.status;
   const navigating = Boolean(ui.navigating);
-  const accepted = Boolean(ui.accepted);
   const hubReached = Boolean(ui.hubReached);
+  const progressed = hasBackendProgress(assignment, ui);
+  // Treat as accepted if UI flag set OR backend already progressed (refresh restore).
+  const accepted = Boolean(ui.accepted) || progressed;
 
   if (status === "hub_delivered") return WORKFLOW_PHASE.COMPLETED;
 
@@ -60,12 +78,17 @@ export function deriveWorkflowPhase(assignment, ui = {}) {
 
   if (!accepted) return WORKFLOW_PHASE.PENDING_ACCEPT;
 
-  if (assignment.pickupOtpVerified) return WORKFLOW_PHASE.OTP_VERIFIED;
-  if (assignment.pickupOtpGenerated) return WORKFLOW_PHASE.OTP_GENERATED;
-
   const reached = Boolean(
     assignment.reachedSellerAt || assignment.pickupProof?.reachedSellerAt,
   );
+  const photosReady = hasParcelPhotos(assignment, ui);
+
+  // Photos are required before OTP UI — assign-time OTP must not skip this step.
+  if (reached && !photosReady) return WORKFLOW_PHASE.PHOTO_CAPTURE;
+
+  if (assignment.pickupOtpVerified && photosReady) return WORKFLOW_PHASE.OTP_VERIFIED;
+  if (assignment.pickupOtpGenerated && photosReady) return WORKFLOW_PHASE.OTP_GENERATED;
+
   if (reached) return WORKFLOW_PHASE.PHOTO_CAPTURE;
   if (navigating) return WORKFLOW_PHASE.NAVIGATING;
 

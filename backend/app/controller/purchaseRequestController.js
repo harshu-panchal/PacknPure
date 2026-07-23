@@ -40,7 +40,6 @@ import {
   buildPrLineKey,
   normalizePrLine,
 } from "../services/purchaseRequestService.js";
-import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
 import { markOrderReadyForPacking, persistOrder } from "../services/workflowFacade.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
@@ -84,11 +83,6 @@ const prStatusLabel = (status) => {
   return map[String(status || "")] || String(status || "—");
 };
 
-const resolvePickupOtpExpiryMs = async () =>
-  (await getPickupOtpTimeoutMinutes()) * 60 * 1000;
-const PICKUP_OTP_MOCK_MODE =
-  String(process.env.PICKUP_OTP_MOCK_MODE || "").toLowerCase() === "true";
-const PICKUP_OTP_MOCK_VALUE = String(process.env.PICKUP_OTP_MOCK_VALUE || "1234");
 const DEFAULT_MARGIN_TYPE = String(
   process.env.DEFAULT_PROCUREMENT_MARGIN_TYPE || "percent",
 ).toLowerCase() === "flat"
@@ -112,11 +106,6 @@ const computeSellPrice = (cost, marginType, marginValue) => {
 
 const hashPickupOtp = (otp) =>
   crypto.createHash("sha256").update(String(otp)).digest("hex");
-
-const generatePickupOtp = () => {
-  if (PICKUP_OTP_MOCK_MODE) return PICKUP_OTP_MOCK_VALUE;
-  return String(Math.floor(1000 + Math.random() * 9000));
-};
 
 const generateRequestId = () =>
   `PR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -172,11 +161,11 @@ const assignPickupToRequest = async (doc, partner) => {
 
   doc.pickupPartnerId = partner._id;
   doc.pickupPartnerName = String(partner.name || "").trim();
-  const otp = generatePickupOtp();
-  doc.pickupOtpCode = otp;
-  doc.pickupOtpHash = hashPickupOtp(otp);
-  const otpMinutes = await getPickupOtpTimeoutMinutes();
-  doc.pickupOtpExpiresAt = new Date(Date.now() + otpMinutes * 60 * 1000);
+  // OTP is generated only after parcel photos (generateAssignmentPickupOtp).
+  // Creating OTP here skipped the photos step in the partner app.
+  doc.pickupOtpCode = undefined;
+  doc.pickupOtpHash = undefined;
+  doc.pickupOtpExpiresAt = undefined;
   doc.pickupOtpVerifiedAt = undefined;
   doc.pickupProof = undefined;
   doc.hubDropProof = undefined;
@@ -215,7 +204,7 @@ const assignPickupToRequest = async (doc, partner) => {
     console.warn("[assignPickupToRequest] Notification failed:", error.message);
   }
 
-  return otp;
+  return null;
 };
 
 const findPrLine = (pr, productId, variantId = null) => {
@@ -887,11 +876,12 @@ export const assignPickupPartner = async (req, res) => {
     if (pickupPartnerId) {
       const partner = await PickupPartner.findById(pickupPartnerId).lean();
       if (!partner) return handleResponse(res, 404, "Pickup partner not found");
-      const otp = await assignPickupToRequest(doc, partner);
+      await assignPickupToRequest(doc, partner);
       return handleResponse(res, 200, "Pickup partner assigned", {
         ...doc.toObject(),
-        pickupOtp: otp,
-        pickupOtpExpiresAt: doc.pickupOtpExpiresAt,
+        // OTP created later after parcel photos — not at assign time
+        pickupOtp: "",
+        pickupOtpExpiresAt: null,
       });
     } else {
       doc.pickupPartnerId = null;

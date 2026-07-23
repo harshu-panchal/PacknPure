@@ -9,7 +9,7 @@ const PAD = 6;
 
 /**
  * Responsive slide-to-confirm control for Pickup Partner flow.
- * Visual polish only — confirmation logic unchanged.
+ * Confirm fires immediately on threshold; loading prop reflects API pending state.
  */
 const SlideToAction = ({
   label = "Slide to confirm",
@@ -22,6 +22,7 @@ const SlideToAction = ({
   const [offset, setOffset] = useState(0);
   const offsetRef = useRef(0);
   const [dragging, setDragging] = useState(false);
+  const confirmingRef = useRef(false);
 
   const clamp = (value) => Math.max(0, Math.min(maxTravel, value));
 
@@ -30,14 +31,28 @@ const SlideToAction = ({
     setOffset(value);
   };
 
-  const finish = async (finalOffset) => {
+  const finish = (finalOffset) => {
     const threshold = maxTravel * 0.85;
     if (maxTravel > 0 && finalOffset >= threshold) {
-      setOffsetSafe(maxTravel);
-      try {
-        await onConfirm?.();
-      } finally {
+      if (confirmingRef.current || disabled || loading) {
         setOffsetSafe(0);
+        return;
+      }
+      confirmingRef.current = true;
+      setOffsetSafe(maxTravel);
+      // Reset thumb immediately — do not await the action (loading prop covers pending).
+      requestAnimationFrame(() => setOffsetSafe(0));
+      try {
+        const result = onConfirm?.();
+        if (result != null && typeof result.then === "function") {
+          result.finally(() => {
+            confirmingRef.current = false;
+          });
+        } else {
+          confirmingRef.current = false;
+        }
+      } catch {
+        confirmingRef.current = false;
       }
       return;
     }
@@ -112,7 +127,7 @@ const SlideToAction = ({
         transition={
           dragging
             ? { type: "tween", duration: 0 }
-            : { type: "spring", stiffness: 520, damping: 38 }
+            : { type: "tween", duration: 0.12 }
         }
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

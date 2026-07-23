@@ -2,6 +2,7 @@ import { deriveWorkflowPhase, WORKFLOW_PHASE } from "./workflowPhases";
 
 /**
  * Build multi-seller trip state from assignment rows + per-row UI drafts.
+ * Prefers restored "active" assignment after refresh when still in progress.
  */
 export function buildTripPlan(rows = [], getDraft = () => ({})) {
   const sorted = [...rows].sort(
@@ -18,14 +19,40 @@ export function buildTripPlan(rows = [], getDraft = () => ({})) {
   const doneStops = completed.length + pickedAwaitingHub.length;
   const sellerDone = completed.length;
 
+  let preferredId = null;
+  try {
+    preferredId = sessionStorage.getItem("pickup_active_assignment");
+  } catch {
+    preferredId = null;
+  }
+
+  const preferActive = (list) => {
+    if (!preferredId || !list.length) return list[0] || null;
+    return list.find((r) => r._id === preferredId) || list[0];
+  };
+
+  // Prefer assignment that already has in-progress workflow over untouched ones
+  const inProgressSeller =
+    pendingSellers.find((r) => {
+      const phase = deriveWorkflowPhase(r, getDraft(r._id));
+      return phase !== WORKFLOW_PHASE.PENDING_ACCEPT && phase !== WORKFLOW_PHASE.ASSIGNED;
+    }) ||
+    pendingSellers.find((r) => {
+      const d = getDraft(r._id);
+      return d?.accepted || d?.navigating;
+    });
+
   let current = null;
   let mode = "idle";
 
   if (pendingSellers.length > 0) {
-    current = pendingSellers[0];
+    current =
+      (preferredId && pendingSellers.find((r) => r._id === preferredId)) ||
+      inProgressSeller ||
+      preferActive(pendingSellers);
     mode = "seller";
   } else if (pickedAwaitingHub.length > 0) {
-    current = pickedAwaitingHub[0];
+    current = preferActive(pickedAwaitingHub);
     mode = "hub";
   }
 
@@ -33,7 +60,7 @@ export function buildTripPlan(rows = [], getDraft = () => ({})) {
     ? sorted.findIndex((r) => r._id === current._id) + 1
     : 0;
 
-  const nextSeller = pendingSellers.length > 1 ? pendingSellers[1] : null;
+  const nextSeller = pendingSellers.filter((r) => r._id !== current?._id)[0] || null;
 
   const progressPct =
     totalStops > 0

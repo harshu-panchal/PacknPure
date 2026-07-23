@@ -142,9 +142,9 @@ export const getPickupPartners = async (req, res) => {
 
 export const createPickupPartner = async (req, res) => {
   try {
-    const { 
+    const {
       partnerName, phone, vehicleType, hubId = DEFAULT_HUB_ID,
-      paymentType, salaryAmount, perKmRate, baseTripRate 
+      paymentType, salaryAmount, perKmRate, baseTripRate
     } = req.body || {};
     if (!partnerName || !String(partnerName).trim()) {
       return handleResponse(res, 400, "partnerName is required");
@@ -179,7 +179,7 @@ export const createPickupPartner = async (req, res) => {
 export const updatePickupPartner = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
+    const {
       partnerName, phone, vehicleType, status, isActive,
       paymentType, salaryAmount, perKmRate, baseTripRate
     } = req.body || {};
@@ -193,7 +193,7 @@ export const updatePickupPartner = async (req, res) => {
     if (status !== undefined) doc.status = String(status).toLowerCase();
     if (isActive !== undefined) doc.isActive = Boolean(isActive);
     if (req.body.isVerified !== undefined) doc.isVerified = Boolean(req.body.isVerified);
-    
+
     if (paymentType !== undefined) doc.paymentType = paymentType;
     if (salaryAmount !== undefined) doc.salaryAmount = Number(salaryAmount);
     if (perKmRate !== undefined) doc.perKmRate = Number(perKmRate);
@@ -408,21 +408,21 @@ export const getMyPickupAssignments = async (req, res) => {
       products: (row.items || [])
         .filter(isPickupEligibleLine)
         .map((i) => ({
-        productId: i.productId?._id || i.productId,
-        name: i.productId?.name || "Product",
-        sku: i.productId?.sku || "",
-        weight: i.productId?.weight || "",
-        unit: i.productId?.unit || "",
-        qty: Number(i.committedQty || i.shortageQty || i.requiredQty || 0),
-        unitCost: Number(i.vendorUnitCost || 0),
-      })),
+          productId: i.productId?._id || i.productId,
+          name: i.productId?.name || "Product",
+          sku: i.productId?.sku || "",
+          weight: i.productId?.weight || "",
+          unit: i.productId?.unit || "",
+          qty: Number(i.committedQty || i.shortageQty || i.requiredQty || 0),
+          unitCost: Number(i.vendorUnitCost || 0),
+        })),
       pickupOtpRequired: row.status === "pickup_assigned",
       // Partner must enter OTP from seller — do not return plaintext OTP in list
       pickupOtp: "",
       pickupOtpGenerated: Boolean(
         row.status === "pickup_assigned" &&
-          row.pickupOtpHash &&
-          (!row.pickupOtpExpiresAt || new Date(row.pickupOtpExpiresAt) > new Date()),
+        row.pickupOtpHash &&
+        (!row.pickupOtpExpiresAt || new Date(row.pickupOtpExpiresAt) > new Date()),
       ),
       pickupOtpVerified: Boolean(
         row.status === "pickup_assigned" && row.pickupOtpVerifiedAt,
@@ -711,9 +711,7 @@ export const markAssignmentPicked = async (req, res) => {
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       return handleResponse(res, 400, "Valid lat/lng required");
     }
-    if (!otp) {
-      return handleResponse(res, 400, "Pickup OTP is required");
-    }
+
     const imageUrls = [
       ...(Array.isArray(vendorImageUrls) ? vendorImageUrls : []),
       ...(vendorImageUrl ? [vendorImageUrl] : []),
@@ -880,7 +878,7 @@ export const markAssignmentPicked = async (req, res) => {
     pr.pickupOtpHash = undefined;
     pr.pickupOtpExpiresAt = undefined;
     pr.pickupOtpVerifiedAt = new Date();
-    
+
     // Update quantities (per line for multi-product PRs)
     if (pr.items && pr.items.length > 0) {
       pr.items = pr.items.map((line) => {
@@ -1069,7 +1067,7 @@ export const markAssignmentHubDelivered = async (req, res) => {
         }
         // For 'salary' based partners, we don't add to wallet balance automatically per trip,
         // or we can add a 'bonus' if desired. For now, we only auto-credit per_trip partners.
-        
+
         if (earnings > 0) {
           partner.walletBalance = (partner.walletBalance || 0) + earnings;
           await partner.save();
@@ -1105,7 +1103,7 @@ export const requestPickupWithdrawal = async (req, res) => {
 
     // Use dynamic import for Transaction to avoid circular deps if any
     const Transaction = (await import("../models/transaction.js")).default;
-    
+
     // Create Pending Withdrawal Transaction
     const txn = await Transaction.create({
       user: partnerId,
@@ -1131,7 +1129,7 @@ export const getMyWithdrawals = async (req, res) => {
   try {
     const partnerId = req.user?.id;
     const Transaction = (await import("../models/transaction.js")).default;
-    
+
     const rows = await Transaction.find({
       user: partnerId,
       userModel: "PickupPartner",

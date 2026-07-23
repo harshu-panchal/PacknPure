@@ -4,7 +4,7 @@ import { cn } from "../../utils/cn";
 const PickupOtpInput = ({
   value = "",
   onChange,
-  length = 6,
+  length = 4,
   disabled = false,
   className,
 }) => {

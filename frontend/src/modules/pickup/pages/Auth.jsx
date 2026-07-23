@@ -60,8 +60,8 @@ const Auth = () => {
   };
 
   const handleVerifyOtp = async () => {
-    if (otp.trim().length < 6) {
-      toast.error("Please enter the 6-digit verification code");
+    if (otp.trim().length < 4) {
+      toast.error("Please enter the 4-digit verification code");
       return;
     }
     try {
@@ -184,7 +184,7 @@ const Auth = () => {
                   <PickupOtpInput
                     value={otp}
                     onChange={setOtp}
-                    length={6}
+                    length={4}
                     disabled={loading}
                   />
                   <p className="text-[10px] font-semibold text-slate-500">
@@ -199,7 +199,7 @@ const Auth = () => {
                   loading={loading}
                   iconRight={CheckCircle2}
                   onClick={handleVerifyOtp}
-                  disabled={otp.length < 6}
+                  disabled={otp.length < 4}
                 >
                   Verify & Continue
                 </PickupButton>

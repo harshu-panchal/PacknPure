@@ -27,7 +27,7 @@ const purchaseRequestItemSchema = new mongoose.Schema(
     },
     requestedQty: {
       type: Number,
-      default: function() { return this.shortageQty; },
+      default: function () { return this.shortageQty; },
     },
     actualPickedQty: {
       type: Number,
@@ -35,7 +35,7 @@ const purchaseRequestItemSchema = new mongoose.Schema(
     },
     remainingQty: {
       type: Number,
-      default: function() { return this.shortageQty; },
+      default: function () { return this.shortageQty; },
     },
     committedQty: {
       type: Number,

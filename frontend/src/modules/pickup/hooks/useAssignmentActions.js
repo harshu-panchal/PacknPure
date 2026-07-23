@@ -9,6 +9,7 @@ import {
 } from "../utils/assignmentUtils";
 import { compressImageFiles } from "../utils/imageCompress";
 import { enqueueOfflineAction } from "../utils/offlineQueue";
+import { hasBackendProgress } from "../utils/workflowPhases";
 
 function isOfflineError(err) {
   if (typeof navigator !== "undefined" && !navigator.onLine) return true;
@@ -23,6 +24,55 @@ function queueIfOffline(type, payload) {
     return true;
   }
   return false;
+}
+
+function isValidCoord(lat, lng) {
+  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+}
+
+function readSessionFlag(key) {
+  try {
+    return sessionStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionFlag(key, on) {
+  try {
+    if (on) sessionStorage.setItem(key, "1");
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStoredImages(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x) => x && typeof x.url === "string" && x.url.trim())
+      .slice(0, 4)
+      .map((x) => ({ url: x.url.trim(), source: x.source === "camera" ? "camera" : "gallery" }));
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredImages(key, images) {
+  try {
+    const payload = (images || [])
+      .filter((x) => x?.url)
+      .slice(0, 4)
+      .map((x) => ({ url: x.url, source: x.source || "gallery" }));
+    if (!payload.length) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    /* ignore */
+  }
 }
 
 const emptyUi = () => ({
@@ -48,10 +98,16 @@ export function useAssignmentDrafts(rows) {
   const hydratedRef = useRef(new Set());
 
   const patchDraft = useCallback((id, patch) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] || emptyUi()), ...patch },
-    }));
+    setDrafts((prev) => {
+      const nextDraft = { ...(prev[id] || emptyUi()), ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, "vendorImages")) {
+        writeStoredImages(`pickup_vendor_imgs_${id}`, nextDraft.vendorImages);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "hubImages")) {
+        writeStoredImages(`pickup_hub_imgs_${id}`, nextDraft.hubImages);
+      }
+      return { ...prev, [id]: nextDraft };
+    });
   }, []);
 
   const getDraft = useCallback((id) => drafts[id] || emptyUi(), [drafts]);
@@ -67,24 +123,69 @@ export function useAssignmentDrafts(rows) {
         let navigating = cur.navigating;
         let accepted = cur.accepted;
         let hubReached = cur.hubReached;
+        let acceptedAt = cur.acceptedAt;
+        let navStartedAt = cur.navStartedAt;
+        let hubReachedAt = cur.hubReachedAt;
+        let photosUploadedAt = cur.photosUploadedAt;
+        let hubPhotosAt = cur.hubPhotosAt;
+
         if (!hydratedRef.current.has(id)) {
-          try {
-            navigating = sessionStorage.getItem(`pickup_nav_${id}`) === "1";
-            accepted = sessionStorage.getItem(`pickup_accepted_${id}`) === "1";
-            hubReached = sessionStorage.getItem(`pickup_hub_reached_${id}`) === "1";
-          } catch {
-            navigating = false;
-            accepted = false;
-            hubReached = false;
-          }
+          navigating = readSessionFlag(`pickup_nav_${id}`);
+          accepted = readSessionFlag(`pickup_accepted_${id}`);
+          hubReached = readSessionFlag(`pickup_hub_reached_${id}`);
         }
+
         const fromProof = parseVendorImageUrls(row.pickupProof);
         const fromHub = parseHubImages(row.hubDropProof);
         const notes = parseAssignmentNotes(row.pickupProof, row.notes);
+        const storedVendor = readStoredImages(`pickup_vendor_imgs_${id}`);
+        const storedHub = readStoredImages(`pickup_hub_imgs_${id}`);
 
+        // Prefer in-memory → backend proof → session-cached uploads (pre-OTP refresh)
         const vendorImages =
-          cur.vendorImages?.length > 0 ? cur.vendorImages : fromProof;
-        const hubImages = cur.hubImages?.length > 0 ? cur.hubImages : fromHub;
+          cur.vendorImages?.length > 0
+            ? cur.vendorImages
+            : fromProof.length > 0
+              ? fromProof
+              : storedVendor;
+        const hubImages =
+          cur.hubImages?.length > 0
+            ? cur.hubImages
+            : fromHub.length > 0
+              ? fromHub
+              : storedHub;
+
+        if (fromProof.length && !photosUploadedAt) {
+          photosUploadedAt =
+            row.pickupProof?.reachedSellerAt ||
+            row.pickupAssignedAt ||
+            Date.now();
+        }
+        if (fromHub.length && !hubPhotosAt) {
+          hubPhotosAt = row.hubDropProof?.droppedAt || Date.now();
+        }
+
+        const progressed = hasBackendProgress(row, { vendorImages });
+        const reached = Boolean(
+          row.reachedSellerAt || row.pickupProof?.reachedSellerAt,
+        );
+
+        // Restore workflow after refresh from backend status (not only session flags)
+        if (progressed && row.status === "pickup_assigned") {
+          accepted = true;
+          if (!acceptedAt) acceptedAt = row.pickupAssignedAt || Date.now();
+          writeSessionFlag(`pickup_accepted_${id}`, true);
+        }
+        if (reached && row.status === "pickup_assigned") {
+          navigating = true;
+          if (!navStartedAt) {
+            navStartedAt = row.reachedSellerAt || row.pickupProof?.reachedSellerAt || Date.now();
+          }
+          writeSessionFlag(`pickup_nav_${id}`, true);
+        }
+        if (row.status === "picked" && hubReached) {
+          writeSessionFlag(`pickup_hub_reached_${id}`, true);
+        }
 
         const pickedQty = { ...cur.pickedQty };
         if (row.status === "pickup_assigned") {
@@ -94,12 +195,21 @@ export function useAssignmentDrafts(rows) {
           }
         }
 
+        // Persist restored images so subsequent refresh still shows them
+        if (vendorImages.length) writeStoredImages(`pickup_vendor_imgs_${id}`, vendorImages);
+        if (hubImages.length) writeStoredImages(`pickup_hub_imgs_${id}`, hubImages);
+
         next[id] = {
           ...cur,
           vendorImages,
           hubImages,
           notes: cur.notes || notes,
           pickedQty,
+          acceptedAt,
+          navStartedAt,
+          hubReachedAt,
+          photosUploadedAt,
+          hubPhotosAt,
           accepted: row.status === "pickup_assigned" ? accepted : true,
           hubReached: row.status === "picked" ? hubReached : false,
           navigating: ["pickup_assigned", "picked"].includes(row.status)
@@ -118,11 +228,13 @@ export function useAssignmentDrafts(rows) {
         navigating,
         navStartedAt: navigating ? Date.now() : null,
       });
-      try {
-        if (navigating) sessionStorage.setItem(`pickup_nav_${id}`, "1");
-        else sessionStorage.removeItem(`pickup_nav_${id}`);
-      } catch {
-        /* ignore */
+      writeSessionFlag(`pickup_nav_${id}`, navigating);
+      if (navigating) {
+        try {
+          sessionStorage.setItem("pickup_active_assignment", id);
+        } catch {
+          /* ignore */
+        }
       }
     },
     [patchDraft],
@@ -131,8 +243,9 @@ export function useAssignmentDrafts(rows) {
   const acceptAssignment = useCallback(
     (id) => {
       patchDraft(id, { accepted: true, acceptedAt: Date.now() });
+      writeSessionFlag(`pickup_accepted_${id}`, true);
       try {
-        sessionStorage.setItem(`pickup_accepted_${id}`, "1");
+        sessionStorage.setItem("pickup_active_assignment", id);
       } catch {
         /* ignore */
       }
@@ -147,13 +260,11 @@ export function useAssignmentDrafts(rows) {
         hubReachedAt: reached ? Date.now() : null,
         navigating: false,
       });
-      try {
-        if (reached) {
-          sessionStorage.setItem(`pickup_hub_reached_${id}`, "1");
-          sessionStorage.removeItem(`pickup_nav_${id}`);
-        } else sessionStorage.removeItem(`pickup_hub_reached_${id}`);
-      } catch {
-        /* ignore */
+      if (reached) {
+        writeSessionFlag(`pickup_hub_reached_${id}`, true);
+        writeSessionFlag(`pickup_nav_${id}`, false);
+      } else {
+        writeSessionFlag(`pickup_hub_reached_${id}`, false);
       }
     },
     [patchDraft],
@@ -181,6 +292,11 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
     return fn().finally(() => inFlightRef.current.delete(key));
   }, []);
 
+  const refreshSilent = useCallback(() => {
+    // Do not block slide/loading on list refresh — fire and forget
+    Promise.resolve(fetchAssignments({ silent: true })).catch(() => {});
+  }, [fetchAssignments]);
+
   const uploadOne = useCallback(async (file, type, source) => {
     const fd = new FormData();
     fd.append("image", file);
@@ -193,23 +309,38 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
     return { url, source };
   }, []);
 
+  const resolveRequiredCoords = useCallback(async (getCurrentPosition) => {
+    if (typeof getCurrentPosition !== "function") {
+      throw new Error("Location is required. Enable GPS and try again.");
+    }
+    const coords = await getCurrentPosition();
+    const lat = Number(coords?.lat ?? coords?.latitude);
+    const lng = Number(coords?.lng ?? coords?.longitude);
+    if (!isValidCoord(lat, lng)) {
+      throw new Error("Valid location is required. Enable GPS and try again.");
+    }
+    return { lat, lng, fromCache: Boolean(coords?.fromCache) };
+  }, []);
+
   const markReached = useCallback(
     async (row, getCurrentPosition) => {
       const key = `${row._id}:reached`;
       return guard(key, async () => {
         try {
           setActionLoadingId(key);
-          let coords = null;
+          let body = {};
           try {
-            coords = await getCurrentPosition();
+            const coords = await getCurrentPosition();
+            const lat = Number(coords?.lat ?? coords?.latitude);
+            const lng = Number(coords?.lng ?? coords?.longitude);
+            if (isValidCoord(lat, lng)) body = { lat, lng };
           } catch {
-            /* optional */
+            // Arrival GPS is optional on backend — proceed without coords
           }
-          const body = { lat: coords?.latitude, lng: coords?.longitude };
           if (queueIfOffline("mark_reached", { id: row._id, body })) return;
           await pickupApi.markReachedSeller(row._id, body);
           toast.success("Reached seller — capture parcel photos");
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           if (isOfflineError(err)) {
             queueIfOffline("mark_reached", {
@@ -225,7 +356,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [guard, fetchAssignments],
+    [guard, refreshSilent],
   );
 
   const addVendorImages = useCallback(
@@ -246,10 +377,10 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         for (const file of batch) {
           uploaded.push(await uploadOne(file, "vendor", source));
         }
-      patchDraft(rowId, {
-        vendorImages: [...draft.vendorImages, ...uploaded].slice(0, 4),
-        photosUploadedAt: Date.now(),
-      });
+        patchDraft(rowId, {
+          vendorImages: [...draft.vendorImages, ...uploaded].slice(0, 4),
+          photosUploadedAt: Date.now(),
+        });
         toast.success(`${uploaded.length} photo(s) uploaded`);
       } catch (err) {
         toast.error(getApiErrorMessage(err, "Upload failed"));
@@ -304,7 +435,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
           if (res?.data?.result?.devMode && import.meta.env.DEV) {
             toast.message("Dev mode: seller OTP is 1234");
           }
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           toast.error(getApiErrorMessage(err, "Failed to generate OTP"));
         } finally {
@@ -312,7 +443,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [getDraft, guard, patchDraft, fetchAssignments],
+    [getDraft, guard, patchDraft, refreshSilent],
   );
 
   const verifyOtp = useCallback(
@@ -329,7 +460,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
           setActionLoadingId(key);
           await pickupApi.verifyPickupOtp(row._id, { otp });
           toast.success("OTP verified — confirm pickup");
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           toast.error(getApiErrorMessage(err, "Invalid OTP"));
         } finally {
@@ -337,7 +468,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [getDraft, guard, fetchAssignments],
+    [getDraft, guard, refreshSilent],
   );
 
   const confirmPickup = useCallback(
@@ -357,14 +488,18 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
       return guard(key, async () => {
         try {
           setActionLoadingId(key);
-          let latitude;
-          let longitude;
+          let coords;
           try {
-            const coords = await getCurrentPosition();
-            latitude = coords.latitude;
-            longitude = coords.longitude;
-          } catch {
-            toast.message("GPS unavailable — continuing without precise location");
+            coords = await resolveRequiredCoords(getCurrentPosition);
+          } catch (gpsErr) {
+            toast.error(
+              gpsErr?.message ||
+                "Valid location is required to confirm pickup. Enable GPS and try again.",
+            );
+            return;
+          }
+          if (coords.fromCache) {
+            toast.message("Using last known GPS — move outdoors for better accuracy next time");
           }
           const items = Object.entries(draft.pickedQty || {}).map(
             ([productId, actualPickedQty]) => ({
@@ -374,15 +509,15 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
           );
           await pickupApi.markPicked(row._id, {
             otp,
-            lat: latitude,
-            lng: longitude,
+            lat: coords.lat,
+            lng: coords.lng,
             notes: draft.notes || "",
             vendorImageUrl: urls[0],
             vendorImageUrls: urls,
             items,
           });
           toast.success(`Pickup complete from ${row.vendor?.name || "Seller"}`);
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           toast.error(getApiErrorMessage(err, "Confirmation failed"));
         } finally {
@@ -390,7 +525,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [getDraft, guard, fetchAssignments],
+    [getDraft, guard, refreshSilent, resolveRequiredCoords],
   );
 
   const cancelAssignment = useCallback(
@@ -407,7 +542,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
             reason: reason.trim(),
           });
           toast.success("Assignment cancelled");
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           toast.error(getApiErrorMessage(err, "Cancellation failed"));
         } finally {
@@ -415,7 +550,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [guard, fetchAssignments],
+    [guard, refreshSilent],
   );
 
   const addHubImages = useCallback(
@@ -436,10 +571,10 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         for (const file of batch) {
           uploaded.push(await uploadOne(file, "hub", source));
         }
-      patchDraft(rowId, {
-        hubImages: [...draft.hubImages, ...uploaded].slice(0, 4),
-        hubPhotosAt: Date.now(),
-      });
+        patchDraft(rowId, {
+          hubImages: [...draft.hubImages, ...uploaded].slice(0, 4),
+          hubPhotosAt: Date.now(),
+        });
         toast.success("Hub photo uploaded");
       } catch (err) {
         toast.error(getApiErrorMessage(err, "Upload failed"));
@@ -485,23 +620,27 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
       return guard(key, async () => {
         try {
           setActionLoadingId(key);
-          let latitude;
-          let longitude;
+          let coords;
           try {
-            const coords = await getCurrentPosition();
-            latitude = coords.latitude;
-            longitude = coords.longitude;
-          } catch {
-            toast.message("GPS unavailable — continuing without precise location");
+            coords = await resolveRequiredCoords(getCurrentPosition);
+          } catch (gpsErr) {
+            toast.error(
+              gpsErr?.message ||
+                "Valid location is required to complete hub delivery. Enable GPS and try again.",
+            );
+            return;
+          }
+          if (coords.fromCache) {
+            toast.message("Using last known GPS — move outdoors for better accuracy next time");
           }
           await pickupApi.markHubDelivered(row._id, {
-            lat: latitude,
-            lng: longitude,
+            lat: coords.lat,
+            lng: coords.lng,
             notes: draft.notes || "",
             hubImageUrl: urls[0],
           });
           toast.success("Delivered to hub");
-          await fetchAssignments({ silent: true });
+          refreshSilent();
         } catch (err) {
           toast.error(getApiErrorMessage(err, "Hub delivery failed"));
         } finally {
@@ -509,7 +648,7 @@ export function useAssignmentActions({ fetchAssignments, getDraft, patchDraft })
         }
       });
     },
-    [getDraft, guard, fetchAssignments],
+    [getDraft, guard, refreshSilent, resolveRequiredCoords],
   );
 
   return {
