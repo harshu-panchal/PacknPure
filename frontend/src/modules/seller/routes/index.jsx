@@ -12,12 +12,16 @@ import {
   HiOutlineCreditCard,
   HiOutlineMapPin,
   HiOutlineSquaresPlus,
+  HiOutlineQrCode,
 } from "react-icons/hi2";
 import { Terminal } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
 const ProductManagement = React.lazy(
   () => import("../pages/ProductManagement"),
+);
+const BarcodeStickerManagement = React.lazy(
+  () => import("../pages/BarcodeStickerManagement"),
 );
 const StockManagement = React.lazy(() => import("../pages/StockManagement"));
 const AddProduct = React.lazy(() => import("../pages/AddProduct"));
@@ -68,6 +72,7 @@ const navItems = [
   { sectionHeader: "Core Management" },
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
+  { label: "Barcodes", path: "/seller/barcodes", icon: HiOutlineQrCode },
   { label: "Hub Catalog", path: "/seller/catalog", icon: HiOutlineSquaresPlus },
   { label: "Stock", path: "/seller/inventory", icon: HiOutlineArchiveBox },
   {
@@ -112,6 +117,7 @@ const SellerRoutes = () => {
         <Route path="/" element={<Dashboard />} />
         <Route path="/products" element={<ProductManagement />} />
         <Route path="/products/add" element={<AddProduct />} />
+        <Route path="/barcodes" element={<BarcodeStickerManagement />} />
         <Route path="/catalog" element={<CatalogListing />} />
         <Route path="/inventory" element={<StockManagement />} />
         <Route path="/orders" element={<Navigate to="/seller/procurement" replace />} />

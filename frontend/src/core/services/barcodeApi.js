@@ -38,36 +38,80 @@ function openBlobPrint(blob) {
       setTimeout(revoke, 60_000);
     });
   } else {
-    // Popup blocked — fall back to download
     triggerBlobDownload(blob, 'barcodes.pdf');
     window.URL.revokeObjectURL(url);
   }
 }
 
+async function blobFromErrorResponse(error) {
+  const data = error?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text();
+      const parsed = JSON.parse(text);
+      return parsed?.message || 'Request failed';
+    } catch {
+      return 'Request failed';
+    }
+  }
+  return error?.response?.data?.message || error?.message || 'Request failed';
+}
+
 export const barcodeApi = {
+  catalog: (params) =>
+    axiosInstance.get('/barcodes/catalog', { params }),
+
+  catalogBrands: () =>
+    axiosInstance.get('/barcodes/catalog/brands'),
+
   list: (productId) =>
     axiosInstance.get(`/barcodes/products/${productId}`),
 
   ensure: (productId) =>
     axiosInstance.post(`/barcodes/products/${productId}/ensure`),
 
-  downloadPdf: async (productId, { newlyCreatedOnly = false, filename } = {}) => {
-    const blob = await downloadPdfBlob(productId, {
-      newlyCreatedOnly: newlyCreatedOnly ? 'true' : undefined,
-    });
-    triggerBlobDownload(
-      blob,
-      filename || `barcodes_${productId}.pdf`,
-    );
-    return blob;
+  ensureMissing: (data = {}) =>
+    axiosInstance.post('/barcodes/ensure-missing', data),
+
+  downloadPdf: async (
+    productId,
+    { newlyCreatedOnly = false, variantIds, filename } = {},
+  ) => {
+    try {
+      const blob = await downloadPdfBlob(productId, {
+        newlyCreatedOnly: newlyCreatedOnly ? 'true' : undefined,
+        variantIds: Array.isArray(variantIds) ? variantIds.join(',') : variantIds,
+      });
+      triggerBlobDownload(blob, filename || `barcodes_${productId}.pdf`);
+      return blob;
+    } catch (error) {
+      throw new Error(await blobFromErrorResponse(error));
+    }
   },
 
-  printPdf: async (productId, { newlyCreatedOnly = false } = {}) => {
-    const blob = await downloadPdfBlob(productId, {
-      newlyCreatedOnly: newlyCreatedOnly ? 'true' : undefined,
-    });
-    openBlobPrint(blob);
-    return blob;
+  printPdf: async (
+    productId,
+    { newlyCreatedOnly = false, variantIds } = {},
+  ) => {
+    try {
+      const blob = await downloadPdfBlob(productId, {
+        newlyCreatedOnly: newlyCreatedOnly ? 'true' : undefined,
+        variantIds: Array.isArray(variantIds) ? variantIds.join(',') : variantIds,
+      });
+      openBlobPrint(blob);
+      return blob;
+    } catch (error) {
+      throw new Error(await blobFromErrorResponse(error));
+    }
+  },
+
+  /** Authenticated PNG preview (blob URL). Caller must revokeObjectURL. */
+  fetchPreviewBlobUrl: async (barcodeValue) => {
+    const response = await axiosInstance.get(
+      `/barcodes/preview/${encodeURIComponent(barcodeValue)}`,
+      { responseType: 'blob' },
+    );
+    return window.URL.createObjectURL(response.data);
   },
 
   previewUrl: (barcodeValue) =>

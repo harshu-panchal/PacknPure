@@ -2,6 +2,9 @@ import express from "express";
 import {
   downloadBarcodePdf,
   ensureBarcodes,
+  ensureMissingBarcodes,
+  getBarcodeCatalog,
+  getBarcodeCatalogBrands,
   getProductBarcodes,
   previewBarcodePng,
 } from "../controller/barcodeController.js";
@@ -14,6 +17,11 @@ import {
 const router = express.Router();
 
 router.use(verifyToken, allowRoles("admin", "seller"), isAccountVerified);
+
+// Catalog / management (before :productId routes)
+router.get("/catalog", getBarcodeCatalog);
+router.get("/catalog/brands", getBarcodeCatalogBrands);
+router.post("/ensure-missing", ensureMissingBarcodes);
 
 router.get("/products/:productId", getProductBarcodes);
 router.post("/products/:productId/ensure", ensureBarcodes);
