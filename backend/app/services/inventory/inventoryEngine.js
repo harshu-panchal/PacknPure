@@ -160,6 +160,94 @@ export const rollbackOrderInventory = async ({
   };
 };
 
+/**
+ * On delivery: deduct Hub Reserved (HR) for each order line and clear line reservations.
+ * Safe to call from any DELIVERED path (OTP, workflow, admin). Idempotent via completeHubDelivery.
+ */
+export const finalizeHubInventoryOnDelivery = async (order) => {
+  if (!order || !Array.isArray(order.items) || order.items.length === 0) {
+    return { applied: false, reason: "no_items" };
+  }
+
+  const hasReservedLines = order.items.some(
+    (item) =>
+      Math.max(0, Number(item.hubReservedQty || 0)) +
+        Math.max(0, Number(item.qaAcceptedQty || 0)) >
+      0,
+  );
+
+  if (!order.hubFlowEnabled && !hasReservedLines) {
+    return { applied: false, reason: "not_hub_flow" };
+  }
+
+  const hubId = process.env.DEFAULT_HUB_ID || DEFAULT_HUB_ID || "MAIN_HUB";
+  const HubInventory = (await import("../../models/hubInventory.js")).default;
+  let orderDirty = false;
+  let deductedLines = 0;
+
+  for (const item of order.items) {
+    const productId = String(item.product?._id || item.product || "");
+    if (!productId) continue;
+
+    const variantId = item.variantId || null;
+    const reservedPortion =
+      Math.max(0, Number(item.hubReservedQty || 0)) +
+      Math.max(0, Number(item.qaAcceptedQty || 0));
+    const qtyToDeduct =
+      reservedPortion > 0
+        ? reservedPortion
+        : Math.max(
+            0,
+            Number(item.quantity || 0) - Number(item.deliveredQty || 0),
+          );
+
+    if (qtyToDeduct <= 0) continue;
+
+    const deliveryResult = await completeHubDelivery({
+      productId,
+      variantId,
+      quantity: qtyToDeduct,
+      hubId,
+      orderId: order._id,
+      reason: "order_delivery_complete",
+      idempotencyKey: `hub_delivery:${String(order._id)}:${productId}:${String(variantId || "root")}:${qtyToDeduct}`,
+    });
+    const hubStock = deliveryResult?.hubInventory;
+
+    item.hubReservedQty = 0;
+    item.qaAcceptedQty = 0;
+    item.deliveredQty = Math.max(
+      Number(item.deliveredQty || 0),
+      Number(item.quantity || 0),
+    );
+    orderDirty = true;
+    deductedLines += 1;
+
+    if (hubStock) {
+      let newStatus = "healthy";
+      if (hubStock.availableQty <= 0) newStatus = "out_of_stock";
+      else if (hubStock.availableQty <= (hubStock.reorderLevel || 10)) {
+        newStatus = "low_stock";
+      }
+
+      if (hubStock.status !== newStatus) {
+        await HubInventory.findByIdAndUpdate(hubStock._id, {
+          $set: { status: newStatus },
+        });
+      }
+      console.log(
+        `[InventorySync] Deducted reserved ${qtyToDeduct} for ${productId}${variantId ? ` variant ${variantId}` : ""}. HR now ${hubStock.reservedQty}`,
+      );
+    }
+  }
+
+  if (orderDirty && typeof order.save === "function") {
+    await order.save();
+  }
+
+  return { applied: deductedLines > 0, deductedLines };
+};
+
 // Backward-compatible aliases matching legacy inventoryLifecycleService names
 export const freezeHubInventory = async (
   productId,

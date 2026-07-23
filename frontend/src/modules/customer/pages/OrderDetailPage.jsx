@@ -30,7 +30,7 @@ import {
   joinOrderRoom,
   leaveOrderRoom,
   onOrderStatusUpdate,
-  onCustomerOtp,
+  onDeliveryOtpGenerated,
 } from "@/core/services/orderSocket";
 import { getLegacyStatusFromOrder, getOrderStatusLabel } from "@/shared/utils/orderStatus";
 import { resolveOrderItemVariantLabel } from "@/shared/utils/orderItemDisplay";
@@ -196,7 +196,6 @@ const OrderDetailPage = () => {
   const [liveLocation, setLiveLocation] = useState(null);
   const [trail, setTrail] = useState([]);
   const [routePolyline, setRoutePolyline] = useState(null);
-  const [handoffOtp, setHandoffOtp] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
   const routeRequestRef = useRef({ phase: null, startedAt: 0 });
   const routeOriginRef = useRef(null);
@@ -254,11 +253,24 @@ const OrderDetailPage = () => {
         .then((r) => setOrder(r.data.result))
         .catch(() => {});
     });
-    const offOtp = onCustomerOtp(getToken, (payload) => {
-      if (payload?.orderId === orderId && payload?.code) {
-        setHandoffOtp(payload.code);
-        toast.info("Delivery OTP received — share with rider if asked.");
-      }
+    const offOtp = onDeliveryOtpGenerated(getToken, (payload) => {
+      const otp = payload?.otp ?? payload?.code;
+      if (!otp) return;
+      const match =
+        String(payload?.orderId || "") === String(orderId) ||
+        String(payload?.orderId || "").replace(/^ORD/i, "") ===
+          String(orderId || "").replace(/^ORD/i, "");
+      if (!match) return;
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              deliveryOtp: String(otp),
+              deliveryOtpExpiresAt: payload.expiresAt || prev.deliveryOtpExpiresAt,
+            }
+          : prev,
+      );
+      toast.info("Delivery OTP ready — share it with your rider.");
     });
     return () => {
       offStatus();
@@ -727,10 +739,19 @@ const OrderDetailPage = () => {
           />
         )}
 
+        {isActive && (
+          <DeliveryOtpDisplay
+            orderId={orderId}
+            initialOtp={order.deliveryOtp || null}
+            initialExpiresAt={order.deliveryOtpExpiresAt || null}
+          />
+        )}
+
         {(isActive || status === "delivered") && (
           <DeliveryTimeline
             orderId={orderId}
             initialTimeline={order.deliveryTimeline}
+            deliveryOtp={order.deliveryOtp || null}
           />
         )}
 
@@ -794,8 +815,6 @@ const OrderDetailPage = () => {
             )}
           </div>
         </div>
-
-        <DeliveryOtpDisplay orderId={orderId} />
 
         {/* Address & seller */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, useMotionValue, animate as motionAnimate } from "framer-motion";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { deliveryApi } from "../services/deliveryApi";
 
 const THUMB_SIZE = 56; // w-14
-const TRACK_PAD = 4; // left-1 / top-1 inset
+const TRACK_PAD = 4; // left-1 inset
 
 /**
- * DeliverySlideButton - A slide-to-confirm button for delivery actions
- *
- * Drag distance is measured from the track container (responsive).
- * Success / API logic is unchanged.
+ * DeliverySlideButton — responsive slide-to-confirm.
+ * Uses a motion value for x so drag is never fought by animate={x:0}.
  */
 const DeliverySlideButton = ({
   orderId,
@@ -23,12 +21,13 @@ const DeliverySlideButton = ({
 }) => {
   const trackRef = useRef(null);
   const [trackWidth, setTrackWidth] = useState(0);
-  const [isSlideComplete, setIsSlideComplete] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const x = useMotionValue(0);
 
   const maxDrag = Math.max(0, trackWidth - THUMB_SIZE - TRACK_PAD * 2);
-  const completeThreshold = maxDrag * 0.75;
+  const completeThreshold = maxDrag * 0.7;
 
   const measureTrack = useCallback(() => {
     if (trackRef.current) {
@@ -49,15 +48,21 @@ const DeliverySlideButton = ({
   }, [measureTrack]);
 
   useEffect(() => {
-    setIsSlideComplete(false);
-    setDragX(0);
+    setIsComplete(false);
     setIsLoading(false);
-  }, [orderId]);
+    setDragX(0);
+    x.set(0);
+  }, [orderId, x]);
+
+  const snapTo = (target) => {
+    motionAnimate(x, target, { type: "spring", stiffness: 420, damping: 36 });
+    setDragX(target);
+  };
 
   const resetSlide = () => {
-    setIsSlideComplete(false);
-    setDragX(0);
+    setIsComplete(false);
     setIsLoading(false);
+    snapTo(0);
   };
 
   const handleSlideComplete = async () => {
@@ -73,7 +78,10 @@ const DeliverySlideButton = ({
       }
     } catch (error) {
       const errorMessage =
-        error.response?.data?.error?.message || error.message || "Failed to generate OTP";
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to generate OTP";
       const errorCode = error.response?.data?.error?.code;
 
       if (errorCode === "PROXIMITY_OUT_OF_RANGE") {
@@ -108,10 +116,6 @@ const DeliverySlideButton = ({
     }
   };
 
-  const preferReducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-
   return (
     <div
       ref={trackRef}
@@ -120,20 +124,14 @@ const DeliverySlideButton = ({
       aria-valuemin={0}
       aria-valuemax={Math.round(maxDrag) || 100}
       aria-valuenow={Math.round(dragX)}
-      aria-disabled={isLoading}
-      className="relative h-16 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden select-none touch-pan-y">
-      <motion.div
-        className={`absolute inset-0 flex items-center justify-center text-gray-400 font-bold text-sm pointer-events-none transition-opacity duration-300 px-16 text-center ${
-          dragX > 50 || isLoading ? "opacity-0" : "opacity-100"
-        }`}
-        animate={preferReducedMotion ? undefined : { x: [0, 5, 0] }}
-        transition={
-          preferReducedMotion
-            ? undefined
-            : { repeat: Infinity, duration: 1.5, ease: "easeInOut" }
-        }>
+      aria-disabled={isLoading || maxDrag <= 0}
+      className="relative h-16 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden select-none touch-none">
+      <div
+        className={`absolute inset-0 flex items-center justify-center text-gray-400 font-bold text-sm pointer-events-none transition-opacity duration-200 px-16 text-center ${
+          dragX > 40 || isLoading ? "opacity-0" : "opacity-100"
+        }`}>
         {label} <ChevronRight className="ml-1 inline shrink-0" aria-hidden />
-      </motion.div>
+      </div>
 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center z-30 bg-gray-100/80 dark:bg-gray-700/80">
@@ -144,48 +142,44 @@ const DeliverySlideButton = ({
         </div>
       )}
 
-      <motion.div
+      <div
         className={`absolute inset-y-0 left-0 ${bgColorLight} opacity-50 pointer-events-none`}
         style={{ width: Math.min(dragX + THUMB_SIZE, trackWidth || 0) }}
       />
 
       <motion.div
-        className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent transition-shadow ${bgColor}`}
-        drag={isLoading ? false : "x"}
+        className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 touch-none ${bgColor}`}
+        style={{ x }}
+        drag={isLoading || maxDrag <= 0 ? false : "x"}
         dragConstraints={{ left: 0, right: maxDrag }}
-        dragElastic={0.05}
+        dragElastic={0}
         dragMomentum={false}
         onDrag={(_, info) => {
-          if (!isLoading) {
-            setDragX(Math.max(0, Math.min(info.offset.x, maxDrag)));
-          }
+          const next = Math.max(0, Math.min(info.offset.x, maxDrag));
+          setDragX(next);
         }}
         onDragEnd={(_, info) => {
           if (isLoading) return;
-
-          if (info.offset.x > completeThreshold) {
-            setIsSlideComplete(true);
-            setDragX(maxDrag);
+          const offset = Math.max(0, Math.min(info.offset.x, maxDrag));
+          if (offset >= completeThreshold && maxDrag > 0) {
+            setIsComplete(true);
+            snapTo(maxDrag);
             handleSlideComplete();
           } else {
-            setDragX(0);
+            snapTo(0);
           }
         }}
-        animate={{ x: isSlideComplete ? maxDrag : 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-        whileHover={{ scale: isLoading ? 1 : 1.04 }}
-        whileTap={{ scale: isLoading ? 1 : 0.96 }}
+        whileTap={{ scale: isLoading ? 1 : 0.97 }}
         tabIndex={isLoading ? -1 : 0}
         onKeyDown={(e) => {
-          if (isLoading || isSlideComplete) return;
+          if (isLoading || isComplete || maxDrag <= 0) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setIsSlideComplete(true);
-            setDragX(maxDrag);
+            setIsComplete(true);
+            snapTo(maxDrag);
             handleSlideComplete();
           }
-        }}
-        style={{ pointerEvents: isLoading ? "none" : "auto" }}>
+        }}>
         <ChevronRight className="text-white" size={24} aria-hidden />
       </motion.div>
     </div>

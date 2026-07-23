@@ -6,29 +6,33 @@ import {
   onDeliveryOtpValidated,
 } from "@/core/services/orderSocket";
 
+const normalizeOrderId = (id) =>
+  String(id || "")
+    .trim()
+    .replace(/^ORD/i, "");
+
+const orderIdsMatch = (a, b) => {
+  if (!a || !b) return false;
+  const sa = String(a).trim();
+  const sb = String(b).trim();
+  return sa === sb || normalizeOrderId(sa) === normalizeOrderId(sb);
+};
+
 /**
- * DeliveryOtpDisplay Component
- * 
- * Displays the proximity-based delivery OTP to the customer when the delivery person
- * arrives within 0-120m of the delivery location.
- * 
- * Features:
- * - Real-time OTP display via Socket.IO
- * - 10-minute countdown timer
- * - Visual indicator that delivery person is nearby
- * - Security: Hides OTP when app is backgrounded
- * - Shows delivery confirmation when OTP is validated
- * 
- * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 7.5, 9.4
+ * Displays the delivery OTP on the customer order page when the rider generates it.
+ * Hydrates from order details (REST) and updates live via Socket.IO.
  */
-const DeliveryOtpDisplay = ({ orderId }) => {
+const DeliveryOtpDisplay = ({
+  orderId,
+  initialOtp = null,
+  initialExpiresAt = null,
+}) => {
   const [otpData, setOtpData] = useState(null);
   const [isDelivered, setIsDelivered] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   const timerRef = useRef(null);
 
-  // Calculate remaining time from expiration timestamp
   const calculateRemainingTime = (expiresAt) => {
     const now = new Date().getTime();
     const expiry = new Date(expiresAt).getTime();
@@ -36,15 +40,29 @@ const DeliveryOtpDisplay = ({ orderId }) => {
     return Math.max(0, diff);
   };
 
-  // Format seconds to MM:SS
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Handle visibility change (app backgrounded or device locked)
-  // Requirement 9.4: Hide OTP when app is backgrounded or device locked
+  // Hydrate from order details API (refresh / missed socket)
+  useEffect(() => {
+    if (!initialOtp) return;
+    if (initialExpiresAt && new Date(initialExpiresAt).getTime() <= Date.now()) {
+      return;
+    }
+    setOtpData({
+      otp: String(initialOtp),
+      expiresAt: initialExpiresAt || null,
+      deliveryPersonNearby: true,
+    });
+    if (initialExpiresAt) {
+      setRemainingSeconds(calculateRemainingTime(initialExpiresAt));
+    }
+    setIsDelivered(false);
+  }, [initialOtp, initialExpiresAt]);
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       setIsVisible(!document.hidden);
@@ -56,56 +74,39 @@ const DeliveryOtpDisplay = ({ orderId }) => {
     };
   }, []);
 
-  // Set up Socket.IO listeners for OTP events
   useEffect(() => {
     if (!orderId) return;
 
-    console.log(`[DeliveryOtpDisplay] Setting up Socket.IO listeners for order ${orderId}`);
-
     const getToken = () => localStorage.getItem("auth_customer");
-    const socket = getOrderSocket(getToken);
-    
-    console.log(`[DeliveryOtpDisplay] Socket connection status:`, socket?.connected);
-    console.log(`[DeliveryOtpDisplay] Socket ID:`, socket?.id);
+    getOrderSocket(getToken);
 
-    // Listen for OTP generation event
-    // Requirement 4.1: Receive notification to display OTP
     const offGenerated = onDeliveryOtpGenerated(getToken, (payload) => {
-      console.log(`[DeliveryOtpDisplay] Received delivery:otp:generated event:`, payload);
-      if (payload?.orderId === orderId) {
-        console.log(`[DeliveryOtpDisplay] OTP matches current order, displaying OTP:`, payload.otp);
-        setOtpData({
-          otp: payload.otp,
-          expiresAt: payload.expiresAt,
-          deliveryPersonNearby: payload.deliveryPersonNearby,
-        });
-        setIsDelivered(false);
+      if (!orderIdsMatch(payload?.orderId, orderId)) return;
+      const otp = payload?.otp ?? payload?.code;
+      if (!otp) return;
+      setOtpData({
+        otp: String(otp),
+        expiresAt: payload.expiresAt,
+        deliveryPersonNearby: payload.deliveryPersonNearby !== false,
+      });
+      setIsDelivered(false);
+      if (payload.expiresAt) {
         setRemainingSeconds(calculateRemainingTime(payload.expiresAt));
-      } else {
-        console.log(`[DeliveryOtpDisplay] OTP for different order. Expected: ${orderId}, Got: ${payload?.orderId}`);
       }
     });
 
-    // Listen for OTP validation event
-    // Requirement 4.1: Show delivery confirmation
     const offValidated = onDeliveryOtpValidated(getToken, (payload) => {
-      console.log(`[DeliveryOtpDisplay] Received delivery:otp:validated event:`, payload);
-      if (payload?.orderId === orderId) {
-        console.log(`[DeliveryOtpDisplay] OTP validated for current order, showing delivery confirmation`);
-        setIsDelivered(true);
-        setOtpData(null);
-      }
+      if (!orderIdsMatch(payload?.orderId, orderId)) return;
+      setIsDelivered(true);
+      setOtpData(null);
     });
 
     return () => {
-      console.log(`[DeliveryOtpDisplay] Cleaning up Socket.IO listeners for order ${orderId}`);
       offGenerated();
       offValidated();
     };
   }, [orderId]);
 
-  // Countdown timer
-  // Requirement 7.5: Display countdown timer showing remaining validity
   useEffect(() => {
     if (!otpData || remainingSeconds <= 0) {
       if (timerRef.current) {
@@ -136,121 +137,107 @@ const DeliveryOtpDisplay = ({ orderId }) => {
     };
   }, [otpData, remainingSeconds]);
 
-  // Show delivery confirmation
   if (isDelivered) {
     return (
-      <div className="bg-rose-50 border border-brand-200 rounded-2xl p-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="flex justify-center mb-3">
-          <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-10 h-10 text-rose-600" />
+      <div className="rounded-2xl border border-brand-200 bg-rose-50 p-6 text-center">
+        <div className="mb-3 flex justify-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-100">
+            <CheckCircle className="h-10 w-10 text-rose-600" />
           </div>
         </div>
-        <h3 className="text-lg font-bold text-brand-900 mb-1">
-          Delivery Confirmed!
-        </h3>
-        <p className="text-sm text-brand-700">
-          Your order has been successfully delivered
-        </p>
+        <h3 className="mb-1 text-lg font-bold text-brand-900">Delivery Confirmed!</h3>
+        <p className="text-sm text-brand-700">Your order has been successfully delivered</p>
       </div>
     );
   }
 
-  // Show OTP display when available and visible
   if (otpData && isVisible) {
-    const isExpiringSoon = remainingSeconds <= 120; // Less than 2 minutes
+    const isExpiringSoon = remainingSeconds > 0 && remainingSeconds <= 120;
 
     return (
-      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* Delivery Person Nearby Indicator */}
-        {/* Requirement 4.4: Show visual indicator that delivery person is nearby */}
+      <div className="space-y-3">
         {otpData.deliveryPersonNearby && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-              <MapPin className="w-5 h-5 text-blue-600" />
+          <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-100">
+              <MapPin className="h-5 w-5 text-blue-600" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-900">
                 Delivery Partner Nearby
               </p>
-              <p className="text-xs text-blue-700">
-                Within 0-120 meters of your location
-              </p>
+              <p className="text-xs text-blue-700">Share this OTP to complete delivery</p>
             </div>
           </div>
         )}
 
-        {/* OTP Display */}
-        {/* Requirement 4.2: Display OTP in prominent, easily readable format */}
-        {/* Requirement 4.3: Display with font size at least 24 points */}
         <div
-          className={`border rounded-2xl p-6 text-center transition-colors duration-300 ${
+          className={`rounded-2xl border p-5 text-center ${
             isExpiringSoon
-              ? "bg-amber-50 border-amber-300"
-              : "bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200"
+              ? "border-amber-300 bg-amber-50"
+              : "border-[#E23744]/30 bg-gradient-to-br from-rose-50 to-orange-50"
           }`}
         >
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Shield className={`w-5 h-5 ${isExpiringSoon ? "text-amber-600" : "text-purple-600"}`} />
+          <div className="mb-2 flex items-center justify-center gap-2">
+            <Shield
+              className={`h-5 w-5 ${isExpiringSoon ? "text-amber-600" : "text-[#E23744]"}`}
+            />
             <p
               className={`text-xs font-bold uppercase tracking-wider ${
-                isExpiringSoon ? "text-amber-800" : "text-purple-800"
+                isExpiringSoon ? "text-amber-800" : "text-[#E23744]"
               }`}
             >
               Delivery OTP
             </p>
           </div>
 
-          {/* OTP Value - Minimum 24pt font (32px = 24pt) */}
-          {/* Requirement 4.3: Font size at least 24 points */}
           <div
-            className={`text-5xl font-black font-mono tracking-[0.3em] mb-3 ${
-              isExpiringSoon ? "text-amber-950" : "text-purple-950"
+            className={`mb-2 font-mono text-5xl font-black tracking-[0.35em] ${
+              isExpiringSoon ? "text-amber-950" : "text-slate-900"
             }`}
-            style={{ fontSize: "48px" }} // 36pt = 48px (exceeds 24pt requirement)
+            style={{ fontSize: "48px" }}
+            aria-label={`Delivery OTP ${otpData.otp}`}
           >
             {otpData.otp}
           </div>
 
-          <p className={`text-xs ${isExpiringSoon ? "text-amber-700" : "text-purple-700"}`}>
-            Share this code with your delivery partner
+          <p className={`text-xs ${isExpiringSoon ? "text-amber-700" : "text-slate-600"}`}>
+            Tell this code to your delivery partner
           </p>
         </div>
 
-        {/* Countdown Timer */}
-        {/* Requirement 7.5: Display countdown timer showing remaining validity */}
-        <div
-          className={`border rounded-xl p-4 flex items-center justify-between transition-colors duration-300 ${
-            isExpiringSoon
-              ? "bg-amber-50 border-amber-200"
-              : "bg-gray-50 border-gray-200"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Clock className={`w-4 h-4 ${isExpiringSoon ? "text-amber-600" : "text-gray-600"}`} />
-            <span className={`text-xs font-semibold ${isExpiringSoon ? "text-amber-900" : "text-gray-700"}`}>
-              {isExpiringSoon ? "Expiring Soon" : "Valid For"}
-            </span>
-          </div>
-          <span
-            className={`text-lg font-bold font-mono ${
-              isExpiringSoon ? "text-amber-950" : "text-gray-900"
+        {remainingSeconds > 0 && (
+          <div
+            className={`flex items-center justify-between rounded-xl border p-3 ${
+              isExpiringSoon
+                ? "border-amber-200 bg-amber-50"
+                : "border-slate-200 bg-slate-50"
             }`}
           >
-            {formatTime(remainingSeconds)}
-          </span>
-        </div>
-
-        {/* Security Notice */}
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-          <p className="text-xs text-gray-600 text-center">
-            🔒 This OTP is valid for 10 minutes and will be hidden when you switch apps
-          </p>
-        </div>
+            <div className="flex items-center gap-2">
+              <Clock
+                className={`h-4 w-4 ${isExpiringSoon ? "text-amber-600" : "text-slate-600"}`}
+              />
+              <span
+                className={`text-xs font-semibold ${
+                  isExpiringSoon ? "text-amber-900" : "text-slate-700"
+                }`}
+              >
+                {isExpiringSoon ? "Expiring Soon" : "Valid For"}
+              </span>
+            </div>
+            <span
+              className={`font-mono text-lg font-bold ${
+                isExpiringSoon ? "text-amber-950" : "text-slate-900"
+              }`}
+            >
+              {formatTime(remainingSeconds)}
+            </span>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Don't render anything if no OTP or app is backgrounded
   return null;
 };
 

@@ -39,6 +39,7 @@ function formatStepTime(iso) {
 export default function DeliveryTimeline({
   orderId,
   initialTimeline = null,
+  deliveryOtp = null,
   className,
   pollMs = 12000,
 }) {
@@ -130,6 +131,22 @@ export default function DeliveryTimeline({
                 </div>
                 {isActive && (
                   <p className="mt-0.5 text-xs font-medium text-amber-600">In progress…</p>
+                )}
+                {deliveryOtp &&
+                  !isCompleted &&
+                  isActive &&
+                  (step.id === "nearby" || step.id === "otp_verification") && (
+                  <div className="mt-2 rounded-xl border border-[#E23744]/25 bg-rose-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#E23744]">
+                      Your delivery OTP
+                    </p>
+                    <p className="mt-0.5 font-mono text-2xl font-black tracking-[0.3em] text-slate-900">
+                      {deliveryOtp}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      Share this code with your delivery partner
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

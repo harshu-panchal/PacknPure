@@ -137,6 +137,7 @@ async function createValidOtp(orderId, orderMongoId, code = "1234") {
     orderId,
     orderMongoId,
     codeHash,
+    code,
     expiresAt,
     lastGeneratedAt: new Date(),
     consumedAt: null,

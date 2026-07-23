@@ -11,6 +11,7 @@ export {
   releaseSellerReservation,
   deductSellerInventoryAfterPickup,
   completeHubDelivery,
+  finalizeHubInventoryOnDelivery,
   restoreHubInventory,
   restoreSellerInventory,
   handleCustomerCancellation,

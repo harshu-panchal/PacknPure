@@ -17,6 +17,11 @@ const orderOtpSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    /** Plaintext OTP for customer order-page display until consumed/expired */
+    code: {
+      type: String,
+      default: null,
+    },
     expiresAt: {
       type: Date,
       required: true,

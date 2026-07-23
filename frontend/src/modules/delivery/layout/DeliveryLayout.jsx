@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BellRing, MapPin } from "lucide-react";
 import { deliveryApi } from "../services/deliveryApi";
@@ -470,7 +470,6 @@ const DeliveryLayout = () => {
       </main>
 
       {shouldShowBottomNav && <BottomNav />}
-      <Toaster position="top-center" />
     </div>
   );
 };

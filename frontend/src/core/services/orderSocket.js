@@ -54,7 +54,9 @@ export function disconnectOrderSocket() {
 export function joinOrderRoom(orderId, getToken) {
   const s = getOrderSocket(getToken);
   if (!s || !orderId) return;
-  s.emit("join_order", orderId);
+  const join = () => s.emit("join_order", orderId);
+  if (s.connected) join();
+  else s.once("connect", join);
 }
 
 export function leaveOrderRoom(orderId, getToken) {

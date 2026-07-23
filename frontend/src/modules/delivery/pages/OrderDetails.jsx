@@ -15,7 +15,7 @@ import {
   Zap,
   CalendarClock,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, animate as motionAnimate } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import { toast } from "sonner";
@@ -146,10 +146,11 @@ const OrderDetails = () => {
   const [isSlideProcessing, setIsSlideProcessing] = useState(false);
   const slideTrackRef = useRef(null);
   const [slideTrackWidth, setSlideTrackWidth] = useState(0);
+  const slideX = useMotionValue(0);
   const SLIDE_THUMB = 56;
   const SLIDE_PAD = 4;
   const slideMaxDrag = Math.max(0, slideTrackWidth - SLIDE_THUMB - SLIDE_PAD * 2);
-  const slideCompleteAt = slideMaxDrag * 0.75;
+  const slideCompleteAt = slideMaxDrag * 0.7;
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
@@ -197,6 +198,12 @@ const OrderDetails = () => {
     ro.observe(el);
     return () => ro.disconnect();
   }, [measureSlideTrack, step]);
+
+  useEffect(() => {
+    setIsSlideComplete(false);
+    setDragX(0);
+    slideX.set(0);
+  }, [step, slideX]);
 
   const steps = [
     {
@@ -334,6 +341,11 @@ const OrderDetails = () => {
     deliverySnapshot,
   ]);
 
+  const snapSlideTo = (target) => {
+    motionAnimate(slideX, target, { type: "spring", stiffness: 420, damping: 36 });
+    setDragX(target);
+  };
+
   const handleNextStep = async () => {
     if (isSlideProcessing) return;
     setIsSlideProcessing(true);
@@ -361,9 +373,19 @@ const OrderDetails = () => {
         }
       } else {
         const location = await new Promise((resolve, reject) => {
-          getCurrentPositionWithCache(resolve, reject, {
-            maxCacheAgeMs: 20 * 60 * 1000,
-          });
+          getCurrentPositionWithCache(
+            resolve,
+            () =>
+              reject(
+                new Error(
+                  "Location unavailable. Enable GPS/location permission and try again.",
+                ),
+              ),
+            {
+              // Prefer recent GPS, but allow a longer cache so slide can proceed when GPS is flaky
+              maxCacheAgeMs: 60 * 60 * 1000,
+            },
+          );
         });
 
         if (step === 1) {
@@ -392,13 +414,17 @@ const OrderDetails = () => {
         }
 
         setIsSlideComplete(false);
-        setDragX(0);
+        snapSlideTo(0);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (error) {
-      toast.error("Failed to update status");
+      const apiMsg =
+        error?.response?.data?.message ||
+        error?.response?.data?.error?.message ||
+        error?.message;
+      toast.error(apiMsg || "Failed to update status");
       setIsSlideComplete(false);
-      setDragX(0);
+      snapSlideTo(0);
     } finally {
       setIsSlideProcessing(false);
     }
@@ -873,17 +899,16 @@ const OrderDetails = () => {
               aria-valuemin={0}
               aria-valuemax={Math.round(slideMaxDrag) || 100}
               aria-valuenow={Math.round(dragX)}
-              aria-disabled={isSlideProcessing}
-              className="relative h-16 bg-slate-100 dark:bg-gray-700 rounded-full overflow-hidden select-none touch-pan-y">
-              <motion.div
-                className={`absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-sm sm:text-lg pointer-events-none transition-opacity duration-300 px-16 text-center ${
-                  dragX > 50 || isSlideProcessing ? "opacity-0" : "opacity-100"
+              aria-disabled={isSlideProcessing || slideMaxDrag <= 0}
+              className="relative h-16 bg-slate-100 dark:bg-gray-700 rounded-full overflow-hidden select-none touch-none">
+              <div
+                className={`absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-sm sm:text-lg pointer-events-none transition-opacity duration-200 px-16 text-center ${
+                  dragX > 40 || isSlideProcessing ? "opacity-0" : "opacity-100"
                 }`}
-                animate={{ x: [0, 5, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
               >
-                Slide to {steps[step - 1].action} <ChevronRight className="ml-1 shrink-0" aria-hidden />
-              </motion.div>
+                Slide to {steps[step - 1].action}{" "}
+                <ChevronRight className="ml-1 shrink-0" aria-hidden />
+              </div>
 
               {isSlideProcessing && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-100/80 dark:bg-gray-700/80">
@@ -891,49 +916,46 @@ const OrderDetails = () => {
                 </div>
               )}
 
-              <motion.div
+              <div
                 className={`absolute inset-y-0 left-0 ${steps[step - 1].bg} opacity-50 pointer-events-none`}
                 style={{ width: Math.min(dragX + SLIDE_THUMB, slideTrackWidth || 0) }}
               />
 
               <motion.div
-                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
+                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 touch-none ${
                   steps[step - 1].color || "bg-primary"
                 }`}
-                drag={isSlideProcessing ? false : "x"}
+                style={{ x: slideX }}
+                drag={isSlideProcessing || slideMaxDrag <= 0 ? false : "x"}
                 dragConstraints={{ left: 0, right: slideMaxDrag }}
-                dragElastic={0.05}
+                dragElastic={0}
                 dragMomentum={false}
                 onDrag={(_, info) => {
-                  if (!isSlideProcessing) {
-                    setDragX(Math.max(0, Math.min(info.offset.x, slideMaxDrag)));
-                  }
+                  const next = Math.max(0, Math.min(info.offset.x, slideMaxDrag));
+                  setDragX(next);
                 }}
                 onDragEnd={(_, info) => {
                   if (isSlideProcessing) return;
-                  if (info.offset.x > slideCompleteAt) {
+                  const offset = Math.max(0, Math.min(info.offset.x, slideMaxDrag));
+                  if (offset >= slideCompleteAt && slideMaxDrag > 0) {
                     setIsSlideComplete(true);
-                    setDragX(slideMaxDrag);
+                    snapSlideTo(slideMaxDrag);
                     handleNextStep();
                   } else {
-                    setDragX(0);
+                    snapSlideTo(0);
                   }
                 }}
-                animate={{ x: isSlideComplete ? slideMaxDrag : 0 }}
-                transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                whileHover={{ scale: isSlideProcessing ? 1 : 1.04 }}
-                whileTap={{ scale: isSlideProcessing ? 1 : 0.96 }}
+                whileTap={{ scale: isSlideProcessing ? 1 : 0.97 }}
                 tabIndex={isSlideProcessing ? -1 : 0}
                 onKeyDown={(e) => {
-                  if (isSlideProcessing || isSlideComplete) return;
+                  if (isSlideProcessing || isSlideComplete || slideMaxDrag <= 0) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     setIsSlideComplete(true);
-                    setDragX(slideMaxDrag);
+                    snapSlideTo(slideMaxDrag);
                     handleNextStep();
                   }
                 }}
-                style={{ pointerEvents: isSlideProcessing ? "none" : "auto" }}
               >
                 <ChevronRight className="text-white" size={24} aria-hidden />
               </motion.div>

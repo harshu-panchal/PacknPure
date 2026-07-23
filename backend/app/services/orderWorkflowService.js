@@ -1191,66 +1191,17 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
     }
 
     // --- HUB STOCK DEDUCTION (SOP) ---
-    // Deduct Hub Reserved only. Use hubReservedQty + qaAcceptedQty (not full line qty).
-    if (updated.hubFlowEnabled) {
-      try {
-        const hubId = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
-        const HubInventory = (await import("../models/hubInventory.js")).default;
-        let orderDirty = false;
-
-        for (const item of updated.items) {
-          const productId = String(item.product?._id || item.product);
-          const variantId = item.variantId || null;
-          const reservedPortion =
-            Math.max(0, Number(item.hubReservedQty || 0)) +
-            Math.max(0, Number(item.qaAcceptedQty || 0));
-          const qtyToDeduct =
-            reservedPortion > 0
-              ? reservedPortion
-              : Math.max(0, Number(item.quantity || 0) - Number(item.deliveredQty || 0));
-
-          if (qtyToDeduct > 0) {
-            const { completeHubDelivery } = await import("./inventory/inventoryEngine.js");
-            const deliveryResult = await completeHubDelivery({
-              productId,
-              variantId,
-              quantity: qtyToDeduct,
-              hubId,
-              orderId: updated._id,
-              reason: "order_delivery_complete",
-              idempotencyKey: `hub_delivery:${String(updated._id)}:${productId}:${String(variantId || "root")}:${qtyToDeduct}`,
-            });
-            const hubStock = deliveryResult?.hubInventory;
-
-            item.hubReservedQty = 0;
-            item.qaAcceptedQty = 0;
-            item.deliveredQty = Math.max(
-              Number(item.deliveredQty || 0),
-              Number(item.quantity || 0),
-            );
-            orderDirty = true;
-
-            if (hubStock) {
-              let newStatus = "healthy";
-              if (hubStock.availableQty <= 0) newStatus = "out_of_stock";
-              else if (hubStock.availableQty <= (hubStock.reorderLevel || 10)) newStatus = "low_stock";
-
-              if (hubStock.status !== newStatus) {
-                await HubInventory.findByIdAndUpdate(hubStock._id, { $set: { status: newStatus } });
-              }
-              console.log(
-                `[InventorySync] Deducted reserved ${qtyToDeduct} for ${productId}. HR now ${hubStock.reservedQty}`,
-              );
-            }
-          }
-        }
-
-        if (orderDirty) {
-          await updated.save();
-        }
-      } catch (err) {
-        console.warn("[InventorySync] Failed to deduct hub stock during delivery:", err.message);
-      }
+    // Deduct Hub Reserved for each product/variant line on this order.
+    try {
+      const { finalizeHubInventoryOnDelivery } = await import(
+        "./inventory/inventoryEngine.js"
+      );
+      await finalizeHubInventoryOnDelivery(updated);
+    } catch (err) {
+      console.warn(
+        "[InventorySync] Failed to deduct hub stock during delivery:",
+        err.message,
+      );
     }
 
     // BUGFIX: Verify customer field is preserved after update

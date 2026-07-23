@@ -91,11 +91,12 @@ export async function generateDeliveryOtp(orderId, deliveryLocation) {
       { consumedAt: new Date() }
     );
 
-    // Create new OTP record
+    // Create new OTP record (store plaintext for customer order details display)
     await OrderOtp.create({
       orderId,
       orderMongoId: order._id,
       codeHash,
+      code: otp,
       expiresAt,
       attempts: 0,
       maxAttempts: 3,
@@ -213,8 +214,9 @@ export async function validateDeliveryOtp(orderId, enteredOtp) {
       };
     }
 
-    // OTP is valid - mark as consumed
+    // OTP is valid - mark as consumed and clear customer-visible code
     otpRecord.consumedAt = new Date();
+    otpRecord.code = null;
     await otpRecord.save();
 
     return {

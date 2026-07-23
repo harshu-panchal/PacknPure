@@ -596,12 +596,13 @@ export const generateDeliveryOtp = async (req, res) => {
             };
 
             console.log('[generateDeliveryOtp] Emitting delivery:otp:generated event:', otpPayload);
-            console.log('[generateDeliveryOtp] Customer ID:', order.customer?._id);
+            console.log('[generateDeliveryOtp] Customer ID:', order.customer?._id || order.customer);
             console.log('[generateDeliveryOtp] Order ID:', order.orderId);
             
             // Emit to customer's room
-            if (order.customer?._id) {
-                const customerRoom = `customer:${order.customer._id}`;
+            const customerId = order.customer?._id || order.customer;
+            if (customerId) {
+                const customerRoom = `customer:${customerId}`;
                 console.log('[generateDeliveryOtp] Emitting to customer room:', customerRoom);
                 io.to(customerRoom).emit('delivery:otp:generated', otpPayload);
             }
@@ -765,6 +766,22 @@ export const validateDeliveryOtp = async (req, res) => {
         order.otpValidatedAt = now;
         order.otpValidationLocation = validationLocation;
         const updatedOrder = await order.save();
+
+        // Hub Reserved (HR) deduction for this order's product/variant lines
+        try {
+            const { finalizeHubInventoryOnDelivery } = await import(
+                '../services/inventory/inventoryEngine.js'
+            );
+            await finalizeHubInventoryOnDelivery(updatedOrder);
+            console.log(
+                `[validateDeliveryOtp] Hub reserved stock deducted for order ${updatedOrder.orderId}`,
+            );
+        } catch (inventoryErr) {
+            console.error(
+                '[validateDeliveryOtp] Hub inventory deduction failed:',
+                inventoryErr.message,
+            );
+        }
 
         // Financial side effects - Apply delivered financial settlements
         try {

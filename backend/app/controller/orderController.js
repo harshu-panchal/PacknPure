@@ -52,6 +52,7 @@ import { getDeliveryTimelineForOrder } from "../services/deliveryTimelineService
 import { recordDeliveryAudit } from "../services/deliveryAuditService.js";
 import { resolveVariantIndex } from "../utils/productHelpers.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
+import OrderOtp from "../models/orderOtp.js";
 import {
   transitionOrderFulfillment,
   transitionOrderReturn,
@@ -360,6 +361,34 @@ export const getOrderDetails = async (req, res) => {
         sanitized.deliveryTimeline = await getDeliveryTimelineForOrder(sanitized);
       } catch {
         /* timeline is optional */
+      }
+    }
+
+    // Customer-visible delivery OTP (active, unexpired) for order details UI
+    if (
+      (roleNorm === "customer" || roleNorm === "user") &&
+      (sanitized.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY ||
+        String(sanitized.status || "").toLowerCase() === "out_for_delivery")
+    ) {
+      try {
+        const activeOtp = await OrderOtp.findOne({
+          orderId: sanitized.orderId,
+          consumedAt: null,
+        })
+          .sort({ lastGeneratedAt: -1 })
+          .select("code expiresAt")
+          .lean();
+
+        if (
+          activeOtp?.code &&
+          activeOtp.expiresAt &&
+          new Date(activeOtp.expiresAt) > new Date()
+        ) {
+          sanitized.deliveryOtp = activeOtp.code;
+          sanitized.deliveryOtpExpiresAt = activeOtp.expiresAt;
+        }
+      } catch {
+        /* OTP display is optional */
       }
     }
 
@@ -953,6 +982,21 @@ export const updateOrderStatus = async (req, res) => {
 
     console.log("Saving order with new status:", status);
     await order.save();
+
+    // Deduct Hub Reserved (HR) when order is newly marked delivered
+    if (status === "delivered" && oldStatus !== "delivered") {
+      try {
+        const { finalizeHubInventoryOnDelivery } = await import(
+          "../services/inventory/inventoryEngine.js"
+        );
+        await finalizeHubInventoryOnDelivery(order);
+      } catch (inventoryErr) {
+        console.error(
+          "[updateOrderStatus] Hub inventory deduction failed:",
+          inventoryErr.message,
+        );
+      }
+    }
 
     if (newDeliveryBoyAssigned) {
       await createNotification({
