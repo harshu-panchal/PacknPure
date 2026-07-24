@@ -829,12 +829,26 @@ export const receiveAtHub = async (req, res) => {
 
     const incomingItems = Array.isArray(items) ? items : [];
     const normalized = [];
+    const isStandaloneManual = !pr.orderId;
 
     for (const line of pr.items || []) {
       const productId = String(line.productId?._id || line.productId);
       const incoming =
-        incomingItems.find((it) => String(it.productId) === productId) || {};
-      const expectedQty = Number(line.shortageQty || line.requiredQty || 0);
+        incomingItems.find((it) => String(it.productId) === productId) ||
+        incomingItems.find(
+          (it) =>
+            String(it.productId) === String(line.selectedSellerProductId || "") ||
+            String(it.sellerProductId || "") === productId,
+        ) ||
+        {};
+      const expectedQty = Number(
+        line.actualPickedQty ||
+          line.committedQty ||
+          line.shortageQty ||
+          line.requestedQty ||
+          line.requiredQty ||
+          0,
+      );
       const receivedQty = Math.max(
         0,
         Number(incoming.receivedQty ?? expectedQty ?? 0),
@@ -847,15 +861,18 @@ export const receiveAtHub = async (req, res) => {
       );
 
       // --- SELLER STOCK VALIDATION REMOVED (Handled at Pickup) ---
-      const sellerId = pr.vendorId;
-      const targetSellerProductId = line.selectedSellerProductId || productId;
+      const targetSellerProductId = String(line.selectedSellerProductId || productId);
 
       // --- HUB-FIRST LOGIC: Resolve Master ID for Inventory ---
-      const sellerProductData = await Product.findById(productId).select('masterProductId ownerType');
-      const resolvedMasterProductId = (sellerProductData?.ownerType === 'seller' && sellerProductData?.masterProductId) 
-        ? String(sellerProductData.masterProductId) 
-        : productId;
+      const sellerProductData = await Product.findById(targetSellerProductId).select(
+        "masterProductId ownerType variants",
+      );
+      const resolvedMasterProductId =
+        sellerProductData?.ownerType === "seller" && sellerProductData?.masterProductId
+          ? String(sellerProductData.masterProductId)
+          : productId;
 
+      // Cost bookkeeping on hub row (qty for Manual PR is applied via inventory engine below)
       const hubRow = await HubInventory.findOne({
         hubId: pr.hubId || DEFAULT_HUB_ID,
         productId: resolvedMasterProductId,
@@ -863,25 +880,41 @@ export const receiveAtHub = async (req, res) => {
 
       if (hubRow) {
         const prevQty = Math.max(0, Number(hubRow.availableQty || 0));
-        const prevAvgCost = Math.max(0, Number(hubRow.avgPurchaseCost || hubRow.lastPurchaseCost || 0));
-        const nextQty = prevQty + acceptedQty;
-        const weightedAvgCost = nextQty > 0 
-          ? toMoney((prevQty * prevAvgCost + acceptedQty * incomingCost) / nextQty) 
-          : incomingCost;
-          
-        const masterProduct = await Product.findById(resolvedMasterProductId).select('price salePrice');
+        const prevAvgCost = Math.max(
+          0,
+          Number(hubRow.avgPurchaseCost || hubRow.lastPurchaseCost || 0),
+        );
+        // For Manual PR, qty lands via transferManualPRInventoryAtHubReceive; use projected qty for cost only.
+        const qtyForCost = isStandaloneManual
+          ? prevQty + acceptedQty
+          : prevQty;
+        const nextQty = isStandaloneManual ? qtyForCost : prevQty + acceptedQty;
+        const weightedAvgCost =
+          nextQty > 0
+            ? toMoney((prevQty * prevAvgCost + acceptedQty * incomingCost) / Math.max(nextQty, 1))
+            : incomingCost;
+
+        const masterProduct = await Product.findById(resolvedMasterProductId).select(
+          "price salePrice",
+        );
         const sellPrice = masterProduct?.price || masterProduct?.salePrice || incomingCost;
         hubRow.lastPurchaseCost = incomingCost;
         hubRow.avgPurchaseCost = weightedAvgCost;
         hubRow.sellPrice = sellPrice;
         hubRow.priceUpdatedAt = new Date();
-        if (hubRow.availableQty <= 0) hubRow.status = "out_of_stock";
-        else if (hubRow.availableQty <= Number(hubRow.reorderLevel || 0))
-          hubRow.status = "low_stock";
-        else hubRow.status = "healthy";
+        // Automated path historically did not write availableQty here (QA does).
+        // Manual path writes via inventory engine; refresh status after that.
+        if (!isStandaloneManual) {
+          if (hubRow.availableQty <= 0) hubRow.status = "out_of_stock";
+          else if (hubRow.availableQty <= Number(hubRow.reorderLevel || 0))
+            hubRow.status = "low_stock";
+          else hubRow.status = "healthy";
+        }
         await hubRow.save();
-      } else {
-        const masterProduct = await Product.findById(resolvedMasterProductId).select('price salePrice');
+      } else if (!isStandaloneManual) {
+        const masterProduct = await Product.findById(resolvedMasterProductId).select(
+          "price salePrice",
+        );
         const sellPrice = masterProduct?.price || masterProduct?.salePrice || incomingCost;
 
         await HubInventory.create({
@@ -898,9 +931,69 @@ export const receiveAtHub = async (req, res) => {
         });
       }
 
+      // Manual PR: ownership transfer at Hub Receive (SC → 0, HA += acceptedQty)
+      if (isStandaloneManual && acceptedQty > 0) {
+        let sellerVariantId = line.variantId || null;
+        // Manual PR line.variantId is the seller variant id (create uses seller catalog).
+        try {
+          const { transferManualPRInventoryAtHubReceive } = await import(
+            "../services/manualPurchaseRequestInventoryService.js"
+          );
+          await transferManualPRInventoryAtHubReceive({
+            pr,
+            masterProductId: resolvedMasterProductId,
+            sellerProductId: targetSellerProductId,
+            sellerVariantId,
+            acceptedQty,
+            hubId: pr.hubId || DEFAULT_HUB_ID,
+          });
+          line.committedQty = Math.max(0, Number(line.committedQty || 0) - acceptedQty);
+
+          // Refresh costs/status after engine upserted HA
+          const refreshedHub = await HubInventory.findOne({
+            hubId: pr.hubId || DEFAULT_HUB_ID,
+            productId: resolvedMasterProductId,
+          });
+          if (refreshedHub) {
+            const masterProduct = await Product.findById(resolvedMasterProductId).select(
+              "price salePrice",
+            );
+            const sellPrice =
+              masterProduct?.price || masterProduct?.salePrice || incomingCost;
+            const prevQty = Math.max(0, Number(refreshedHub.availableQty || 0) - acceptedQty);
+            const prevAvgCost = Math.max(
+              0,
+              Number(refreshedHub.avgPurchaseCost || refreshedHub.lastPurchaseCost || 0),
+            );
+            const nextQty = Math.max(0, Number(refreshedHub.availableQty || 0));
+            refreshedHub.lastPurchaseCost = incomingCost;
+            refreshedHub.avgPurchaseCost =
+              nextQty > 0
+                ? toMoney(
+                    (prevQty * prevAvgCost + acceptedQty * incomingCost) / nextQty,
+                  )
+                : incomingCost;
+            refreshedHub.sellPrice = sellPrice;
+            refreshedHub.priceUpdatedAt = new Date();
+            if (refreshedHub.availableQty <= 0) refreshedHub.status = "out_of_stock";
+            else if (refreshedHub.availableQty <= Number(refreshedHub.reorderLevel || 0))
+              refreshedHub.status = "low_stock";
+            else refreshedHub.status = "healthy";
+            await refreshedHub.save();
+          }
+        } catch (invErr) {
+          console.error(
+            `[receiveAtHub] Manual PR inventory transfer failed for ${pr.requestId}:`,
+            invErr.message,
+          );
+          throw invErr;
+        }
+      }
+
       normalized.push({
         productId: resolvedMasterProductId, // Store the resolved Master ID in the inward record
-        sellerProductId: productId, // Keep track of which seller item it was
+        sellerProductId: targetSellerProductId, // Keep track of which seller item it was
+        variantId: line.variantId || null,
         expectedQty,
         receivedQty,
         damagedQty,
@@ -1025,6 +1118,7 @@ export const verifyInward = async (req, res) => {
 
         if (acceptedQty > 0) {
           const hubId = pr.hubId || DEFAULT_HUB_ID;
+          const isStandaloneManual = !pr.orderId;
 
           if (pr.orderId) {
             await acceptQAInventory({
@@ -1035,12 +1129,39 @@ export const verifyInward = async (req, res) => {
               reason: "verify_inward_order_linked",
             });
           } else {
-            await receiveInventoryAtHub({
-              productId,
-              quantity: acceptedQty,
-              hubId,
-              reason: "verify_inward_standalone",
+            // Manual PR: primary transfer is at Hub Receive. Re-run with same
+            // idempotency keys so legacy PRs (received before the fix) still land stock,
+            // and already-transferred PRs are no-ops.
+            const prLine = pr.items?.find((line) => {
+              const lineProductId = String(line.productId?._id || line.productId);
+              const lineSellerId = String(line.selectedSellerProductId || lineProductId);
+              return (
+                lineProductId === productId ||
+                String(item.sellerProductId || "") === lineProductId ||
+                String(item.sellerProductId || "") === lineSellerId
+              );
             });
+            const sellerProductId = prLine?.selectedSellerProductId
+              ? String(prLine.selectedSellerProductId)
+              : String(item.sellerProductId || productId);
+            try {
+              const { transferManualPRInventoryAtHubReceive } = await import(
+                "../services/manualPurchaseRequestInventoryService.js"
+              );
+              await transferManualPRInventoryAtHubReceive({
+                pr,
+                masterProductId: productId,
+                sellerProductId,
+                sellerVariantId: prLine?.variantId || item.variantId || null,
+                acceptedQty,
+                hubId,
+              });
+            } catch (manualInvErr) {
+              console.warn(
+                `[Inward] Manual PR idempotent transfer at QA failed:`,
+                manualInvErr.message,
+              );
+            }
           }
 
           const hubRow = await HubInventory.findOne({ hubId, productId });
@@ -1055,6 +1176,7 @@ export const verifyInward = async (req, res) => {
               if (propagatePriceUpdates) {
                  await propagatePriceUpdates(masterProduct);
               }
+              await hubRow.save();
             }
 
             if (pr.orderId) {
@@ -1068,21 +1190,31 @@ export const verifyInward = async (req, res) => {
             console.log(`[Inward] Verified stock for ${productId}: Moved ${acceptedQty} to ${ pr.orderId ? 'ReservedQty' : 'AvailableQty' }. New total: ${hubRow.availableQty}`);
           }
 
-          // Release Seller Committed Stock (SC) now that goods are physically at the hub.
+          // Release Seller Committed Stock (SC) — order-linked at QA; Manual at Hub Receive.
           try {
             const { moveSellerCommitToTransit } = await import("../services/inventory/inventoryEngine.js");
             const { resolveSellerVariantIdSync } = await import("../utils/productHelpers.js");
             const ProductModel = (await import("../models/product.js")).default;
             const prLine = pr.items?.find((line) => {
               const lineProductId = String(line.productId?._id || line.productId);
-              return lineProductId === productId || String(item.sellerProductId || "") === lineProductId;
+              const lineSellerId = String(line.selectedSellerProductId || lineProductId);
+              return (
+                lineProductId === productId ||
+                String(item.sellerProductId || "") === lineProductId ||
+                String(item.sellerProductId || "") === lineSellerId ||
+                lineSellerId === String(item.sellerProductId || "")
+              );
             });
             const sellerProductId = prLine?.selectedSellerProductId
               ? String(prLine.selectedSellerProductId)
               : String(item.sellerProductId || productId);
+
             if (sellerProductId && prLine) {
               let sellerVariantId = null;
-              if (prLine.variantId) {
+              if (isStandaloneManual && prLine.variantId) {
+                // Manual PR variantId is already the seller variant.
+                sellerVariantId = prLine.variantId;
+              } else if (prLine.variantId) {
                 const [masterProduct, sellerProduct] = await Promise.all([
                   ProductModel.findById(prLine.productId).select("variants").lean(),
                   ProductModel.findById(sellerProductId).select("variants").lean(),
@@ -1094,16 +1226,25 @@ export const verifyInward = async (req, res) => {
                 });
               }
 
-              await moveSellerCommitToTransit({
-                productId: sellerProductId,
-                variantId: sellerVariantId,
-                quantity: acceptedQty,
-                sellerId: pr.vendorId,
-                orderId: pr.orderId,
-                reason: "verify_inward_qa_passed_seller_commit_release",
-              });
-              console.log(
-                `[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`,
+              if (!isStandaloneManual) {
+                await moveSellerCommitToTransit({
+                  productId: sellerProductId,
+                  variantId: sellerVariantId,
+                  quantity: acceptedQty,
+                  sellerId: pr.vendorId,
+                  orderId: pr.orderId,
+                  reason: "verify_inward_qa_passed_seller_commit_release",
+                });
+                console.log(
+                  `[Inward] Released SC for seller product ${sellerProductId}, Variant ${sellerVariantId}: -${acceptedQty} committedStock`,
+                );
+              }
+              // Manual SC clear is inside transferManualPRInventoryAtHubReceive (idempotent).
+
+              // Clear PR line commitment so UI no longer shows stale COMMITTED qty
+              prLine.committedQty = Math.max(
+                0,
+                Number(prLine.committedQty || 0) - acceptedQty,
               );
             }
           } catch (scErr) {
@@ -1127,6 +1268,9 @@ export const verifyInward = async (req, res) => {
         }
       }
     }
+
+    // Persist any PR line committedQty updates from inventory transfer / QA clear
+    await savePurchaseRequest(pr);
 
     // Financial Settlement: If verified, update the Pending transaction to 'Settled'
     if (pr.vendorId) {

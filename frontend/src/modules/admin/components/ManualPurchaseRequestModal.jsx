@@ -42,11 +42,16 @@ export const ManualPurchaseRequestModal = ({ isOpen, onClose, supplier, onSucces
     const items = [];
     Object.entries(formValues).forEach(([key, val]) => {
       if (val.quantity > 0) {
-        // key format is either "productId_variantId" or "productId_no_variant"
-        const parts = key.split("_");
-        const productId = parts[0];
-        const variantId = parts[1] === "no" || parts[1] === "no_variant" ? null : parts[1];
-        
+        // Prefer explicit ids stored on the row value (avoids fragile key parsing).
+        let productId = val.productId;
+        let variantId = val.variantId;
+        if (!productId) {
+          const sep = key.indexOf("_");
+          productId = sep >= 0 ? key.slice(0, sep) : key;
+          const rest = sep >= 0 ? key.slice(sep + 1) : "";
+          variantId = !rest || rest === "no_variant" ? null : rest;
+        }
+
         items.push({
           productId,
           variantId: variantId || undefined,

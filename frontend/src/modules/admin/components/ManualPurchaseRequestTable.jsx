@@ -43,7 +43,7 @@ export const ManualPurchaseRequestTable = ({ products, values = {}, onChange }) 
     return list;
   }, [products]);
 
-  const handleQtyChange = (key, maxStock, valString) => {
+  const handleQtyChange = (key, maxStock, valString, meta = {}) => {
     let val = parseInt(valString, 10);
     if (isNaN(val) || val < 0) val = 0;
 
@@ -58,17 +58,21 @@ export const ManualPurchaseRequestTable = ({ products, values = {}, onChange }) 
       [key]: {
         ...current,
         quantity: val,
+        productId: meta.productId || current.productId,
+        variantId: meta.variantId ?? current.variantId ?? null,
       },
     });
   };
 
-  const handleNotesChange = (key, notes) => {
+  const handleNotesChange = (key, notes, meta = {}) => {
     const current = values[key] || { quantity: 0, notes: "" };
     onChange({
       ...values,
       [key]: {
         ...current,
         notes,
+        productId: meta.productId || current.productId,
+        variantId: meta.variantId ?? current.variantId ?? null,
       },
     });
   };
@@ -140,7 +144,12 @@ export const ManualPurchaseRequestTable = ({ products, values = {}, onChange }) 
                     max={row.stock}
                     value={rowVal.quantity || ""}
                     placeholder="0"
-                    onChange={(e) => handleQtyChange(row.key, row.stock, e.target.value)}
+                    onChange={(e) =>
+                      handleQtyChange(row.key, row.stock, e.target.value, {
+                        productId: row.productId,
+                        variantId: row.variantId,
+                      })
+                    }
                     disabled={row.stock <= 0}
                     className="w-full h-8 px-2 rounded-lg border border-slate-200 font-bold text-slate-800 focus:border-indigo-400 outline-none text-center bg-slate-50/50 focus:bg-white transition-all disabled:opacity-50 disabled:bg-slate-100"
                   />
@@ -150,7 +159,12 @@ export const ManualPurchaseRequestTable = ({ products, values = {}, onChange }) 
                     type="text"
                     value={rowVal.notes || ""}
                     placeholder="Optional details..."
-                    onChange={(e) => handleNotesChange(row.key, e.target.value)}
+                    onChange={(e) =>
+                      handleNotesChange(row.key, e.target.value, {
+                        productId: row.productId,
+                        variantId: row.variantId,
+                      })
+                    }
                     disabled={row.stock <= 0}
                     className="w-full h-8 px-3.5 rounded-lg border border-slate-200 text-xs focus:border-indigo-400 outline-none bg-slate-50/50 focus:bg-white transition-all disabled:opacity-50 disabled:bg-slate-100"
                   />

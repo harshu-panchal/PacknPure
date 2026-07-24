@@ -133,6 +133,54 @@ export const releaseManualPRUnpickedCommitments = async ({
 };
 
 /**
+ * Manual PR ownership transfer at Hub Receive (user lifecycle):
+ * - Hub Available += acceptedQty (master product)
+ * - Seller Committed -= acceptedQty (seller product; stock already reduced at create)
+ * Does NOT restore seller available stock (goods left the seller).
+ */
+export const transferManualPRInventoryAtHubReceive = async ({
+  pr,
+  masterProductId,
+  sellerProductId,
+  sellerVariantId = null,
+  acceptedQty,
+  hubId,
+}) => {
+  const qty = Math.max(0, Number(acceptedQty) || 0);
+  if (qty <= 0) {
+    return { applied: false, reason: "zero_qty" };
+  }
+
+  const { receiveInventoryAtHub, moveSellerCommitToTransit } = await import(
+    "./inventory/inventoryEngine.js"
+  );
+
+  const prId = String(pr._id);
+  const masterId = String(masterProductId);
+  const sellerId = String(sellerProductId);
+  const variantKey = sellerVariantId ? String(sellerVariantId) : "novar";
+
+  await receiveInventoryAtHub({
+    productId: masterId,
+    quantity: qty,
+    hubId,
+    reason: "manual_pr_hub_receive",
+    idempotencyKey: `manual_pr_hub_ha:${prId}:${masterId}:${variantKey}:${qty}`,
+  });
+
+  await moveSellerCommitToTransit({
+    productId: sellerId,
+    variantId: sellerVariantId || null,
+    quantity: qty,
+    sellerId: pr.vendorId,
+    reason: "manual_pr_hub_receive_seller_commit_clear",
+    idempotencyKey: `manual_pr_hub_sc:${prId}:${sellerId}:${variantKey}:${qty}`,
+  });
+
+  return { applied: true, masterProductId: masterId, sellerProductId: sellerId, quantity: qty };
+};
+
+/**
  * Atomic Manual PR expiry: release ALL lines + set expired in one transaction.
  */
 export const expireStandaloneManualPR = async (prId) => {
