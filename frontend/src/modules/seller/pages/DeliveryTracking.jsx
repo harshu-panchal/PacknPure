@@ -6,15 +6,12 @@ import {
   HiOutlineTruck,
   HiOutlinePhone,
   HiOutlineMapPin,
-  HiOutlineClock,
   HiOutlineCheckCircle,
   HiOutlineUser,
-  HiOutlineInformationCircle,
 } from "react-icons/hi2";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { MagicCard } from "@/components/ui/magic-card";
 
 import { sellerApi } from "../services/sellerApi";
 import { useToast } from "@shared/components/ui/Toast";
@@ -37,7 +34,7 @@ const DeliveryTracking = () => {
   const statusLabel = (s) => {
     const v = String(s || "").toLowerCase();
     if (v === "created") return "Awaiting Action";
-    if (v === "vendor_confirmed") return "Awaiting Pickup";
+    if (v === "seller_confirmed" || v === "vendor_confirmed") return "Awaiting Pickup";
     if (v === "pickup_assigned") return "Pickup Assigned";
     if (v === "picked") return "Picked Up";
     if (v === "hub_delivered") return "At Hub Gate";
@@ -45,13 +42,23 @@ const DeliveryTracking = () => {
     if (v === "verified") return "Verified & Stocked";
     if (v === "closed") return "Closed";
     if (v === "cancelled") return "Cancelled";
-    if (v === "exception") return "Exception";
+    if (v === "expired") return "Expired";
+    if (v === "seller_rejected") return "Rejected";
+    if (v === "exception" || v === "procurement_failed") return "Exception";
     return "In Progress";
   };
 
   const isCompletedStatus = (s) => {
     const v = String(s || "").toLowerCase();
-    return ["verified", "closed", "cancelled", "exception"].includes(v);
+    return [
+      "verified",
+      "closed",
+      "cancelled",
+      "exception",
+      "expired",
+      "seller_rejected",
+      "procurement_failed",
+    ].includes(v);
   };
 
   const fetchPurchaseRequests = async () => {
@@ -67,12 +74,17 @@ const DeliveryTracking = () => {
 
       const formatted = (prList || []).map((pr) => {
         const partner = pr.pickupPartner || pr.pickupPartnerId || null;
-        const partnerName = partner?.name || partner?.fullName || "Not Assigned";
+        const partnerName =
+          (typeof partner === "object" && (partner?.name || partner?.fullName)) ||
+          pr.pickupPartnerName ||
+          "Not Assigned";
         const partnerPhone = ""; // Privacy: hide pickup partner phone from seller
         const coords =
-          pr?.hubDropProof?.location ||
-          pr?.pickupProof?.location ||
-          null;
+          pr?.hubDropProof?.location || pr?.pickupProof?.location || null;
+
+        const notes = String(pr.vendorReadyNotes || pr.notes || "").trim();
+        const looksLikeInternalNote =
+          /fallback request|failed pr|procurement|exception/i.test(notes);
 
         return {
           id: pr._id,
@@ -80,19 +92,18 @@ const DeliveryTracking = () => {
           status: statusLabel(pr.status),
           rawStatus: pr.status,
           isCompleted: isCompletedStatus(pr.status),
+          requestType: pr.requestType || (pr.orderId ? "automated" : "manual"),
           deliveryBoy: {
             name: partnerName,
             phone: partnerPhone,
-            maskedCallingReady: true,
-            avatar: partnerName?.charAt(0) || "?",
+            avatar: String(partnerName).charAt(0).toUpperCase() || "?",
             image:
-              partner?.image ||
-              "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop",
-            rating: partner?.rating || 0,
+              (typeof partner === "object" && partner?.image) || null,
+            rating:
+              typeof partner === "object" && partner?.rating
+                ? Number(partner.rating)
+                : null,
           },
-          location: pr.updatedAt
-            ? `Updated at ${new Date(pr.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-            : "In Progress",
           orderDate: pr.createdAt
             ? new Date(pr.createdAt).toLocaleDateString("en-IN", {
                 day: "numeric",
@@ -106,12 +117,15 @@ const DeliveryTracking = () => {
                 minute: "2-digit",
               })
             : "",
-          estimatedDelivery: pr.eta
-            ? `ETA ${new Date(pr.eta).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-            : "ETA: Pending",
-          customerName: pr.orderId?.orderId ? `Order #${pr.orderId.orderId}` : "Hub Procurement",
-          address: pr.vendorReadyNotes || pr.notes || "Procurement request to Hub",
+          customerName: pr.orderId?.orderId
+            ? `Order #${pr.orderId.orderId}`
+            : "Hub Procurement",
+          address:
+            !notes || looksLikeInternalNote
+              ? "Destination: PacknPure Hub"
+              : notes,
           addressCoords: coords,
+          productCount: Array.isArray(pr.items) ? pr.items.length : 0,
         };
       });
 
@@ -137,7 +151,6 @@ const DeliveryTracking = () => {
       if (activeTab === "Completed") return matchesSearch && isCompleted;
       return matchesSearch;
     });
-    // Reset to first page if current page exceeds total pages
     const totalPages = Math.max(1, Math.ceil(result.length / pageSize));
     if (page > totalPages) {
       setPage(1);
@@ -147,8 +160,7 @@ const DeliveryTracking = () => {
 
   const paginatedDeliveries = useMemo(() => {
     const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    return filteredDeliveries.slice(start, end);
+    return filteredDeliveries.slice(start, start + pageSize);
   }, [filteredDeliveries, page, pageSize]);
 
   const stats = useMemo(
@@ -156,11 +168,14 @@ const DeliveryTracking = () => {
       {
         label: "Awaiting Pickup",
         value: deliveries.filter((d) =>
-          ["created", "vendor_confirmed"].includes(String(d.rawStatus || "").toLowerCase()),
+          ["created", "vendor_confirmed", "seller_confirmed"].includes(
+            String(d.rawStatus || "").toLowerCase(),
+          ),
         ).length,
         icon: HiOutlineTruck,
-        color: "text-blue-600",
-        bg: "bg-blue-50",
+        color: "text-sky-600",
+        bg: "bg-sky-50",
+        ring: "ring-sky-100",
       },
       {
         label: "In Transit",
@@ -172,6 +187,7 @@ const DeliveryTracking = () => {
         icon: HiOutlineMapPin,
         color: "text-amber-600",
         bg: "bg-amber-50",
+        ring: "ring-amber-100",
       },
       {
         label: "Verified",
@@ -181,6 +197,7 @@ const DeliveryTracking = () => {
         icon: HiOutlineCheckCircle,
         color: "text-emerald-600",
         bg: "bg-emerald-50",
+        ring: "ring-emerald-100",
       },
     ],
     [deliveries],
@@ -188,199 +205,224 @@ const DeliveryTracking = () => {
 
   const getStatusVariant = (status) => {
     const v = String(status || "").toLowerCase();
-    if (v.includes("verified") || v.includes("closed")) return "success";
-    if (v.includes("cancel")) return "error";
-    if (v.includes("exception")) return "error";
-    if (v.includes("pickup") || v.includes("transit") || v.includes("picked")) return "warning";
+    if (v.includes("verified") || v.includes("closed") || v.includes("stocked"))
+      return "success";
+    if (v.includes("cancel") || v.includes("reject") || v.includes("exception"))
+      return "error";
+    if (v.includes("pickup") || v.includes("transit") || v.includes("picked") || v.includes("hub"))
+      return "warning";
     return "info";
   };
 
   return (
-    <div className="space-y-6 pb-16">
-      <BlurFade delay={0.1}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-              Purchase Request Tracking
-              <Badge
-                variant="primary"
-                className="text-[10px] sm:text-xs px-1.5 py-0 font-bold tracking-wider uppercase bg-blue-100 text-blue-700">
-                Hub-First
-              </Badge>
-            </h1>
-            <p className="text-slate-600 text-base mt-0.5 font-medium">
-              Track your procurement requests and pickup partner progress.
-            </p>
-          </div>
+    <div className="space-y-5 sm:space-y-6 pb-20 md:pb-8">
+      <BlurFade delay={0.05}>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex flex-wrap items-center gap-2">
+            Purchase Request Tracking
+            <Badge
+              variant="primary"
+              className="text-[9px] sm:text-[10px] px-1.5 py-0.5 font-bold tracking-wider uppercase"
+            >
+              Hub-First
+            </Badge>
+          </h1>
+          <p className="text-slate-500 text-sm sm:text-base">
+            Track procurement requests and pickup partner progress.
+          </p>
         </div>
       </BlurFade>
 
-      {/* Stats Grid */}
       {loading ? (
-        <div className="min-h-[240px] sm:min-h-[320px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <Loader2 className="h-10 w-10 text-primary animate-spin" />
-          <p className="text-slate-600 font-bold mt-4 uppercase tracking-widest text-xs">Tracking Fleet...</p>
+        <div className="min-h-[220px] flex flex-col items-center justify-center bg-white rounded-2xl border border-slate-100">
+          <Loader2 className="h-9 w-9 text-primary animate-spin" />
+          <p className="text-slate-500 font-semibold mt-3 text-xs uppercase tracking-wider">
+            Loading tracking…
+          </p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             {stats.map((stat, i) => (
-              <BlurFade key={i} delay={0.1 + i * 0.05}>
-                <MagicCard
-                  className="border-none shadow-sm ring-1 ring-slate-100 p-0 overflow-hidden group bg-white"
-                  gradientColor={
-                    stat.color === "text-blue-600"
-                      ? "#e0f2fe"
-                      : stat.color === "text-amber-600"
-                        ? "#fef3c7"
-                        : "#dcfce7"
-                  }>
-                  <div className="flex items-center gap-4 p-5 relative z-10">
-                    <div
-                      className={cn(
-                        "h-14 w-14 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110 duration-500 shadow-sm",
-                        stat.bg,
-                        stat.color,
-                      )}>
-                      <stat.icon className="h-7 w-7" />
-                    </div>
-                    <div className="flex flex-col">
-                      <p className="text-xs font-black text-slate-600 uppercase tracking-widest">
-                        {stat.label}
-                      </p>
-                      <h4 className="text-3xl font-black text-slate-900 tracking-tight leading-none mt-1">
-                        {stat.value}
-                      </h4>
-                    </div>
+              <BlurFade key={stat.label} delay={0.05 + i * 0.04}>
+                <div
+                  className={cn(
+                    "flex items-center gap-3 sm:gap-4 rounded-2xl bg-white p-4 ring-1 shadow-sm",
+                    stat.ring,
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "h-11 w-11 sm:h-12 sm:w-12 rounded-xl flex items-center justify-center shrink-0",
+                      stat.bg,
+                      stat.color,
+                    )}
+                  >
+                    <stat.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
-                </MagicCard>
+                  <div className="min-w-0">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide truncate">
+                      {stat.label}
+                    </p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 leading-none mt-1 tabular-nums">
+                      {stat.value}
+                    </p>
+                  </div>
+                </div>
               </BlurFade>
             ))}
           </div>
 
-          <BlurFade delay={0.3}>
-            <Card className="border-none shadow-xl ring-1 ring-slate-100 overflow-hidden rounded-lg bg-white">
-              {/* Tabs & Search */}
-              <div className="border-b border-slate-100 bg-slate-50/30">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between px-6">
-                  <div className="flex items-center overflow-x-auto scrollbar-hide">
+          <BlurFade delay={0.15}>
+            <Card className="border-none shadow-sm ring-1 ring-slate-100 overflow-hidden rounded-2xl bg-white p-0">
+              <div className="border-b border-slate-100 bg-slate-50/60 px-3 sm:px-5">
+                <div className="flex flex-col gap-3 sm:gap-0 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
                     {tabs.map((tab) => (
                       <button
                         key={tab}
-                        onClick={() => setActiveTab(tab)}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(tab);
+                          setPage(1);
+                        }}
                         className={cn(
-                          "relative py-5 px-6 text-[10px] font-black uppercase tracking-widest transition-all duration-300 whitespace-nowrap shrink-0",
+                          "relative py-3.5 px-3 sm:px-4 text-[11px] sm:text-xs font-bold uppercase tracking-wide whitespace-nowrap rounded-t-lg transition-colors",
                           activeTab === tab
-                            ? "text-primary bg-white/50"
-                            : "text-slate-600 hover:text-slate-700",
-                        )}>
+                            ? "text-primary"
+                            : "text-slate-500 hover:text-slate-700",
+                        )}
+                      >
                         {tab}
                         {activeTab === tab && (
                           <motion.div
                             layoutId="tab-underline-tracking"
-                            className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t-full mx-4"
+                            className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full"
                           />
                         )}
                       </button>
                     ))}
                   </div>
-                  <div className="py-3 lg:py-0 w-full lg:w-72">
-                    <div className="relative group">
-                      <HiOutlineMagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600 group-focus-within:text-primary transition-all" />
+                  <div className="pb-3 sm:pb-0 sm:py-2 w-full sm:w-64 md:w-72">
+                    <div className="relative">
+                      <HiOutlineMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                       <input
-                        type="text"
-                        placeholder="Search Order ID or Partner..."
-                        className="w-full pl-10 pr-4 py-2 bg-slate-100/50 border-none rounded-lg text-sm font-bold text-slate-700 placeholder:text-slate-500 focus:ring-2 focus:ring-primary/10 transition-all outline-none"
+                        type="search"
+                        placeholder="Search PR ID or partner…"
+                        className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/15 focus:border-primary/30 outline-none"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setPage(1);
+                        }}
                       />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Delivery List */}
-              <div className="p-4 sm:p-6 space-y-4">
+              <div className="p-3 sm:p-5 space-y-3">
                 <AnimatePresence mode="popLayout">
                   {paginatedDeliveries.map((dlv, idx) => (
                     <motion.div
                       key={dlv.id}
-                      initial={{ opacity: 0, y: 20 }}
+                      initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="group relative bg-white rounded-lg border border-slate-100 p-2 sm:p-1 hover:shadow-2xl hover:shadow-primary/5 hover:border-primary/20 transition-all duration-500 min-w-0">
-                      <div className="flex flex-col lg:flex-row items-stretch gap-3 sm:gap-1">
-                        {/* Partner Info Section */}
-                        <div className="lg:w-1/3 p-3 sm:p-5 bg-slate-50/50 rounded-lg border border-transparent group-hover:bg-primary/[0.02] group-hover:border-primary/5 transition-all min-w-0">
-                          <div className="flex items-center gap-3 sm:gap-4">
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      transition={{ delay: Math.min(idx * 0.03, 0.2) }}
+                      className="rounded-2xl border border-slate-150 bg-white overflow-hidden hover:border-slate-200 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex flex-col md:flex-row">
+                        {/* Partner */}
+                        <div className="md:w-[220px] lg:w-[240px] shrink-0 p-4 bg-slate-50/80 border-b md:border-b-0 md:border-r border-slate-100">
+                          <div className="flex items-center gap-3">
                             <div className="relative shrink-0">
-                              <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-lg overflow-hidden ring-2 sm:ring-4 ring-white shadow-md">
+                              {dlv.deliveryBoy.image ? (
                                 <img
                                   src={dlv.deliveryBoy.image}
-                                  alt={dlv.deliveryBoy.name}
-                                  className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                  alt=""
+                                  className="h-12 w-12 rounded-xl object-cover ring-2 ring-white shadow-sm"
                                 />
-                              </div>
-                              <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 h-5 w-5 sm:h-6 sm:w-6 bg-emerald-500 rounded-md border-2 border-white flex items-center justify-center text-white text-[10px] sm:text-xs font-black shadow-sm">
-                                {dlv.deliveryBoy.rating}
-                              </div>
+                              ) : (
+                                <div className="h-12 w-12 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm ring-2 ring-white shadow-sm">
+                                  {dlv.deliveryBoy.avatar}
+                                </div>
+                              )}
+                              {dlv.deliveryBoy.rating != null && dlv.deliveryBoy.rating > 0 ? (
+                                <div className="absolute -bottom-1 -right-1 h-5 min-w-5 px-1 bg-emerald-500 rounded-md border-2 border-white flex items-center justify-center text-white text-[9px] font-bold">
+                                  {dlv.deliveryBoy.rating}
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[10px] sm:text-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
-                                Pickup Partner
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Pickup partner
                               </p>
-                              <h3 className="text-sm sm:text-base font-black text-slate-900 leading-none truncate">
+                              <p className="text-sm font-bold text-slate-900 truncate mt-0.5">
                                 {dlv.deliveryBoy.name}
-                              </h3>
-                              <span className="inline-flex items-center gap-1.5 mt-1.5 sm:mt-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-white rounded-lg text-[10px] sm:text-[11px] font-black text-slate-500 shadow-sm border border-slate-100">
-                                <HiOutlinePhone className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
-                                <span className="truncate">
-                                  {dlv.deliveryBoy.phone
-                                    ? dlv.deliveryBoy.phone
-                                    : "Masked calling soon"}
-                                </span>
-                              </span>
+                              </p>
                             </div>
+                          </div>
+                          <div className="mt-3">
+                            <span className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200/80">
+                              <HiOutlinePhone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                              <span className="truncate">
+                                {dlv.deliveryBoy.phone || "Phone hidden · Masked calling soon"}
+                              </span>
+                            </span>
                           </div>
                         </div>
 
-                        {/* Order Info Section */}
-                        <div className="flex-1 p-3 sm:p-5 flex flex-col justify-between min-w-0">
-                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-3 sm:mb-4">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-1.5">
-                                <span className="text-[11px] sm:text-xs font-black text-slate-900 tracking-tight break-all">
+                        {/* Details */}
+                        <div className="flex-1 min-w-0 p-4 space-y-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900 break-all">
                                   #{dlv.orderId}
                                 </span>
                                 <Badge
+                                  variant={
+                                    dlv.requestType === "manual" ? "warning" : "primary"
+                                  }
+                                  className="text-[9px] uppercase font-bold px-1.5 py-0"
+                                >
+                                  {dlv.requestType === "manual" ? "Manual" : "Auto"}
+                                </Badge>
+                                <Badge
                                   variant={getStatusVariant(dlv.status)}
-                                  className="text-[10px] sm:text-xs font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide"
                                 >
                                   {dlv.status}
                                 </Badge>
                               </div>
-                              <h4 className="text-[11px] sm:text-xs font-bold text-slate-600 flex items-center gap-1.5 flex-wrap">
-                                <HiOutlineUser className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-600 shrink-0" />
-                                Customer:{" "}
-                                <span className="text-slate-900 capitalize">{dlv.customerName}</span>
-                              </h4>
+                              <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+                                <HiOutlineUser className="h-3.5 w-3.5 shrink-0" />
+                                <span>
+                                  {dlv.customerName}
+                                  {dlv.productCount > 0
+                                    ? ` · ${dlv.productCount} item${dlv.productCount === 1 ? "" : "s"}`
+                                    : ""}
+                                </span>
+                              </p>
                             </div>
                             <div className="sm:text-right shrink-0">
-                              <p className="text-[10px] sm:text-xs font-black text-slate-600 uppercase tracking-widest">
-                                Order Date & Time
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                                Requested
                               </p>
-                              <p className="text-xs sm:text-sm font-black text-primary tracking-tight">
-                                {dlv.orderDate && dlv.startTime ? `${dlv.orderDate} • ${dlv.startTime}` : dlv.startTime || dlv.orderDate || "—"}
+                              <p className="text-xs sm:text-sm font-semibold text-slate-800 mt-0.5">
+                                {dlv.orderDate && dlv.startTime
+                                  ? `${dlv.orderDate} · ${dlv.startTime}`
+                                  : dlv.startTime || dlv.orderDate || "—"}
                               </p>
                             </div>
                           </div>
 
-                          <div className="bg-slate-50/50 p-3 sm:p-4 rounded-lg border border-slate-100/50 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
-                              <p className="text-[10px] sm:text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                                <HiOutlineMapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary shrink-0" />
-                                Destination Address
+                          <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                                <HiOutlineMapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                                Destination
                               </p>
                               {dlv.addressCoords &&
                                 typeof dlv.addressCoords.lat === "number" &&
@@ -392,25 +434,19 @@ const DeliveryTracking = () => {
                                       window.open(
                                         `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
                                         "_blank",
+                                        "noopener,noreferrer",
                                       );
                                     }}
-                                    className="text-[10px] font-bold text-primary hover:underline"
+                                    className="shrink-0 inline-flex items-center h-7 px-2.5 rounded-lg text-[10px] font-bold text-primary bg-white border border-primary/20 hover:bg-primary/5"
                                   >
-                                    View on map
+                                    View map
                                   </button>
                                 )}
                             </div>
-                            <p className="text-[11px] sm:text-xs font-bold text-slate-700 leading-relaxed break-words">
+                            <p className="text-xs sm:text-sm font-medium text-slate-700 mt-1.5 leading-relaxed break-words">
                               {dlv.address}
                             </p>
                           </div>
-                        </div>
-
-                        {/* Action Button Section */}
-                        <div className="lg:w-16 flex items-center justify-center p-2 sm:p-3 shrink-0">
-                          <button className="h-10 w-10 lg:h-full lg:w-full bg-slate-900 group-hover:bg-primary rounded-lg lg:rounded-r-lg lg:rounded-l-none flex items-center justify-center text-white transition-all duration-500 shadow-xl shadow-slate-900/10 hover:shadow-primary/30">
-                            <HiOutlineTruck className="h-5 w-5 group-hover:scale-125 transition-transform" />
-                          </button>
                         </div>
                       </div>
                     </motion.div>
@@ -418,23 +454,22 @@ const DeliveryTracking = () => {
                 </AnimatePresence>
 
                 {filteredDeliveries.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
-                    <div className="h-20 w-20 bg-white rounded-lg flex items-center justify-center shadow-sm mb-4">
-                      <HiOutlineTruck className="h-10 w-10 text-slate-200" />
+                  <div className="flex flex-col items-center justify-center py-14 sm:py-16 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 px-4 text-center">
+                    <div className="h-14 w-14 bg-white rounded-2xl flex items-center justify-center shadow-sm mb-3 ring-1 ring-slate-100">
+                      <HiOutlineTruck className="h-7 w-7 text-slate-300" />
                     </div>
-                    <h3 className="text-base font-black text-slate-900">
-                      No active tracking found
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                      No shipments in this view
                     </h3>
-                    <p className="text-sm text-slate-600 font-bold uppercase tracking-widest mt-2">
-                      Adjust filters or search terms
+                    <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                      Try another tab or clear your search.
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Pagination */}
               {filteredDeliveries.length > 0 && (
-                <div className="px-4 sm:px-6 pb-4">
+                <div className="px-3 sm:px-5 pb-4 overflow-x-auto">
                   <Pagination
                     page={page}
                     totalPages={Math.max(1, Math.ceil(filteredDeliveries.length / pageSize))}

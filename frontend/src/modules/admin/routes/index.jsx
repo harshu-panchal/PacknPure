@@ -26,7 +26,6 @@ import {
   PackageSearch,
   Timer,
   QrCode,
-  ClipboardCheck,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -48,7 +47,6 @@ const ProductManagement = React.lazy(
 const BarcodeStickerManagement = React.lazy(
   () => import("../pages/BarcodeStickerManagement"),
 );
-const StockAudit = React.lazy(() => import("../pages/StockAudit"));
 const HubInventoryPage = React.lazy(() => import("../pages/HubInventoryPage"));
 const PurchaseRequestsPage = React.lazy(
   () => import("../pages/PurchaseRequestsPage"),
@@ -201,12 +199,6 @@ const navItems = [
     color: "violet",
   },
   {
-    label: "Stock Audit",
-    path: "/admin/stock-audit",
-    icon: ClipboardCheck,
-    color: "emerald",
-  },
-  {
     label: "Hub Inventory",
     path: "/admin/hub-inventory",
     icon: Boxes,
@@ -339,7 +331,6 @@ const AdminRoutes = () => {
         <Route path="/categories/hierarchy" element={<CategoryHierarchy />} />
         <Route path="/products" element={<ProductManagement />} />
         <Route path="/barcodes" element={<BarcodeStickerManagement />} />
-        <Route path="/stock-audit" element={<StockAudit />} />
         <Route path="/hub-inventory" element={<HubInventoryPage />} />
         <Route path="/suppliers" element={<SuppliersManagementPage />} />
         <Route path="/suppliers/:id" element={<SellerDetail />} />

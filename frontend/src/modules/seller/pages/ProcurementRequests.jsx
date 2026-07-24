@@ -11,6 +11,9 @@ import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline"
 import { formatPrDate } from "@shared/utils/purchaseRequestFormat";
 import PRCountdown from "@shared/components/PRCountdown";
 
+/** Set true later to let sellers edit Accept Qty again. */
+const ALLOW_SELLER_EDIT_ACCEPT_QTY = false;
+
 const STATUS_OPTIONS = [
   { label: "All", value: "all" },
   { label: "Created", value: "created" },
@@ -427,16 +430,29 @@ const ProcurementRequests = () => {
                                 <Input
                                   label="Accept Qty"
                                   value={commitMap[row._id]?.[key] ?? String(requestedQty)}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    if (!ALLOW_SELLER_EDIT_ACCEPT_QTY) return;
                                     setCommitMap((prev) => ({
                                       ...prev,
                                       [row._id]: {
                                         ...(prev[row._id] || {}),
                                         [key]: e.target.value.replace(/\D/g, ""),
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                   placeholder="Qty"
+                                  readOnly={!ALLOW_SELLER_EDIT_ACCEPT_QTY}
+                                  disabled={!ALLOW_SELLER_EDIT_ACCEPT_QTY}
+                                  className={
+                                    !ALLOW_SELLER_EDIT_ACCEPT_QTY
+                                      ? "bg-slate-50 text-slate-600 cursor-not-allowed"
+                                      : undefined
+                                  }
+                                  title={
+                                    !ALLOW_SELLER_EDIT_ACCEPT_QTY
+                                      ? "Quantity is fixed to the requested amount"
+                                      : undefined
+                                  }
                                 />
                               </div>
                               <Button
