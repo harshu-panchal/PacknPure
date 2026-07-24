@@ -15,6 +15,20 @@ import PRCountdown from "@shared/components/PRCountdown";
 
 const statusToLabel = (value) => prStatusLabel(value);
 
+const stagePillClass = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (s === "verified") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (s === "created") return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (s === "seller_confirmed" || s === "vendor_confirmed")
+    return "bg-sky-50 text-sky-700 ring-sky-200";
+  if (["pickup_assigned", "picked", "hub_delivered"].includes(s))
+    return "bg-indigo-50 text-indigo-700 ring-indigo-200";
+  if (s === "received_at_hub") return "bg-violet-50 text-violet-700 ring-violet-200";
+  if (["cancelled", "seller_rejected", "expired", "exception"].includes(s))
+    return "bg-rose-50 text-rose-700 ring-rose-200";
+  return "bg-slate-100 text-slate-700 ring-slate-200";
+};
+
 const PurchaseRequestsPage = () => {
   const [rows, setRows] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -255,6 +269,7 @@ const PurchaseRequestsPage = () => {
             >
               <option value="all">All statuses</option>
               <option value="created">Pending vendor</option>
+              <option value="seller_confirmed">Seller confirmed</option>
               <option value="vendor_confirmed">Vendor confirmed</option>
               <option value="pickup_assigned">Pickup assigned</option>
               <option value="picked">In transit</option>
@@ -281,16 +296,20 @@ const PurchaseRequestsPage = () => {
             key: "requestId",
             label: "Request",
             render: (row) => (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <p className="text-sm font-bold text-slate-900">{row.requestId}</p>
+              <div className="min-w-[150px]">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-bold text-slate-900 leading-tight">{row.requestId}</p>
                   {row.requestType === "manual" ? (
-                    <span className="bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-tight">Manual</span>
+                    <span className="bg-amber-50 text-amber-700 ring-1 ring-amber-100 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-bold tracking-wide shrink-0">
+                      Manual
+                    </span>
                   ) : (
-                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-tight">Automated</span>
+                    <span className="bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-bold tracking-wide shrink-0">
+                      Auto
+                    </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500">{formatPrDate(row.createdAt)}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{formatPrDate(row.createdAt)}</p>
               </div>
             ),
           },
@@ -298,14 +317,16 @@ const PurchaseRequestsPage = () => {
             key: "vendorName",
             label: "Vendor",
             render: (row) => (
-              <div>
-                <p className="text-sm font-semibold text-slate-800">{row.vendorName}</p>
+              <div className="min-w-[120px]">
+                <p className="text-sm font-semibold text-slate-800 leading-tight truncate max-w-[160px]" title={row.vendorName}>
+                  {row.vendorName || "—"}
+                </p>
                 {row.confirmedAt || row.dates?.confirmedAt ? (
-                  <p className="text-xs text-emerald-600">
+                  <p className="text-[11px] text-slate-500 mt-0.5">
                     Confirmed {formatPrDate(row.confirmedAt || row.dates?.confirmedAt)}
                   </p>
                 ) : (
-                  <p className="text-xs text-amber-600">Awaiting confirm</p>
+                  <p className="text-[11px] text-amber-600 mt-0.5">Awaiting confirm</p>
                 )}
               </div>
             ),
@@ -316,8 +337,9 @@ const PurchaseRequestsPage = () => {
             render: (row) => (
               <PurchaseRequestLineItems
                 items={row.items}
-                compact={Array.isArray(row.items) && row.items.length <= 2}
+                compact
                 showStatus
+                maxVisible={3}
               />
             ),
           },
@@ -325,13 +347,12 @@ const PurchaseRequestsPage = () => {
             key: "unitCost",
             label: "Pricing",
             render: (row) => (
-              <div className="text-sm">
-                <p className="font-semibold text-slate-800">
-                  Total ₹{formatInr(row.totalCost)}
+              <div className="text-sm whitespace-nowrap">
+                <p className="font-semibold text-slate-800 tabular-nums">
+                  ₹{formatInr(row.totalCost)}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {(row.items || []).length} product{(row.items || []).length === 1 ? "" : "s"}
-                  {" · "}GST ₹{formatInr(row.gstTotal ?? row.gstAmount)}
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {(row.items || []).length} item{(row.items || []).length === 1 ? "" : "s"}
                 </p>
               </div>
             ),
@@ -341,10 +362,14 @@ const PurchaseRequestsPage = () => {
             label: "Pickup",
             render: (row) =>
               row.pickupPartnerName ? (
-                <div className="text-sm">
-                  <p className="font-medium text-slate-800">{row.pickupPartnerName}</p>
+                <div className="text-sm min-w-[110px]">
+                  <p className="font-medium text-slate-800 leading-tight truncate max-w-[140px]" title={row.pickupPartnerName}>
+                    {row.pickupPartnerName}
+                  </p>
                   {row.dates?.pickupAssignedAt ? (
-                    <p className="text-xs text-slate-500">{formatPrDate(row.dates.pickupAssignedAt)}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {formatPrDate(row.dates.pickupAssignedAt)}
+                    </p>
                   ) : null}
                 </div>
               ) : (
@@ -353,7 +378,7 @@ const PurchaseRequestsPage = () => {
           },
           {
             key: "expiresAt",
-            label: "Time Remaining",
+            label: "Time left",
             render: (row) => {
               if (row.rawStatus === "created" && row.expiresAt) {
                 return <PRCountdown expiresAt={row.expiresAt} status={row.rawStatus} />;
@@ -361,10 +386,19 @@ const PurchaseRequestsPage = () => {
               return <span className="text-slate-400 text-xs">—</span>;
             },
           },
-          { key: "statusLabel", label: "Stage" },
+          {
+            key: "statusLabel",
+            label: "Stage",
+            render: (row) => (
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ring-1 whitespace-nowrap ${stagePillClass(row.rawStatus)}`}
+              >
+                {row.statusLabel || statusToLabel(row.rawStatus)}
+              </span>
+            ),
+          },
         ]}
         rows={filteredRows}
-        statusColumn="statusLabel"
         renderActions={(row) => {
           const st = row.rawStatus;
           const isTerminal = ["verified", "closed", "cancelled"].includes(st);
@@ -378,41 +412,41 @@ const PurchaseRequestsPage = () => {
           const needsFinalVerify = st === "received_at_hub";
 
           return (
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
               {needsVendor && (
                 <button
                   type="button"
                   onClick={() => openAssignVendor(row)}
-                  className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-amber-600"
+                  className="inline-flex items-center gap-1 bg-amber-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-amber-600"
                 >
-                  <Store size={14} /> Assign vendor
+                  <Store size={13} /> Vendor
                 </button>
               )}
               {needsPickup && (
                 <button
                   type="button"
                   onClick={() => openAssign(row)}
-                  className="inline-flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-indigo-700"
+                  className="inline-flex items-center gap-1 bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-indigo-700"
                 >
-                  <Truck size={14} /> Assign pickup
+                  <Truck size={13} /> Pickup
                 </button>
               )}
               {needsReceive && (
                 <button
                   type="button"
                   onClick={() => markReceivedAtHub(row)}
-                  className="inline-flex items-center gap-1.5 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-sky-700"
+                  className="inline-flex items-center gap-1 bg-sky-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-sky-700"
                 >
-                  <PackageCheck size={14} /> Receive
+                  <PackageCheck size={13} /> Receive
                 </button>
               )}
               {st === "return_requested" && (
                 <button
                   type="button"
                   onClick={() => openAssign(row)}
-                  className="inline-flex items-center gap-1.5 bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-purple-700"
+                  className="inline-flex items-center gap-1 bg-purple-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-purple-700"
                 >
-                  <Truck size={14} /> Assign Return Trip
+                  <Truck size={13} /> Return
                 </button>
               )}
 
@@ -421,25 +455,25 @@ const PurchaseRequestsPage = () => {
                   <button
                     type="button"
                     onClick={() => markVerified(row)}
-                    className="inline-flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-emerald-700"
+                    className="inline-flex items-center gap-1 bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-emerald-700"
                   >
-                    <CheckCircle2 size={14} /> Verify QA
+                    <CheckCircle2 size={13} /> Verify
                   </button>
                   <button
                     type="button"
                     onClick={() => rejectQA(row)}
-                    className="inline-flex items-center gap-1.5 bg-rose-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-rose-700"
+                    className="inline-flex items-center gap-1 bg-rose-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-rose-700"
                   >
-                    <AlertCircle size={14} /> Reject QA
+                    <AlertCircle size={13} /> Reject
                   </button>
                 </>
               )}
               <button
                 type="button"
                 onClick={() => openDetails(row)}
-                className="border border-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-50"
+                className="border border-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-slate-50"
               >
-                Details & history
+                Details
               </button>
               {!isTerminal && (
                 <button
@@ -448,10 +482,10 @@ const PurchaseRequestsPage = () => {
                     setCurrentRow(row);
                     setCancelOpen(true);
                   }}
-                  className="p-2 text-slate-400 hover:text-rose-500"
+                  className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50"
                   title="Cancel request"
                 >
-                  <AlertCircle size={16} />
+                  <AlertCircle size={15} />
                 </button>
               )}
             </div>

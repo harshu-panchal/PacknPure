@@ -23,12 +23,15 @@ export const formatInr = (n) =>
 export const prStatusLabel = (status) => {
   const map = {
     created: "Pending vendor",
+    seller_confirmed: "Seller confirmed",
     vendor_confirmed: "Vendor confirmed",
     pickup_assigned: "Pickup assigned",
     picked: "In transit",
     hub_delivered: "At hub gate",
     received_at_hub: "Received at hub",
     verified: "Verified & stocked",
+    seller_rejected: "Seller rejected",
+    expired: "Expired",
     closed: "Closed",
     cancelled: "Cancelled",
     exception: "Exception",
