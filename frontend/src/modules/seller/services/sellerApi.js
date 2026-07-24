@@ -68,6 +68,8 @@ export const sellerApi = {
     getPurchaseRequests: (params) => axiosInstance.get('/seller/purchase-requests', { params }),
     getPurchaseRequestById: (id) => axiosInstance.get(`/seller/purchase-requests/${id}`),
     respondPurchaseRequest: (id, data) => axiosInstance.post(`/seller/purchase-requests/${id}/respond`, data),
+    respondToManualPR: (id, action, notes) =>
+        axiosInstance.put(`/admin/purchase-requests/manual/${id}/respond`, { action, notes }),
     markPurchaseRequestReady: (id, data) => axiosInstance.post(`/seller/purchase-requests/${id}/ready`, data),
     confirmPurchaseHandover: (id, data) => axiosInstance.post(`/seller/purchase-requests/${id}/handover`, data),
     confirmPurchaseReturn: (id, data = {}) => axiosInstance.post(`/seller/purchase-requests/${id}/confirm-return`, data),

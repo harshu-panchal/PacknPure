@@ -11,6 +11,9 @@ import {
   receiveAtHub,
   verifyInward,
   assignReturnPickup,
+  createManualPR,
+  respondToManualPR,
+  updateManualPRStatus,
 } from "../controller/purchaseRequestController.js";
 
 const router = express.Router();
@@ -40,5 +43,10 @@ router.put(
 router.post("/:id/receive", verifyToken, allowRoles("admin"), receiveAtHub);
 router.post("/:id/verify", verifyToken, allowRoles("admin"), verifyInward);
 router.post("/:id/assign-return", verifyToken, allowRoles("admin"), assignReturnPickup);
+
+// Standalone Manual PR isolated routes
+router.post("/manual", verifyToken, allowRoles("admin"), createManualPR);
+router.put("/manual/:id/respond", verifyToken, allowRoles("seller"), respondToManualPR);
+router.put("/manual/:id/status", verifyToken, allowRoles("admin"), updateManualPRStatus);
 
 export default router;

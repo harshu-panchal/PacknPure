@@ -1924,3 +1924,385 @@ export const confirmVendorReturn = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+// ==========================================
+// STANDALONE MANUAL PR IMPLEMENTATION
+// ==========================================
+
+export const createManualPR = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const { vendorId, items } = req.body || {};
+
+    if (!vendorId || !mongoose.Types.ObjectId.isValid(vendorId)) {
+      return handleResponse(res, 400, "Valid vendorId is required");
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return handleResponse(res, 400, "A non-empty items array is required");
+    }
+
+    const vendor = await Seller.findById(vendorId).select("_id shopName name");
+    if (!vendor) return handleResponse(res, 404, "Vendor not found");
+
+    const { getSellerResponseTimeoutMinutes } = await import("../services/settingsService.js");
+    const timeoutMinutes = (await getSellerResponseTimeoutMinutes()) || 120;
+    const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+
+    const prItems = [];
+    for (const item of items) {
+      const { productId, variantId, quantity, notes } = item || {};
+      if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+        return handleResponse(res, 400, "Valid productId is required for each item");
+      }
+      const qty = Math.max(1, Number(quantity || 0));
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return handleResponse(res, 400, "Valid quantity is required for each item");
+      }
+
+      const product = await Product.findById(productId).select(
+        "_id name status stock price salePrice purchasePrice gstRate variants",
+      );
+      if (!product) return handleResponse(res, 404, `Product not found: ${productId}`);
+
+      const variantRows = Array.isArray(product.variants) ? product.variants : [];
+      const targetVariant =
+        variantId && variantRows.length
+          ? variantRows.find((v) => String(v._id) === String(variantId))
+          : null;
+      if (variantRows.length > 0 && !targetVariant) {
+        return handleResponse(res, 400, `variantId is required for variant-based product: ${product.name}`);
+      }
+
+      const sellerStock = (() => {
+        if (targetVariant) return Math.max(0, Number(targetVariant.stock) || 0);
+        return Math.max(0, Number(product.stock) || 0);
+      })();
+
+      if (qty > sellerStock) {
+        return handleResponse(
+          res,
+          400,
+          `Requested quantity for ${product.name} exceeds available stock (${sellerStock} available).`,
+        );
+      }
+
+      // Active duplicates check for this seller/product
+      const activePr = await PurchaseRequest.findOne({
+        vendorId,
+        status: { $in: ["created", "seller_confirmed", "pickup_assigned", "picked", "hub_delivered", "received_at_hub"] },
+        "items.productId": product._id,
+      }).select("requestId");
+      if (activePr) {
+        return handleResponse(
+          res,
+          409,
+          `An active purchase request (${activePr.requestId}) already exists for this product: ${product.name}`,
+        );
+      }
+
+      const unitCost = targetVariant
+        ? toMoney(Number(targetVariant.purchasePrice ?? targetVariant.price) || product?.purchasePrice || product?.price || 0)
+        : toMoney(product?.purchasePrice || product?.salePrice || product?.price || 0);
+
+      const itemNotes = notes ? String(notes).trim() : "";
+
+      prItems.push({
+        productId: product._id,
+        variantId: targetVariant ? targetVariant._id : undefined,
+        selectedSellerProductId: product._id,
+        requiredQty: qty,
+        availableQtyAtHub: 0,
+        shortageQty: qty,
+        requestedQty: qty,
+        remainingQty: qty,
+        committedQty: 0,
+        vendorUnitCost: unitCost,
+        vendorQuotedPrice: unitCost,
+        pricingStrategy: "standalone_manual_request",
+        gstRate: product.gstRate || 0,
+        gstAmount: Math.round(unitCost * qty * ((product.gstRate || 0) / 100)),
+        baseSupplyPrice: unitCost,
+        finalSupplyPrice: unitCost + Math.round(unitCost * ((product.gstRate || 0) / 100)),
+        totalProcurementCost: (unitCost + Math.round(unitCost * ((product.gstRate || 0) / 100))) * qty,
+        notes: itemNotes,
+      });
+    }
+
+    session.startTransaction();
+
+    const [doc] = await PurchaseRequest.create([{
+      requestId: generateRequestId(),
+      orderId: null,
+      procurementSessionId: new mongoose.Types.ObjectId(),
+      allocationId: null,
+      hubId: DEFAULT_HUB_ID,
+      vendorId: vendor._id,
+      items: prItems,
+      status: "created",
+      expiresAt,
+    }], { session });
+
+    const { commitSellerInventory } = await import("../services/inventory/inventoryEngine.js");
+    for (const item of prItems) {
+      await commitSellerInventory({
+        productId: item.productId,
+        variantId: item.variantId || null,
+        quantity: item.requiredQty,
+        sellerId: vendor._id,
+        reason: "manual_pr_create",
+        idempotencyKey: `manual_pr_commit:${String(doc._id)}:${String(item.productId)}:${item.requiredQty}`,
+        session,
+      });
+    }
+
+    await session.commitTransaction();
+
+    // Trigger Notification: manual_pr_created
+    try {
+      const { createNotification } = await import("../services/notificationService.js");
+      await createNotification({
+        recipient: vendor._id,
+        recipientModel: "Seller",
+        title: "New Manual Purchase Request",
+        message: `You have received a new manual purchase request ${doc.requestId}.`,
+        type: "manual_pr_created",
+        data: { purchaseRequestId: doc._id.toString(), requestId: doc.requestId },
+      });
+    } catch (notifErr) {
+      console.error("[createManualPR] Notification failed:", notifErr.message);
+    }
+
+    const hydrated = await PurchaseRequest.findById(doc._id)
+      .populate("vendorId", "shopName name")
+      .populate("items.productId", "name")
+      .lean();
+
+    return handleResponse(res, 201, "Manual purchase request created successfully", hydrated);
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    return handleResponse(res, 500, error.message);
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const respondToManualPR = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const { id } = req.params;
+    const { action, notes } = req.body || {};
+    const sellerId = req.user?.id;
+
+    if (!["accept", "reject"].includes(String(action).toLowerCase())) {
+      return handleResponse(res, 400, "Action must be accept or reject");
+    }
+
+    const pr = await PurchaseRequest.findOne({ _id: id, vendorId: sellerId });
+    if (!pr) return handleResponse(res, 404, "Manual purchase request not found");
+
+    if (pr.status !== "created") {
+      return handleResponse(res, 400, "Purchase request is not open for response");
+    }
+
+    const isReject = String(action).toLowerCase() === "reject";
+
+    if (isReject) {
+      session.startTransaction();
+
+      // Release stock commits
+      const { releaseSellerCommit } = await import("../services/inventory/inventoryReleaseService.js");
+      for (const item of pr.items) {
+        await releaseSellerCommit({
+          productId: item.selectedSellerProductId || item.productId,
+          variantId: item.variantId || null,
+          quantity: item.committedQty || item.shortageQty,
+          session,
+          sellerId: pr.vendorId,
+          reason: "manual_pr_rejected_by_seller",
+          idempotencyKey: `manual_pr_reject_release:${String(pr._id)}:${String(item.productId)}`,
+        });
+      }
+
+      pr.status = "seller_rejected";
+      pr.vendorResponse = {
+        status: "rejected",
+        respondedAt: new Date(),
+        rejectionReason: notes || "Rejected by seller",
+      };
+      await pr.save({ session });
+
+      await session.commitTransaction();
+
+      // Trigger Notifications
+      try {
+        const { createNotification, notifyAdmins } = await import("../services/notificationService.js");
+        const admins = await mongoose.model("Admin").find({}).select("_id").lean();
+        const adminIds = admins.map((a) => a?._id).filter(Boolean);
+        
+        if (adminIds.length) {
+          const { createNotificationBatch } = await import("../services/notificationService.js");
+          await createNotificationBatch(
+            adminIds.map((adminId) => ({
+              recipient: adminId,
+              recipientModel: "Admin",
+              title: "Manual PR Rejected",
+              message: `Manual purchase request ${pr.requestId} was rejected by the seller.`,
+              type: "manual_pr_rejected",
+              data: { purchaseRequestId: pr._id.toString(), requestId: pr.requestId },
+            })),
+          );
+        }
+
+        // Notification: inventory_released
+        await createNotification({
+          recipient: sellerId,
+          recipientModel: "Seller",
+          title: "Inventory Released",
+          message: `Stock committed for purchase request ${pr.requestId} has been released.`,
+          type: "manual_pr_inventory_released",
+          data: { purchaseRequestId: pr._id.toString() },
+        });
+      } catch (notifErr) {
+        console.error("[respondToManualPR] Notifications failed:", notifErr.message);
+      }
+
+      return handleResponse(res, 200, "Purchase request rejected", pr);
+    } else {
+      // Accept flow
+      pr.status = "seller_confirmed";
+      pr.vendorResponse = {
+        status: "accepted",
+        respondedAt: new Date(),
+        notes: notes || "",
+      };
+      pr.items = pr.items.map((line) => {
+        line.committedQty = line.requestedQty;
+        line.remainingQty = 0;
+        line.lineStatus = "accepted";
+        return line;
+      });
+      await savePurchaseRequest(pr);
+
+      try {
+        await maybeAssignPickup(pr);
+      } catch (assignErr) {
+        console.warn("[respondToManualPR] Pickup assignment failed:", assignErr.message);
+      }
+
+      // Trigger Notifications
+      try {
+        const { createNotificationBatch } = await import("../services/notificationService.js");
+        const admins = await mongoose.model("Admin").find({}).select("_id").lean();
+        const adminIds = admins.map((a) => a?._id).filter(Boolean);
+        
+        if (adminIds.length) {
+          await createNotificationBatch(
+            adminIds.map((adminId) => ({
+              recipient: adminId,
+              recipientModel: "Admin",
+              title: "Manual PR Accepted",
+              message: `Manual purchase request ${pr.requestId} was accepted by the seller.`,
+              type: "manual_pr_accepted",
+              data: { purchaseRequestId: pr._id.toString(), requestId: pr.requestId },
+            })),
+          );
+        }
+      } catch (notifErr) {
+        console.error("[respondToManualPR] Accepted notification failed:", notifErr.message);
+      }
+
+      const refreshed = await PurchaseRequest.findById(pr._id)
+        .populate("items.productId", "name")
+        .populate("pickupPartnerId", "name phone")
+        .lean();
+
+      return handleResponse(res, 200, "Purchase request accepted", refreshed);
+    }
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    return handleResponse(res, 500, error.message);
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const updateManualPRStatus = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const { id } = req.params;
+    const { status } = req.body || {};
+
+    if (String(status).toLowerCase() !== "cancelled") {
+      return handleResponse(res, 400, "Only cancellation is supported through this endpoint");
+    }
+
+    const pr = await PurchaseRequest.findById(id);
+    if (!pr) return handleResponse(res, 404, "Manual purchase request not found");
+
+    if (["closed", "cancelled", "seller_rejected", "expired"].includes(pr.status)) {
+      return handleResponse(res, 400, "Purchase request is already in a terminal state");
+    }
+
+    session.startTransaction();
+
+    // Release stock commits
+    const { releaseSellerCommit } = await import("../services/inventory/inventoryReleaseService.js");
+    for (const item of pr.items) {
+      const releaseQty = Number(item.committedQty || item.shortageQty || 0);
+      if (releaseQty > 0) {
+        await releaseSellerCommit({
+          productId: item.selectedSellerProductId || item.productId,
+          variantId: item.variantId || null,
+          quantity: releaseQty,
+          session,
+          sellerId: pr.vendorId,
+          reason: "manual_pr_cancelled_by_admin",
+          idempotencyKey: `manual_pr_cancel_release:${String(pr._id)}:${String(item.productId)}`,
+        });
+      }
+    }
+
+    pr.status = "cancelled";
+    await pr.save({ session });
+
+    await session.commitTransaction();
+
+    // Trigger Notifications
+    try {
+      const { createNotification } = await import("../services/notificationService.js");
+      // Notify Seller
+      await createNotification({
+        recipient: pr.vendorId,
+        recipientModel: "Seller",
+        title: "Manual PR Cancelled",
+        message: `Manual purchase request ${pr.requestId} has been cancelled by the admin.`,
+        type: "manual_pr_cancelled",
+        data: { purchaseRequestId: pr._id.toString() },
+      });
+      // Notify Seller of stock release
+      await createNotification({
+        recipient: pr.vendorId,
+        recipientModel: "Seller",
+        title: "Inventory Released",
+        message: `Stock committed for purchase request ${pr.requestId} has been released.`,
+        type: "manual_pr_inventory_released",
+        data: { purchaseRequestId: pr._id.toString() },
+      });
+    } catch (notifErr) {
+      console.error("[updateManualPRStatus] Notifications failed:", notifErr.message);
+    }
+
+    return handleResponse(res, 200, "Manual purchase request cancelled successfully", pr);
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    return handleResponse(res, 500, error.message);
+  } finally {
+    await session.endSession();
+  }
+};

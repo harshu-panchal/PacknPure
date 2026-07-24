@@ -88,6 +88,10 @@ export const adminApi = {
         }),
     createManualPurchaseRequest: (data) =>
         axiosInstance.post('/admin/purchase-requests', data),
+    createManualPR: (data) =>
+        axiosInstance.post('/admin/purchase-requests/manual', data),
+    cancelManualPR: (id) =>
+        axiosInstance.put(`/admin/purchase-requests/manual/${id}/status`, { status: 'cancelled' }),
     updatePurchaseRequestStatus: (id, status, payload = {}) =>
         axiosInstance.put(`/admin/purchase-requests/${id}/status`, { status, ...payload }),
     assignPurchasePickupPartner: (id, data) =>

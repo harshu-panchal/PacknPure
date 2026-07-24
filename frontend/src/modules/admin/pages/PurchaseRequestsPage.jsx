@@ -11,6 +11,8 @@ import PurchaseRequestDetailModal from "../components/PurchaseRequestDetailModal
 import PurchaseRequestLineItems from "../components/PurchaseRequestLineItems";
 import { adminApi } from "../services/adminApi";
 import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
+import ManualPRDetails from "../components/ManualPRDetails";
+import ManualPRCountdown from "@shared/components/ManualPRCountdown";
 
 const statusToLabel = (value) => prStatusLabel(value);
 
@@ -260,6 +262,8 @@ const PurchaseRequestsPage = () => {
               <option value="hub_delivered">At hub gate</option>
               <option value="received_at_hub">Received at hub</option>
               <option value="verified">Verified</option>
+              <option value="expired">Expired</option>
+              <option value="seller_rejected">Seller Rejected</option>
               <option value="exception">Exception</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -340,6 +344,16 @@ const PurchaseRequestsPage = () => {
               ) : (
                 <span className="text-xs text-slate-400">—</span>
               ),
+          },
+          {
+            key: "expiresAt",
+            label: "Time Remaining",
+            render: (row) => {
+              if (row.rawStatus === "created" && row.expiresAt) {
+                return <ManualPRCountdown expiresAt={row.expiresAt} status={row.rawStatus} />;
+              }
+              return <span className="text-slate-400 text-xs">—</span>;
+            },
           },
           { key: "statusLabel", label: "Stage" },
         ]}
@@ -503,15 +517,27 @@ const PurchaseRequestsPage = () => {
         message={infoMessage}
       />
 
-      <PurchaseRequestDetailModal
-        isOpen={detailsOpen}
-        onClose={() => {
-          setDetailsOpen(false);
-          setDetailRow(null);
-        }}
-        row={detailRow}
-        loading={detailLoading}
-      />
+      {detailRow && !detailRow.orderId ? (
+        <ManualPRDetails
+          isOpen={detailsOpen}
+          onClose={() => {
+            setDetailsOpen(false);
+            setDetailRow(null);
+          }}
+          row={detailRow}
+          loading={detailLoading}
+        />
+      ) : (
+        <PurchaseRequestDetailModal
+          isOpen={detailsOpen}
+          onClose={() => {
+            setDetailsOpen(false);
+            setDetailRow(null);
+          }}
+          row={detailRow}
+          loading={detailLoading}
+        />
+      )}
     </div>
   );
 };

@@ -31,7 +31,7 @@ const notifyAdmins = async (title, message, data = {}) => {
   }
 };
 
-const processExpirations = async () => {
+export const processExpirations = async () => {
   const now = new Date();
   try {
     const expiredPRs = await findPurchaseRequests({
@@ -49,6 +49,78 @@ const processExpirations = async () => {
       if (updateResult.modifiedCount !== 1) continue;
 
       const fullPr = await findPurchaseRequestById(pr._id);
+      
+      if (!fullPr.orderId) {
+        // Standalone manual PR expiration
+        const mongoose = (await import("mongoose")).default;
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+          const { releaseSellerCommit } = await import("../services/inventory/inventoryReleaseService.js");
+          for (const item of fullPr.items || []) {
+            const releaseQty = Number(item.committedQty || item.shortageQty || 0);
+            if (releaseQty > 0) {
+              await releaseSellerCommit({
+                productId: item.selectedSellerProductId || item.productId,
+                variantId: item.variantId || null,
+                quantity: releaseQty,
+                session,
+                sellerId: fullPr.vendorId,
+                reason: "manual_pr_expired",
+                idempotencyKey: `manual_pr_expire_release:${String(fullPr._id)}:${String(item.productId)}`,
+              });
+            }
+          }
+          await session.commitTransaction();
+
+          // Trigger Notifications: manual_pr_expired
+          const { createNotification } = await import("../services/notificationService.js");
+          // Notify Seller
+          await createNotification({
+            recipient: fullPr.vendorId,
+            recipientModel: "Seller",
+            title: "Manual PR Expired",
+            message: `Manual purchase request ${fullPr.requestId} has expired.`,
+            type: "manual_pr_expired",
+            data: { purchaseRequestId: fullPr._id.toString(), requestId: fullPr.requestId },
+          });
+          // Notify Seller of stock release
+          await createNotification({
+            recipient: fullPr.vendorId,
+            recipientModel: "Seller",
+            title: "Inventory Released",
+            message: `Stock committed for purchase request ${fullPr.requestId} has been released.`,
+            type: "manual_pr_inventory_released",
+            data: { purchaseRequestId: fullPr._id.toString() },
+          });
+          // Notify Admins
+          const AdminModel = mongoose.model("Admin");
+          const admins = await AdminModel.find({}).select("_id").lean();
+          const adminIds = admins.map((a) => a?._id).filter(Boolean);
+          if (adminIds.length) {
+            const { createNotificationBatch } = await import("../services/notificationService.js");
+            await createNotificationBatch(
+              adminIds.map((adminId) => ({
+                recipient: adminId,
+                recipientModel: "Admin",
+                title: "Manual PR Expired",
+                message: `Manual purchase request ${fullPr.requestId} has expired and committed stock has been released.`,
+                type: "manual_pr_expired",
+                data: { purchaseRequestId: fullPr._id.toString(), requestId: fullPr.requestId },
+              })),
+            );
+          }
+        } catch (txnErr) {
+          if (session.inTransaction()) {
+            await session.abortTransaction();
+          }
+          console.error(`[ProcurementMonitor] Failed manual PR expiration transactional release:`, txnErr.message);
+        } finally {
+          await session.endSession();
+        }
+        continue;
+      }
+
       const isMultiLine = (fullPr?.items || []).length > 1;
 
       if (isMultiLine) {

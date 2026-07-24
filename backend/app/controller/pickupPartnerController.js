@@ -822,6 +822,45 @@ export const markAssignmentPicked = async (req, res) => {
       };
       await savePurchaseRequest(pr);
 
+      if (!pr.orderId) {
+        // Standalone manual PR stock release
+        try {
+          const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
+          await releasePurchaseRequestCommitments(pr);
+
+          // Notifications
+          const { createNotification } = await import("../services/notificationService.js");
+          // Notify admins
+          const admins = await mongoose.model("Admin").find({}).select("_id").lean();
+          const adminIds = admins.map((a) => a?._id).filter(Boolean);
+          if (adminIds.length) {
+            const { createNotificationBatch } = await import("../services/notificationService.js");
+            await createNotificationBatch(
+              adminIds.map((adminId) => ({
+                recipient: adminId,
+                recipientModel: "Admin",
+                title: "Manual PR Pickup Failed",
+                message: `Pickup failed for manual PR ${pr.requestId}. Seller lacked stock.`,
+                type: "manual_pr_failed",
+                data: { purchaseRequestId: pr._id.toString(), requestId: pr.requestId },
+              })),
+            );
+          }
+          // Notify Seller of stock release
+          await createNotification({
+            recipient: pr.vendorId,
+            recipientModel: "Seller",
+            title: "Inventory Released",
+            message: `Stock committed for purchase request ${pr.requestId} has been released due to failed pickup.`,
+            type: "manual_pr_inventory_released",
+            data: { purchaseRequestId: pr._id.toString() },
+          });
+        } catch (releaseErr) {
+          console.warn("[ManualPR] Failed to release failed pickup commitments:", releaseErr.message);
+        }
+        return handleResponse(res, 200, "Marked as seller failed.", pr);
+      }
+
       try {
         const { fallbackPurchaseRequest, fallbackPurchaseRequestLine } = await import(
           "../services/purchaseRequestService.js"
@@ -917,6 +956,71 @@ export const markAssignmentPicked = async (req, res) => {
     };
     await savePurchaseRequest(pr);
 
+    if (!pr.orderId) {
+      // Standalone manual PR - Release commitment for unpicked quantities only
+      try {
+        const { releaseSellerCommit } = await import("../services/inventory/inventoryReleaseService.js");
+        let releasedAny = false;
+        for (const line of pr.items || []) {
+          const lineObj = line.toObject ? line.toObject() : line;
+          const lineRequested = Number(lineObj.committedQty || lineObj.requestedQty || lineObj.shortageQty || 0);
+          const linePicked = Number(lineObj.actualPickedQty || 0);
+          const lineRemaining = Math.max(0, lineRequested - linePicked);
+          if (lineRemaining > 0 && lineObj.selectedSellerProductId) {
+            releasedAny = true;
+            await releaseSellerCommit({
+              productId: lineObj.selectedSellerProductId,
+              variantId: lineObj.variantId || null,
+              quantity: lineRemaining,
+              sellerId: pr.vendorId,
+              reason: "manual_pr_pickup_partial_unfulfilled",
+              idempotencyKey: `manual_pr_pickup_partial:${String(pr._id)}:${String(lineObj.productId)}:${lineRemaining}`,
+            });
+          }
+        }
+
+        // Trigger Notifications
+        const { createNotification } = await import("../services/notificationService.js");
+        const admins = await mongoose.model("Admin").find({}).select("_id").lean();
+        const adminIds = admins.map((a) => a?._id).filter(Boolean);
+        if (adminIds.length) {
+          const { createNotificationBatch } = await import("../services/notificationService.js");
+          await createNotificationBatch(
+            adminIds.map((adminId) => ({
+              recipient: adminId,
+              recipientModel: "Admin",
+              title: "Manual PR Pickup Completed",
+              message: `Pickup completed for manual PR ${pr.requestId}.`,
+              type: "manual_pr_pickup_completed",
+              data: { purchaseRequestId: pr._id.toString(), requestId: pr.requestId },
+            })),
+          );
+        }
+        await createNotification({
+          recipient: pr.vendorId,
+          recipientModel: "Seller",
+          title: "Pickup Completed",
+          message: `Pickup has been completed for purchase request ${pr.requestId}.`,
+          type: "manual_pr_picked",
+          data: { purchaseRequestId: pr._id.toString() },
+        });
+
+        if (releasedAny) {
+          await createNotification({
+            recipient: pr.vendorId,
+            recipientModel: "Seller",
+            title: "Inventory Released",
+            message: `Unpicked stock committed for purchase request ${pr.requestId} has been released.`,
+            type: "manual_pr_inventory_released",
+            data: { purchaseRequestId: pr._id.toString() },
+          });
+        }
+      } catch (err) {
+        console.warn("[ManualPR] Failed manual PR pickup release/notifications:", err.message);
+      }
+      return handleResponse(res, 200, "Pickup marked successfully", pr);
+    }
+
     // Pickup does not transfer inventory ownership — only release unfulfilled commitment per line.
     try {
       const { fallbackPurchaseRequestLine, fallbackPurchaseRequest } = await import(
@@ -994,6 +1098,52 @@ export const cancelPickupAssignment = async (req, res) => {
     pr.status = "pickup_cancelled";
     pr.exceptionReason = String(reason || "Cancelled by delivery partner");
     await savePurchaseRequest(pr);
+
+    if (!pr.orderId) {
+      try {
+        const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
+        await releasePurchaseRequestCommitments(pr);
+
+        // Trigger Notifications
+        const { createNotification } = await import("../services/notificationService.js");
+        // Notify admins
+        const admins = await mongoose.model("Admin").find({}).select("_id").lean();
+        const adminIds = admins.map((a) => a?._id).filter(Boolean);
+        if (adminIds.length) {
+          const { createNotificationBatch } = await import("../services/notificationService.js");
+          await createNotificationBatch(
+            adminIds.map((adminId) => ({
+              recipient: adminId,
+              recipientModel: "Admin",
+              title: "Manual PR Pickup Cancelled",
+              message: `Pickup assignment was cancelled for manual PR ${pr.requestId}.`,
+              type: "manual_pr_pickup_cancelled",
+              data: { purchaseRequestId: pr._id.toString(), requestId: pr.requestId },
+            })),
+          );
+        }
+        // Notify Seller of cancellation and stock release
+        await createNotification({
+          recipient: pr.vendorId,
+          recipientModel: "Seller",
+          title: "Pickup Cancelled",
+          message: `Pickup assignment was cancelled for purchase request ${pr.requestId}.`,
+          type: "manual_pr_pickup_cancelled",
+          data: { purchaseRequestId: pr._id.toString() },
+        });
+        await createNotification({
+          recipient: pr.vendorId,
+          recipientModel: "Seller",
+          title: "Inventory Released",
+          message: `Stock committed for purchase request ${pr.requestId} has been released due to pickup cancellation.`,
+          type: "manual_pr_inventory_released",
+          data: { purchaseRequestId: pr._id.toString() },
+        });
+      } catch (err) {
+        console.warn("[ManualPR] Failed manual PR pickup cancel stock release/notifications:", err.message);
+      }
+      return handleResponse(res, 200, "Assignment cancelled successfully");
+    }
 
     // Reassignment stays with existing admin/procurement pickup-assign flow.
     // Pickup module does not call procurement controllers.

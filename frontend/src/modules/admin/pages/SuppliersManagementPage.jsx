@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { adminApi } from "../services/adminApi";
 import SellerTabs from "../components/SellerTabs";
+import ManualPurchaseRequestModal from "../components/ManualPurchaseRequestModal";
 import {
   SupplyFormModal,
   SupplyInfoModal,
@@ -1029,114 +1030,13 @@ const SuppliersManagementPage = () => {
         onSubmit={saveEdit}
       />
 
-      <Modal
+      <ManualPurchaseRequestModal
         isOpen={requestOpen}
         onClose={() => {
           setRequestOpen(false);
-          setSellerProducts([]);
-          setProductPurchaseRequests([]);
         }}
-        title={`Purchase Request${currentSupplier ? ` — ${currentSupplier.shopName}` : ""}`}
-        size="xl"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setRequestOpen(false);
-                setSellerProducts([]);
-                setProductPurchaseRequests([]);
-              }}
-              className="px-4 py-2 text-xs font-bold text-slate-400 uppercase"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              onClick={createPurchaseRequest}
-              disabled={sellerProductsLoading || prSubmitting || !requestForm.productId}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {prSubmitting ? "Sending…" : "Send new request"}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-6 py-1">
-          {requestForm.productId ? (
-            <PurchaseRequestListPanel
-              requests={productPurchaseRequests}
-              loading={productPrLoading}
-              showProductColumn={false}
-              emptyMessage="No purchase requests for this product yet."
-            />
-          ) : (
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm text-slate-500 text-center">
-              Select a seller product below to view its existing purchase requests.
-            </div>
-          )}
-
-          <div className="pt-4 border-t border-slate-100 space-y-4">
-            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-              New purchase request
-            </p>
-            <label className="block">
-              <span className="text-[10px] font-bold text-slate-500 uppercase ml-1">
-                {sellerProductsLoading
-                  ? "Seller product (loading…)"
-                  : `Seller product (${sellerProducts.length} listed)`}
-              </span>
-              <select
-                value={requestForm.productId}
-                onChange={(e) => {
-                  const productId = e.target.value;
-                  setRequestForm((prev) => ({ ...prev, productId }));
-                  fetchProductPurchaseRequests(productId);
-                }}
-                disabled={sellerProductsLoading}
-                className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
-              >
-                <option value="">
-                  {sellerProducts.length
-                    ? "Select a product from this seller"
-                    : "No products listed by this seller"}
-                </option>
-                {sellerProducts.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {sellerProductOptionLabel(p)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-[10px] font-bold text-slate-500 uppercase ml-1">Quantity</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={requestForm.quantity}
-                  onChange={(e) =>
-                    setRequestForm((prev) => ({ ...prev, quantity: e.target.value }))
-                  }
-                  className="mt-1 w-full px-4 py-3 bg-slate-100 rounded-xl text-sm font-black outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[10px] font-bold text-slate-500 uppercase ml-1">Notes (optional)</span>
-                <input
-                  type="text"
-                  value={requestForm.notes}
-                  onChange={(e) =>
-                    setRequestForm((prev) => ({ ...prev, notes: e.target.value }))
-                  }
-                  placeholder="Pickup timing, urgency…"
-                  className="mt-1 w-full px-4 py-3 bg-slate-100 rounded-xl text-sm outline-none"
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        supplier={currentSupplier}
+      />
 
       <SupplyInfoModal isOpen={infoOpen} onClose={() => setInfoOpen(false)} title="Notice" message={infoMessage} />
     </div>
