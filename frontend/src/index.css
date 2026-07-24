@@ -356,7 +356,8 @@ body {
     min-height: 100vh;
     min-height: 100dvh;
     position: relative;
-    overflow-x: hidden;
+    /* clip (not hidden) so sticky admin/seller topbar can stick while page scrolls */
+    overflow-x: clip;
   }
 
   .app-shell-content {
@@ -375,7 +376,8 @@ body {
     overflow-x: clip;
     padding-left: max(var(--page-pad-x), var(--safe-left));
     padding-right: max(var(--page-pad-x), var(--safe-right));
-    padding-top: calc(var(--shell-header-h) + var(--safe-top) + 0.75rem);
+    /* Header is sticky/in-flow for admin+seller — no fixed-header offset */
+    padding-top: 0.75rem;
     padding-bottom: calc(var(--shell-bottom-nav-h) + var(--safe-bottom) + 1rem);
     min-height: 100vh;
     min-height: 100dvh;

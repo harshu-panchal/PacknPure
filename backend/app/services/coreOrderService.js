@@ -318,14 +318,6 @@ export const executeCoreOrderFulfillment = async ({
       throw new Error(procurementErr.message || "Unable to procure items for this order.");
     }
 
-    if (hubPlan.shortages.length === 0) {
-      try {
-        await startHubDeliverySearchAtomic(orderId);
-      } catch (e) {
-        console.warn(`[executeCoreOrderFulfillment] delivery dispatch skipped for ${orderId}: ${e.message}`);
-      }
-    }
-
     if (purchaseRequests.length > 0) {
       const sessionIdFromPr = purchaseRequests.find((pr) => pr?.procurementSessionId)?.procurementSessionId || null;
       if (sessionIdFromPr) {
@@ -429,9 +421,18 @@ export const executeCoreOrderFulfillment = async ({
     };
 
     let orderForResponse = newOrder;
-    if (hubPlan.shortages.length === 0) {
+    // EXPRESS + hub stock: start rider search so online delivery partners receive the task.
+    // SLOT / procurement orders stay unchanged (admin assigns later / after procurement).
+    const shouldStartDeliverySearch =
+      resolvedMode === "EXPRESS" &&
+      hubPlan.shortages.length === 0 &&
+      purchaseRequests.length === 0 &&
+      !newOrder.procurementRequired;
+    if (shouldStartDeliverySearch) {
       try {
-        const dispatched = await startHubDeliverySearchAtomic(newOrder.orderId);
+        const dispatched = await startHubDeliverySearchAtomic(newOrder.orderId, {
+          session: session || null,
+        });
         if (dispatched) {
           orderForResponse = dispatched;
           hubMeta.autoDispatched = true;

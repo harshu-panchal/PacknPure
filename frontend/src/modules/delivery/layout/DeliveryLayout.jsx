@@ -25,6 +25,62 @@ function secondsLeftUntilDeliveryExpiry(expiresAt) {
   return Math.max(0, Math.ceil(ms / 1000));
 }
 
+function playIncomingOrderAlert() {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([80, 40, 80, 40, 160]);
+    }
+  } catch {
+    /* vibrate optional */
+  }
+  try {
+    const audio = new Audio(
+      "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
+    );
+    audio.volume = 1;
+    audio.play().catch(() => {});
+  } catch {
+    /* audio optional */
+  }
+}
+
+function showBrowserOrderNotification({ title, body, orderId, onClick }) {
+  if (typeof window === "undefined" || typeof Notification === "undefined") return;
+
+  const spawn = () => {
+    try {
+      const n = new Notification(title, {
+        body,
+        tag: `delivery-order-${orderId}`,
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+      });
+      n.onclick = () => {
+        try {
+          window.focus();
+          onClick?.();
+        } catch {
+          /* ignore */
+        }
+        n.close();
+      };
+    } catch {
+      /* Notification constructor may fail in some browsers */
+    }
+  };
+
+  if (Notification.permission === "granted") {
+    spawn();
+    return;
+  }
+  if (Notification.permission === "default") {
+    Notification.requestPermission().then((perm) => {
+      if (perm === "granted") spawn();
+    });
+  }
+}
+
 const DeliveryLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -101,8 +157,12 @@ const DeliveryLayout = () => {
       earnings: Math.max(p.deliveryFee ?? 0, 25), // Ensure minimum ₹25 earning even if delivery is free
       expiresAt: payload.deliverySearchExpiresAt || null,
     });
-    const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-    audio.play().catch(() => {});
+    playIncomingOrderAlert();
+    showBrowserOrderNotification({
+      title: "Packnpure · New delivery",
+      body: `₹${Math.max(p.deliveryFee ?? 0, 25)} · ${p.pickup} → ${dropLabel}`,
+      orderId: payload.orderId,
+    });
     return true;
   }, []);
 
@@ -125,19 +185,24 @@ const DeliveryLayout = () => {
     const pickupLabel = newOrder.hubFlowEnabled
       ? newOrder.pickupAddress || (newOrder.hubId ? `Hub ${newOrder.hubId}` : "Hub")
       : newOrder.seller?.shopName || "Seller";
+    const dropLabel = newOrder.address?.address || "Customer Address";
     setActiveOrder({
       id: newOrder.orderId,
       mongoId: newOrder._id,
       pickup: pickupLabel,
-      drop: newOrder.address?.address || "Customer Address",
+      drop: dropLabel,
       distance: "Nearby",
       estTime: "10-15 min",
       value: total,
       earnings: Math.max(newOrder.pricing?.deliveryFee ?? 0, 25), // Ensure minimum ₹25 earning even if delivery is free
       expiresAt: newOrder.deliverySearchExpiresAt || null,
     });
-    const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-    audio.play().catch(() => {});
+    playIncomingOrderAlert();
+    showBrowserOrderNotification({
+      title: "Packnpure · New delivery",
+      body: `₹${Math.max(newOrder.pricing?.deliveryFee ?? 0, 25)} · ${pickupLabel} → ${dropLabel}`,
+      orderId: newOrder.orderId,
+    });
   }, []);
 
   const hideBottomNavRoutes = [
@@ -327,24 +392,33 @@ const DeliveryLayout = () => {
     }
     acceptInFlightRef.current = true;
     setIsAcceptingOrder(true);
+    const orderId = activeOrder.id;
     try {
       const idem =
         typeof crypto !== "undefined" && crypto.randomUUID
           ? crypto.randomUUID()
           : `${Date.now()}`;
-      await deliveryApi.acceptOrder(activeOrder.id, idem);
+      await deliveryApi.acceptOrder(orderId, idem);
       toast.success("Order accepted!");
-      const orderId = activeOrder.id;
       shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(orderId);
       markIncomingOrderHandled(orderId);
       setActiveOrder(null);
-      navigate(`/delivery/order-details/${orderId}`);
+      // Go straight into the active delivery flow (tracking / next steps)
+      navigate(`/delivery/order-details/${encodeURIComponent(orderId)}`, {
+        replace: true,
+      });
     } catch (error) {
       const msg =
         error.response?.data?.message ||
         (typeof error.response?.data === "string" ? error.response.data : null);
       toast.error(msg || "Failed to accept order");
-      setActiveOrder(null);
+      // Keep modal open on failure so rider can retry or reject — unless another rider took it
+      if (
+        error.response?.status === 409 ||
+        /already|expired|not available|no longer open/i.test(String(msg || ""))
+      ) {
+        setActiveOrder(null);
+      }
     } finally {
       acceptInFlightRef.current = false;
       setIsAcceptingOrder(false);
@@ -353,7 +427,7 @@ const DeliveryLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-gray-100 dark:border-gray-800 transition-colors">
-      {/* Full-screen order alert — portaled so it always stacks above nav/content */}
+      {/* App-style heads-up notification — slides from top like native delivery apps */}
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
@@ -363,61 +437,102 @@ const DeliveryLayout = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-sm"
+                transition={{ duration: 0.18 }}
+                className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/55 backdrop-blur-[2px] pt-[max(0.75rem,env(safe-area-inset-top))] px-3"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delivery-order-alert-title"
               >
                 <motion.div
                   key={activeOrder.id}
-                  initial={{ scale: 0.92, opacity: 0, y: 24 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.96, opacity: 0, y: 16 }}
-                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  className="bg-white dark:bg-gray-800 rounded-[32px] p-6 w-full max-w-[340px] shadow-2xl border-4 border-primary/20 max-h-[90vh] overflow-y-auto"
+                  initial={{ y: -120, opacity: 0, scale: 0.96 }}
+                  animate={{ y: 0, opacity: 1, scale: 1 }}
+                  exit={{ y: -80, opacity: 0, scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  className="w-full max-w-[400px] overflow-hidden rounded-[22px] border border-white/20 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.35)] dark:border-gray-700 dark:bg-gray-900"
                 >
-                  <div className="flex flex-col items-center">
-                    <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 animate-bounce" aria-hidden>
-                      <BellRing className="h-8 w-8 text-primary" />
+                  {/* Notification header strip */}
+                  <div className="flex items-center gap-2.5 bg-slate-900 px-4 py-2.5 text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary shadow-inner" aria-hidden>
+                      <BellRing className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/70">
+                        Packnpure Delivery
+                      </p>
+                      <p
+                        id="delivery-order-alert-title"
+                        className="truncate text-sm font-black leading-tight"
+                      >
+                        New order request
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/90">
+                      now
+                    </span>
+                  </div>
+
+                  <div className="p-4">
+                    <div className="mb-4 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          You earn
+                        </p>
+                        <p className="text-3xl font-black leading-none text-emerald-600">
+                          ₹{activeOrder.earnings}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right dark:bg-emerald-950/40">
+                        <p className="text-[10px] font-bold uppercase text-emerald-700/80 dark:text-emerald-300/80">
+                          Respond in
+                        </p>
+                        <p
+                          className={`text-lg font-black tabular-nums ${
+                            timeLeft < 10 ? "text-rose-600" : "text-emerald-700 dark:text-emerald-300"
+                          }`}
+                          aria-live="polite"
+                        >
+                          {timeLeft}s
+                        </p>
+                      </div>
                     </div>
 
-                    <h2
-                      id="delivery-order-alert-title"
-                      className="text-xl font-black text-slate-900 dark:text-white mb-1"
+                    <div className="mb-4 space-y-3 rounded-2xl bg-slate-50 p-3 dark:bg-gray-800/80">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100"
+                          aria-hidden
+                        >
+                          <div className="h-2 w-2 rounded-full bg-emerald-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Pickup
+                          </p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">
+                            {activeOrder.pickup}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="ml-3 border-l-2 border-dashed border-slate-200 pl-5 dark:border-gray-600">
+                        <div className="flex items-start gap-3 -ml-[26px]">
+                          <MapPin className="mt-0.5 h-6 w-6 shrink-0 text-rose-500" aria-hidden />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Drop
+                            </p>
+                            <p className="line-clamp-2 text-sm font-bold text-slate-900 dark:text-white">
+                              {activeOrder.drop}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className="mb-4 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-gray-700"
+                      aria-hidden
                     >
-                      New order request
-                    </h2>
-                    <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-                      Accept or reject
-                    </p>
-                    <div className="flex items-center gap-2 mb-6">
-                      <span className="text-2xl font-black text-green-600">₹{activeOrder.earnings}</span>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-outfit">
-                        Earnings
-                      </span>
-                    </div>
-
-                    <div className="w-full space-y-4 mb-6">
-                      <div className="flex items-start gap-3">
-                        <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center mt-1" aria-hidden>
-                          <div className="w-2 h-2 rounded-full bg-green-600" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Pickup</p>
-                          <p className="text-sm font-bold text-slate-900 dark:text-white">{activeOrder.pickup}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <MapPin className="h-5 w-5 text-rose-500 mt-1 shrink-0" aria-hidden />
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Drop</p>
-                          <p className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2">{activeOrder.drop}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-gray-700 rounded-full mb-2 overflow-hidden" aria-hidden>
                       <motion.div
                         key={`${activeOrder.id}-${acceptWindowTotal}`}
                         initial={{ width: "100%" }}
@@ -426,19 +541,16 @@ const DeliveryLayout = () => {
                           duration: Math.max(1, acceptWindowTotal || 60),
                           ease: "linear",
                         }}
-                        className={timeLeft < 10 ? "bg-rose-500 h-full" : "bg-primary h-full"}
+                        className={timeLeft < 10 ? "h-full bg-rose-500" : "h-full bg-primary"}
                       />
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 mb-4 w-full text-center" aria-live="polite">
-                      {timeLeft}s left to respond
-                    </p>
 
-                    <div className="grid grid-cols-2 gap-4 w-full">
+                    <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={skipOrder}
                         disabled={isAcceptingOrder}
-                        className="py-4 rounded-2xl bg-slate-100 dark:bg-gray-700 text-slate-700 dark:text-gray-200 font-black text-xs uppercase tracking-wider hover:bg-slate-200/80 dark:hover:bg-gray-600 active:scale-[0.98] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-50 disabled:pointer-events-none cursor-pointer disabled:cursor-not-allowed"
+                        className="rounded-2xl bg-slate-100 py-3.5 text-xs font-black uppercase tracking-wider text-slate-700 transition-all duration-200 hover:bg-slate-200/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                       >
                         Reject
                       </button>
@@ -447,7 +559,7 @@ const DeliveryLayout = () => {
                         onClick={handleAcceptOrder}
                         disabled={isAcceptingOrder}
                         autoFocus
-                        className="py-4 rounded-2xl bg-primary text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/30 hover:brightness-105 active:scale-[0.98] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none cursor-pointer disabled:cursor-not-allowed"
+                        className="rounded-2xl bg-primary py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-primary/30 transition-all duration-200 hover:brightness-105 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60"
                       >
                         {isAcceptingOrder ? "Accepting…" : "Accept"}
                       </button>

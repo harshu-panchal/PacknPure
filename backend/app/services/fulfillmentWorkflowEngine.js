@@ -90,8 +90,19 @@ function assertRoleAllowed(toState, actor = {}, domain = "fulfillment") {
       }
       return;
     }
-    if ([WORKFLOW_STATUS.QA_PASSED, WORKFLOW_STATUS.DELIVERY_ASSIGNED].includes(toState) && role !== "admin") {
+    if (toState === WORKFLOW_STATUS.QA_PASSED && role !== "admin") {
       const err = new Error(`Only admin can move to ${toState}`);
+      err.statusCode = 403;
+      throw err;
+    }
+    // Riders accept broadcast offers; admins can also force-assign.
+    if (
+      toState === WORKFLOW_STATUS.DELIVERY_ASSIGNED &&
+      role !== "admin" &&
+      role !== "delivery" &&
+      role !== "system"
+    ) {
+      const err = new Error(`Role ${role} cannot assign delivery`);
       err.statusCode = 403;
       throw err;
     }

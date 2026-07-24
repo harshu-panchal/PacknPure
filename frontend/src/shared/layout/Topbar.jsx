@@ -176,9 +176,9 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
     return (
         <header
             className={cn(
-                "bg-white/70 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2",
+                "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2",
                 usesShellChrome
-                    ? "fixed top-0 left-0 right-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:static md:h-16 md:pt-0 md:px-6"
+                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6"
                     : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-4 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
             )}
         >

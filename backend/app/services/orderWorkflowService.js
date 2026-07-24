@@ -8,6 +8,7 @@ import Seller from "../models/seller.js";
 import { getDeliveryTimeoutMs, getDeliveryOtpExpiryMs } from "./settingsService.js";
 import {
   findAndTransitionOrder,
+  transitionOrder,
   WORKFLOW_STATUS,
   legacyStatusFromWorkflow,
 } from "./workflowFacade.js";
@@ -385,77 +386,110 @@ export async function sellerRejectAtomic(sellerId, orderId) {
  * Hub workflow dispatch bridge:
  * CREATED/SELLER_ACCEPTED -> DELIVERY_SEARCH without seller acceptance dependency.
  */
-export async function startHubDeliverySearchAtomic(orderId) {
+export async function startHubDeliverySearchAtomic(orderId, { session = null } = {}) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
   const deliveryMs = await getDeliveryTimeoutMs();
+  const actor = { role: "system" };
 
-  const updated = await findAndTransitionOrder({
-    filter: {
-      orderId,
-      workflowVersion: { $gte: 2 },
-      hubFlowEnabled: true,
-      deliveryBoy: null,
-      workflowStatus: {
-        $in: [WORKFLOW_STATUS.CREATED, WORKFLOW_STATUS.SELLER_ACCEPTED],
-      },
+  let query = Order.findOne({
+    orderId,
+    workflowVersion: { $gte: 2 },
+    hubFlowEnabled: true,
+    deliveryBoy: null,
+    workflowStatus: {
+      $in: [
+        WORKFLOW_STATUS.CREATED,
+        WORKFLOW_STATUS.SELLER_PENDING,
+        WORKFLOW_STATUS.SELLER_ACCEPTED,
+      ],
     },
-    toState: WORKFLOW_STATUS.DELIVERY_SEARCH,
-    assign: {
-      sellerAcceptedAt: now,
-      deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
-      deliverySearchMeta: {
-        radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
-        attempt: 1,
-        lastBroadcastAt: now,
-      },
-    },
-    unset: { expiresAt: 1 },
-    options: { actor: { role: "system" }, reason: "hub_delivery_search" },
-    populate: ["customer", { path: "seller", select: "shopName address name location serviceRadius" }],
-  });
+  }).populate([
+    "customer",
+    { path: "seller", select: "shopName address name location serviceRadius" },
+  ]);
+  if (session) query = query.session(session);
 
-  if (!updated) {
+  const order = await query;
+  if (!order) {
     const err = new Error("Order not ready for delivery dispatch");
     err.statusCode = 409;
     throw err;
   }
 
+  // Valid path: CREATED → SELLER_PENDING → DELIVERY_SEARCH
+  // (CREATED → DELIVERY_SEARCH is not allowed by the state machine)
+  if (order.workflowStatus === WORKFLOW_STATUS.CREATED) {
+    transitionOrder(order, WORKFLOW_STATUS.SELLER_PENDING, {
+      actor,
+      reason: "hub_ready_for_delivery_search",
+    });
+  }
+  if (
+    order.workflowStatus === WORKFLOW_STATUS.SELLER_PENDING ||
+    order.workflowStatus === WORKFLOW_STATUS.SELLER_ACCEPTED
+  ) {
+    transitionOrder(order, WORKFLOW_STATUS.DELIVERY_SEARCH, {
+      actor,
+      reason: "hub_delivery_search",
+    });
+  }
+
+  order.sellerAcceptedAt = now;
+  order.deliverySearchExpiresAt = new Date(now.getTime() + deliveryMs);
+  order.deliverySearchMeta = {
+    radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
+    attempt: 1,
+    lastBroadcastAt: now,
+  };
+
+  if (session) await order.save({ session });
+  else await order.save();
+
+  if (session) {
+    await Order.updateOne({ _id: order._id }, { $unset: { expiresAt: 1 } }, { session });
+  } else {
+    await Order.updateOne({ _id: order._id }, { $unset: { expiresAt: 1 } });
+  }
+  order.set("expiresAt", undefined);
+
   await scheduleDeliveryTimeoutJob(orderId, 1);
 
-  await DeliveryAssignment.create({
-    orderMongoId: updated._id,
-    orderId: updated.orderId,
+  const assignmentDoc = new DeliveryAssignment({
+    orderMongoId: order._id,
+    orderId: order.orderId,
     status: "broadcasting",
     radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
     attempt: 1,
-    expiresAt: updated.deliverySearchExpiresAt,
+    expiresAt: order.deliverySearchExpiresAt,
   });
+  if (session) await assignmentDoc.save({ session });
+  else await assignmentDoc.save();
 
   const Setting = (await import("../models/setting.js")).default;
   const settings = await Setting.findOne().lean();
 
   emitOrderStatusUpdate(
-    updated.orderId,
+    order.orderId,
     {
       workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-      deliverySearchExpiresAt: updated.deliverySearchExpiresAt,
+      deliverySearchExpiresAt: order.deliverySearchExpiresAt,
     },
-    updated.customer?._id || updated.customer,
+    order.customer?._id || order.customer,
   );
 
-  if (updated.seller) {
+  if (order.seller) {
     await emitDeliveryBroadcastForSeller(
-      updated.seller,
-      deliveryBroadcastPayloadFromOrder(updated, settings),
+      order.seller,
+      deliveryBroadcastPayloadFromOrder(order, settings),
     );
   } else {
     emitDeliveryBroadcast(
-      deliveryBroadcastPayloadFromOrder(updated, settings, { hubFlow: true }),
+      deliveryBroadcastPayloadFromOrder(order, settings, { hubFlow: true }),
     );
   }
 
-  return updated;
+  return order;
 }
 
 function toDeliveryObjectId(deliveryId) {

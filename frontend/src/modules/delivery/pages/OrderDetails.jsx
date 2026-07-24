@@ -158,24 +158,39 @@ const OrderDetails = () => {
   const [clockTick, setClockTick] = useState(Date.now());
 
   useEffect(() => {
-    const fetchOrderDetails = async () => {
+    let cancelled = false;
+
+    const fetchOrderDetails = async (attempt = 0) => {
       try {
         const response = await deliveryApi.getOrderDetails(orderId);
+        if (cancelled) return;
         const ord = response.data.result;
         setOrder(ord);
-
         setStep(getPersistedRiderStep(ord));
+        setLoading(false);
       } catch (error) {
-        toast.error("Failed to fetch order details");
-        navigate("/delivery/dashboard");
-      } finally {
+        if (cancelled) return;
+        // Brief retry — assignment may not be visible to the details API for a tick after accept
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          return fetchOrderDetails(attempt + 1);
+        }
+        toast.error(
+          error.response?.data?.message || "Failed to fetch order details",
+        );
+        navigate("/delivery/dashboard", { replace: true });
         setLoading(false);
       }
     };
 
     if (orderId) {
+      setLoading(true);
       fetchOrderDetails();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [orderId, navigate]);
 
   useEffect(() => {
