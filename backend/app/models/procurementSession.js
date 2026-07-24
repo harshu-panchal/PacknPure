@@ -66,6 +66,9 @@ const procurementSessionSchema = new mongoose.Schema(
     items: { type: [sessionItemSchema], default: [] },
     allocations: { type: [allocationSchema], default: [] },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Atomic lock: set when the first rejection in a wave schedules a retry batch job.
+    // Reset to null after the batch job fires, allowing future waves to schedule again.
+    retryBatchScheduledAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

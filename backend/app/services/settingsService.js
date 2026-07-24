@@ -69,6 +69,14 @@ export const isMultiSellerAllocationEnabled = async () => {
   return Boolean(settings?.enableMultiSellerAllocation);
 };
 
+export const getProcurementRetryBatchDelayMinutes = async () => {
+  const settings = await getSettings();
+  return Math.max(1, Number(settings?.procurementRetryBatchDelayMinutes ?? 2));
+};
+
+export const getProcurementRetryBatchDelayMs = async () =>
+  (await getProcurementRetryBatchDelayMinutes()) * 60 * 1000;
+
 export const getSellerResponseTimeoutMs = async () =>
   (await getSellerResponseTimeoutMinutes()) * 60 * 1000;
 

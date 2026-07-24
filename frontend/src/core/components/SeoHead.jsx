@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSettings } from '@core/context/SettingsContext';
+import { useAuth } from '@core/context/AuthContext';
 
 /**
  * Updates document title, favicon, and meta description/keywords from global settings.
@@ -9,11 +10,39 @@ export default function SeoHead() {
     const { settings } = useSettings();
     const metaRefs = useRef({ description: null, keywords: null, favicon: null });
 
-    useEffect(() => {
-        if (!settings) return;
+    const { role, user } = useAuth();
 
-        const title = settings.metaTitle || settings.appName || 'App';
-        document.title = title;
+    useEffect(() => {
+        const baseAppName = settings?.appName || 'Packnpure';
+        let panelTitle = baseAppName;
+
+        if (role === 'seller') {
+            const sellerIdentifier = user?.shopName || user?.name || user?.email;
+            panelTitle = sellerIdentifier
+                ? `${baseAppName} - Seller (${sellerIdentifier})`
+                : `${baseAppName} - Seller`;
+        } else if (role === 'admin') {
+            const adminIdentifier = user?.name || user?.email;
+            panelTitle = adminIdentifier
+                ? `${baseAppName} - Admin (${adminIdentifier})`
+                : `${baseAppName} - Admin`;
+        } else if (role === 'delivery') {
+            const deliveryIdentifier = user?.name || user?.email;
+            panelTitle = deliveryIdentifier
+                ? `${baseAppName} - Delivery (${deliveryIdentifier})`
+                : `${baseAppName} - Delivery`;
+        } else if (role === 'pickup_partner') {
+            const pickupIdentifier = user?.name || user?.email;
+            panelTitle = pickupIdentifier
+                ? `${baseAppName} - Pickup Partner (${pickupIdentifier})`
+                : `${baseAppName} - Pickup Partner`;
+        } else if (settings?.metaTitle) {
+            panelTitle = settings.metaTitle;
+        }
+
+        document.title = panelTitle;
+
+        if (!settings) return;
 
         const desc = settings.metaDescription || '';
         const keywordsContent = (Array.isArray(settings.keywords) && settings.keywords.length)
@@ -65,7 +94,7 @@ export default function SeoHead() {
         if (linkFavicon) {
             linkFavicon.href = faviconUrl || '/vite.svg';
         }
-    }, [settings]);
+    }, [settings, role, user]);
 
     return null;
 }

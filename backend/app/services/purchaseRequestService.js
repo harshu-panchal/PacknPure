@@ -20,6 +20,7 @@ export {
   releasePurchaseRequestCommitments,
   planHubFulfillment,
   reserveHubInventory,
+  scheduleRetryBatch,
 } from "./hubOrderOrchestrator.js";
 
 export {
