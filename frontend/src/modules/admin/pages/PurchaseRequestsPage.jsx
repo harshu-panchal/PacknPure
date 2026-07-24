@@ -369,7 +369,11 @@ const PurchaseRequestsPage = () => {
           const st = row.rawStatus;
           const isTerminal = ["verified", "closed", "cancelled"].includes(st);
           const needsVendor = !row.vendorId && !isTerminal;
-          const needsPickup = (st === "created" || st === "vendor_confirmed") && row.vendorId;
+          const needsPickup =
+            (st === "created" ||
+              st === "vendor_confirmed" ||
+              st === "seller_confirmed") &&
+            row.vendorId;
           const needsReceive = ["pickup_assigned", "picked", "hub_delivered"].includes(st);
           const needsFinalVerify = st === "received_at_hub";
 
@@ -510,7 +514,12 @@ const PurchaseRequestsPage = () => {
         message={`Cancel ${currentRow?.requestId}? This stops the inward pipeline.`}
         confirmLabel="Yes, cancel"
         onConfirm={async () => {
-          await adminApi.updatePurchaseRequestStatus(currentRow._id, "cancelled");
+          // Manual PRs must use inventory-safe cancel (releases commits pre-pickup only).
+          if (currentRow?.requestType === "manual" || !currentRow?.orderId) {
+            await adminApi.cancelManualPR(currentRow._id);
+          } else {
+            await adminApi.updatePurchaseRequestStatus(currentRow._id, "cancelled");
+          }
           setCancelOpen(false);
           fetchRows();
         }}

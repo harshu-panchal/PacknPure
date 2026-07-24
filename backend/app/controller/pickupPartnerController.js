@@ -823,10 +823,16 @@ export const markAssignmentPicked = async (req, res) => {
       await savePurchaseRequest(pr);
 
       if (!pr.orderId) {
-        // Standalone manual PR stock release
+        // Standalone manual PR stock release — all lines (never items[0]-only compensation)
         try {
-          const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
-          await releasePurchaseRequestCommitments(pr);
+          const { releaseAllManualPRCommitments } = await import(
+            "../services/manualPurchaseRequestInventoryService.js"
+          );
+          await releaseAllManualPRCommitments({
+            pr,
+            reason: "manual_pr_pickup_failed",
+            action: "pickup_fail",
+          });
 
           // Notifications
           const { createNotification } = await import("../services/notificationService.js");
@@ -957,27 +963,14 @@ export const markAssignmentPicked = async (req, res) => {
     await savePurchaseRequest(pr);
 
     if (!pr.orderId) {
-      // Standalone manual PR - Release commitment for unpicked quantities only
+      // Standalone manual PR - Release commitment for unpicked quantities only (all lines)
       try {
-        const { releaseSellerCommit } = await import("../services/inventory/inventoryReleaseService.js");
-        let releasedAny = false;
-        for (const line of pr.items || []) {
-          const lineObj = line.toObject ? line.toObject() : line;
-          const lineRequested = Number(lineObj.committedQty || lineObj.requestedQty || lineObj.shortageQty || 0);
-          const linePicked = Number(lineObj.actualPickedQty || 0);
-          const lineRemaining = Math.max(0, lineRequested - linePicked);
-          if (lineRemaining > 0 && lineObj.selectedSellerProductId) {
-            releasedAny = true;
-            await releaseSellerCommit({
-              productId: lineObj.selectedSellerProductId,
-              variantId: lineObj.variantId || null,
-              quantity: lineRemaining,
-              sellerId: pr.vendorId,
-              reason: "manual_pr_pickup_partial_unfulfilled",
-              idempotencyKey: `manual_pr_pickup_partial:${String(pr._id)}:${String(lineObj.productId)}:${lineRemaining}`,
-            });
-          }
-        }
+        const { releaseManualPRUnpickedCommitments } = await import(
+          "../services/manualPurchaseRequestInventoryService.js"
+        );
+        const { releasedLines } = await releaseManualPRUnpickedCommitments({ pr });
+        const releasedAny = releasedLines > 0;
+        await savePurchaseRequest(pr);
 
         // Trigger Notifications
         const { createNotification } = await import("../services/notificationService.js");
@@ -1101,8 +1094,14 @@ export const cancelPickupAssignment = async (req, res) => {
 
     if (!pr.orderId) {
       try {
-        const { releasePurchaseRequestCommitments } = await import("../services/hubOrderOrchestrator.js");
-        await releasePurchaseRequestCommitments(pr);
+        const { releaseAllManualPRCommitments } = await import(
+          "../services/manualPurchaseRequestInventoryService.js"
+        );
+        await releaseAllManualPRCommitments({
+          pr,
+          reason: "manual_pr_pickup_cancelled",
+          action: "pickup_cancel",
+        });
 
         // Trigger Notifications
         const { createNotification } = await import("../services/notificationService.js");

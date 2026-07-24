@@ -16,6 +16,7 @@ import { getSlaDeadline } from "./settingsService.js";
 import {
   markOrderInventoryReserved,
   markOrderProcurementRequiredHub,
+  setOrderLegacyStatus,
 } from "./workflowFacade.js";
 import ProcurementSession from "../models/procurementSession.js";
 import { ensureProcurementSession } from "./procurementSessionService.js";
@@ -364,6 +365,30 @@ export const executeCoreOrderFulfillment = async ({
       const existingSession = await ProcurementSession.findOne({ orderId: newOrder._id }).select("_id").lean();
       if (existingSession?._id) newOrder.procurementSessionId = existingSession._id;
     }
+
+    // EXPRESS + 100% hub stock: confirm immediately after reserve.
+    // Rider stays unassigned; SLOT / procurement / mixed orders unchanged.
+    const hubFullyFulfilled =
+      hubPlan.shortages.length === 0 &&
+      purchaseRequests.length === 0 &&
+      !newOrder.procurementRequired;
+    const procurementSessionIdle =
+      !procurementSession ||
+      !Array.isArray(procurementSession.items) ||
+      procurementSession.items.length === 0 ||
+      !procurementSession.items.some((i) => Number(i.requiredQty || 0) > 0);
+    if (
+      resolvedMode === "EXPRESS" &&
+      hubFullyFulfilled &&
+      procurementSessionIdle &&
+      String(newOrder.status || "").toLowerCase() === "pending"
+    ) {
+      setOrderLegacyStatus(newOrder, "confirmed", {
+        actor: { role: "system" },
+        reason: "express_hub_stock_auto_confirm",
+      });
+    }
+
     await newOrder.save({ session });
 
     await createNotification({
