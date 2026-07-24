@@ -71,7 +71,16 @@ axiosInstance.interceptors.request.use(
 );
 
 axiosInstance.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        const serverDateHeader = response.headers?.date;
+        if (serverDateHeader) {
+            const serverMs = new Date(serverDateHeader).getTime();
+            if (!isNaN(serverMs)) {
+                window.__serverTimeOffset = Date.now() - serverMs;
+            }
+        }
+        return response;
+    },
     async (error) => {
         const originalRequest = error.config;
         const pagePath = window.location.pathname;

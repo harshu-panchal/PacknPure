@@ -9,6 +9,7 @@ import { useAuth } from "@/core/context/AuthContext";
 import { getOrderSocket } from "@/core/services/orderSocket";
 import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline";
 import { formatPrDate } from "@shared/utils/purchaseRequestFormat";
+import PRCountdown from "@shared/components/PRCountdown";
 
 const STATUS_OPTIONS = [
   { label: "All", value: "all" },
@@ -46,16 +47,22 @@ const statusVariant = (status) => {
 
 const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
 
-const lineKey = (item) =>
-  item?.itemKey ||
-  `${String(item?.productId || "")}::${item?.variantId ? String(item.variantId) : "root"}`;
+const lineKey = (item) => {
+  const pId = item?.productId?._id || item?.productId || "";
+  return item?.itemKey || `${String(pId)}::${item?.variantId ? String(item.variantId) : "root"}`;
+};
 
 const canRespondLine = (row, item) => {
+  if (row.requestType === "manual") return false;
   const st = normalizeStatus(row?.status);
   const vendorState = normalizeStatus(row?.vendorResponse?.status || "pending");
   const lineStatus = normalizeStatus(item?.lineStatus || "pending");
   if (lineStatus !== "pending") return false;
   if (!["created", "pickup_assigned"].includes(st)) return false;
+
+  const isExpired = row.expiresAt ? (new Date(row.expiresAt).getTime() - (Date.now() - (window.__serverTimeOffset || 0)) <= 0) : false;
+  if (isExpired) return false;
+
   return vendorState === "pending" || vendorState === "partial";
 };
 
@@ -155,7 +162,7 @@ const ProcurementRequests = () => {
 
   const acceptLine = async (row, item) => {
     const key = lineKey(item);
-    const productId = String(item?.productId || "");
+    const productId = String(item?.productId?._id || item?.productId || "");
     const variantId = item?.variantId || null;
     const requestedQty = Number(item?.requestedQty ?? item?.shortageQty ?? item?.requiredQty ?? 0);
     const committedQty = Math.min(
@@ -193,7 +200,7 @@ const ProcurementRequests = () => {
 
   const rejectLine = async (row, item) => {
     const key = lineKey(item);
-    const productId = String(item?.productId || "");
+    const productId = String(item?.productId?._id || item?.productId || "");
     const variantId = item?.variantId || null;
     const attachment = String(attachmentMap[row._id] || "").trim();
 
@@ -215,7 +222,7 @@ const ProcurementRequests = () => {
     const items = (row.items || [])
       .map((it) => {
         const key = lineKey(it);
-        const pid = String(it.productId || "");
+        const pid = String(it.productId?._id || it.productId || "");
         const committedQty = Number(commitMap[row._id]?.[key] ?? it.shortageQty ?? it.requiredQty ?? 0);
         return { productId: pid, variantId: it.variantId || null, committedQty };
       })
@@ -254,6 +261,34 @@ const ProcurementRequests = () => {
         }),
       fullyCommitted ? "Request accepted" : "Partial quantities committed",
     );
+  };
+
+  const handleRespondManual = async (row, action) => {
+    const combinedNotes = [
+      String(notesMap[row._id] || "").trim(),
+      String(attachmentMap[row._id] || "").trim() ? `Attachment: ${attachmentMap[row._id]}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    if (action === "reject") {
+      const confirm = window.confirm("Are you sure you want to reject this manual purchase request?");
+      if (!confirm) return;
+    } else {
+      const confirm = window.confirm("Are you sure you want to accept this manual purchase request? This will commit your stock.");
+      if (!confirm) return;
+    }
+
+    setSavingId(`${row._id}:${action}`);
+    try {
+      await sellerApi.respondToManualPR(row._id, action, combinedNotes);
+      showToast(action === "accept" ? "Request accepted successfully!" : "Request rejected.", "success");
+      fetchRows();
+    } catch (err) {
+      showToast(err.response?.data?.message || "Failed to submit response", "error");
+    } finally {
+      setSavingId("");
+    }
   };
 
   return (
@@ -321,7 +356,11 @@ const ProcurementRequests = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <span className="bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter">PR Task</span>
+                      {row.requestType === "manual" ? (
+                        <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold animate-pulse">Manual</span>
+                      ) : (
+                        <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold">Automated</span>
+                      )}
                       {row.requestId}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
@@ -341,6 +380,9 @@ const ProcurementRequests = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={statusVariant(row.status)} className="font-black text-[10px] sm:text-xs uppercase">{row.status.replace('_', ' ')}</Badge>
+                    {row.status === "created" && row.expiresAt && (
+                      <PRCountdown expiresAt={row.expiresAt} status={row.status} onExpired={fetchRows} />
+                    )}
                   </div>
                 </div>
 
@@ -427,55 +469,79 @@ const ProcurementRequests = () => {
                   })}
                 </div>
 
-                {(row.items || []).length === 1 && (
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  <Button
-                    onClick={() =>
-                      isVerified ? commitQuantities(row) : showToast("Account pending approval", "error")
-                    }
-                    isLoading={savingId === `${row._id}:commit`}
-                    disabled={!canRespondLine(row, row.items[0]) || !isVerified}
-                  >
-                    Accept All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      isVerified ? act(
-                        `${row._id}:ready`,
-                        () =>
-                          sellerApi.markPurchaseRequestReady(row._id, {
-                            notes: notesMap[row._id] || "",
-                          }),
-                        "Marked ready for pickup",
-                      ) : showToast("Account pending approval", "error")
-                    }
-                    disabled={!canMarkReady(row) || !isVerified}
-                  >
-                    Mark Ready
-                  </Button>
-                </div>
-                )}
+                {row.requestType === "manual" ? (
+                  row.status === "created" && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRespondManual(row, "reject")}
+                        isLoading={savingId === `${row._id}:reject`}
+                        disabled={savingId !== ""}
+                      >
+                        Reject Request
+                      </Button>
+                      <Button
+                        onClick={() => handleRespondManual(row, "accept")}
+                        isLoading={savingId === `${row._id}:accept`}
+                        disabled={savingId !== ""}
+                      >
+                        Accept & Commit
+                      </Button>
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {(row.items || []).length === 1 && (
+                      <div className="mt-4 grid gap-2 md:grid-cols-2">
+                        <Button
+                          onClick={() =>
+                            isVerified ? commitQuantities(row) : showToast("Account pending approval", "error")
+                          }
+                          isLoading={savingId === `${row._id}:commit`}
+                          disabled={!canRespondLine(row, row.items[0]) || !isVerified}
+                        >
+                          Accept All
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            isVerified ? act(
+                              `${row._id}:ready`,
+                              () =>
+                                sellerApi.markPurchaseRequestReady(row._id, {
+                                  notes: notesMap[row._id] || "",
+                                }),
+                              "Marked ready for pickup",
+                            ) : showToast("Account pending approval", "error")
+                          }
+                          disabled={!canMarkReady(row) || !isVerified}
+                        >
+                          Mark Ready
+                        </Button>
+                      </div>
+                    )}
 
-                {(row.items || []).length > 1 && (
-                <div className="mt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      isVerified ? act(
-                        `${row._id}:ready`,
-                        () =>
-                          sellerApi.markPurchaseRequestReady(row._id, {
-                            notes: notesMap[row._id] || "",
-                          }),
-                        "Marked ready for pickup",
-                      ) : showToast("Account pending approval", "error")
-                    }
-                    disabled={!canMarkReady(row) || !isVerified}
-                  >
-                    Mark Ready
-                  </Button>
-                </div>
+                    {(row.items || []).length > 1 && (
+                      <div className="mt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            isVerified ? act(
+                              `${row._id}:ready`,
+                              () =>
+                                sellerApi.markPurchaseRequestReady(row._id, {
+                                  notes: notesMap[row._id] || "",
+                                }),
+                              "Marked ready for pickup",
+                            ) : showToast("Account pending approval", "error")
+                          }
+                          disabled={!canMarkReady(row) || !isVerified}
+                        >
+                          Mark Ready
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="mt-3 grid gap-2 md:grid-cols-2">

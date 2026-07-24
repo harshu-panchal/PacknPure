@@ -134,6 +134,12 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: Date,
       index: true,
     },
+    requestType: {
+      type: String,
+      enum: ["manual", "automated"],
+      default: "automated",
+      index: true,
+    },
     pickupPartnerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PickupPartner",

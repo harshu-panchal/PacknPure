@@ -32,9 +32,6 @@ const Returns = React.lazy(() => import("../pages/Returns"));
 const ProcurementRequests = React.lazy(
   () => import("../pages/ProcurementRequests"),
 );
-const ManualPRRequests = React.lazy(
-  () => import("../pages/ManualPRRequests"),
-);
 const Earnings = React.lazy(() => import("../pages/Earnings"));
 const Analytics = React.lazy(() => import("../pages/Analytics"));
 const Transactions = React.lazy(() => import("../pages/Transactions"));
@@ -90,11 +87,6 @@ const navItems = [
     path: "/seller/procurement",
     icon: HiOutlineClipboardDocumentList,
   },
-  {
-    label: "Manual Requests",
-    path: "/seller/manual-requests",
-    icon: HiOutlineClipboardDocumentList,
-  },
   { label: "Returns", path: "/seller/returns", icon: HiOutlineArchiveBox },
   { label: "Track Shipments", path: "/seller/tracking", icon: HiOutlineMapPin },
   {
@@ -138,7 +130,6 @@ const SellerRoutes = () => {
         <Route path="/inventory" element={<StockManagement />} />
         <Route path="/orders" element={<Navigate to="/seller/procurement" replace />} />
         <Route path="/procurement" element={<ProcurementRequests />} />
-        <Route path="/manual-requests" element={<ManualPRRequests />} />
         <Route path="/returns" element={<Returns />} />
         <Route path="/tracking" element={<DeliveryTracking />} />
         <Route path="/analytics" element={<Analytics />} />

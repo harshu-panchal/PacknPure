@@ -11,8 +11,7 @@ import PurchaseRequestDetailModal from "../components/PurchaseRequestDetailModal
 import PurchaseRequestLineItems from "../components/PurchaseRequestLineItems";
 import { adminApi } from "../services/adminApi";
 import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
-import ManualPRDetails from "../components/ManualPRDetails";
-import ManualPRCountdown from "@shared/components/ManualPRCountdown";
+import PRCountdown from "@shared/components/PRCountdown";
 
 const statusToLabel = (value) => prStatusLabel(value);
 
@@ -283,7 +282,14 @@ const PurchaseRequestsPage = () => {
             label: "Request",
             render: (row) => (
               <div>
-                <p className="text-sm font-bold text-slate-900">{row.requestId}</p>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <p className="text-sm font-bold text-slate-900">{row.requestId}</p>
+                  {row.requestType === "manual" ? (
+                    <span className="bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-tight">Manual</span>
+                  ) : (
+                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-tight">Automated</span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500">{formatPrDate(row.createdAt)}</p>
               </div>
             ),
@@ -350,7 +356,7 @@ const PurchaseRequestsPage = () => {
             label: "Time Remaining",
             render: (row) => {
               if (row.rawStatus === "created" && row.expiresAt) {
-                return <ManualPRCountdown expiresAt={row.expiresAt} status={row.rawStatus} />;
+                return <PRCountdown expiresAt={row.expiresAt} status={row.rawStatus} />;
               }
               return <span className="text-slate-400 text-xs">—</span>;
             },
@@ -517,27 +523,15 @@ const PurchaseRequestsPage = () => {
         message={infoMessage}
       />
 
-      {detailRow && !detailRow.orderId ? (
-        <ManualPRDetails
-          isOpen={detailsOpen}
-          onClose={() => {
-            setDetailsOpen(false);
-            setDetailRow(null);
-          }}
-          row={detailRow}
-          loading={detailLoading}
-        />
-      ) : (
-        <PurchaseRequestDetailModal
-          isOpen={detailsOpen}
-          onClose={() => {
-            setDetailsOpen(false);
-            setDetailRow(null);
-          }}
-          row={detailRow}
-          loading={detailLoading}
-        />
-      )}
+      <PurchaseRequestDetailModal
+        isOpen={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false);
+          setDetailRow(null);
+        }}
+        row={detailRow}
+        loading={detailLoading}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-export const ManualPRCountdown = ({ expiresAt, status }) => {
+export const PRCountdown = ({ expiresAt, status, onExpired }) => {
   const getSecondsRemaining = () => {
     if (!expiresAt) return 0;
     const isTerminal = ["seller_rejected", "expired", "cancelled", "closed", "seller_failed"].includes(
@@ -9,25 +9,38 @@ export const ManualPRCountdown = ({ expiresAt, status }) => {
     if (isTerminal) return 0;
 
     const expiryTime = new Date(expiresAt).getTime();
-    return Math.max(0, Math.floor((expiryTime - Date.now()) / 1000));
+    if (isNaN(expiryTime)) return 0;
+
+    // Use synchronized server time
+    const serverTimeMs = Date.now() - (window.__serverTimeOffset || 0);
+    return Math.max(0, Math.floor((expiryTime - serverTimeMs) / 1000));
   };
 
   const [secondsLeft, setSecondsLeft] = useState(getSecondsRemaining);
 
   useEffect(() => {
     // Initial calculation
-    setSecondsLeft(getSecondsRemaining());
+    const initialRemaining = getSecondsRemaining();
+    setSecondsLeft(initialRemaining);
 
     const isTerminal = ["seller_rejected", "expired", "cancelled", "closed", "seller_failed"].includes(
       String(status || "").toLowerCase()
     );
-    if (isTerminal || !expiresAt) return;
+    if (isTerminal || !expiresAt || initialRemaining <= 0) {
+      if (initialRemaining <= 0 && onExpired) {
+        onExpired();
+      }
+      return;
+    }
 
     const timer = setInterval(() => {
       const remaining = getSecondsRemaining();
       setSecondsLeft(remaining);
       if (remaining <= 0) {
         clearInterval(timer);
+        if (onExpired) {
+          onExpired();
+        }
       }
     }, 1000);
 
@@ -56,7 +69,7 @@ export const ManualPRCountdown = ({ expiresAt, status }) => {
     if (secondsLeft > 10 * 60) {
       return "text-amber-700 bg-amber-50 border-amber-100";
     }
-    return "text-rose-700 bg-rose-550 bg-rose-50 border-rose-100 animate-bounce";
+    return "text-rose-700 bg-rose-50 border-rose-100 animate-bounce";
   };
 
   return (
@@ -70,4 +83,4 @@ export const ManualPRCountdown = ({ expiresAt, status }) => {
   );
 };
 
-export default ManualPRCountdown;
+export default PRCountdown;

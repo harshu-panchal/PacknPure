@@ -292,6 +292,8 @@ const mapRow = (reqDoc, extras = {}) => {
     createdAt: reqDoc.createdAt,
     updatedAt: reqDoc.updatedAt,
     confirmedAt: dates.confirmedAt,
+    expiresAt: reqDoc.expiresAt,
+    requestType: reqDoc.requestType || (reqDoc.orderId ? "automated" : "manual"),
     items,
     pickupProof: reqDoc.pickupProof || null,
     hubDropProof: reqDoc.hubDropProof || null,
@@ -344,6 +346,8 @@ const mapSellerRow = (reqDoc, extras = {}) => {
     eta: reqDoc.eta || null,
     createdAt: reqDoc.createdAt,
     updatedAt: reqDoc.updatedAt,
+    expiresAt: reqDoc.expiresAt,
+    requestType: reqDoc.requestType || (reqDoc.orderId ? "automated" : "manual"),
     pickupProof: reqDoc.pickupProof || null,
     hubDropProof: reqDoc.hubDropProof || null,
   };
@@ -2040,6 +2044,7 @@ export const createManualPR = async (req, res) => {
       items: prItems,
       status: "created",
       expiresAt,
+      requestType: "manual",
     }], { session });
 
     const { commitSellerInventory } = await import("../services/inventory/inventoryEngine.js");
