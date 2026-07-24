@@ -134,9 +134,12 @@ export const releaseManualPRUnpickedCommitments = async ({
 
 /**
  * Manual PR ownership transfer at Hub Receive (user lifecycle):
- * - Hub Available += acceptedQty (master product)
+ * - Hub Available += acceptedQty (master product + master variant stock for Products HA)
  * - Seller Committed -= acceptedQty (seller product; stock already reduced at create)
  * Does NOT restore seller available stock (goods left the seller).
+ *
+ * Important: Admin Products HA badge reads master Product.variants[].stock
+ * (not only HubInventory.availableQty). variantId must be the MASTER variant.
  */
 export const transferManualPRInventoryAtHubReceive = async ({
   pr,
@@ -151,6 +154,8 @@ export const transferManualPRInventoryAtHubReceive = async ({
     return { applied: false, reason: "zero_qty" };
   }
 
+  const Product = (await import("../models/product.js")).default;
+  const { normalizeVariantMatchKey } = await import("../utils/productHelpers.js");
   const { receiveInventoryAtHub, moveSellerCommitToTransit } = await import(
     "./inventory/inventoryEngine.js"
   );
@@ -158,14 +163,44 @@ export const transferManualPRInventoryAtHubReceive = async ({
   const prId = String(pr._id);
   const masterId = String(masterProductId);
   const sellerId = String(sellerProductId);
-  const variantKey = sellerVariantId ? String(sellerVariantId) : "novar";
 
+  // Resolve seller variant → master variant (Products HA is keyed by master variant stock).
+  let masterVariantId = null;
+  if (sellerVariantId) {
+    const [masterProduct, sellerProduct] = await Promise.all([
+      Product.findById(masterId).select("variants").lean(),
+      Product.findById(sellerId).select("variants").lean(),
+    ]);
+    const sellerVar = (sellerProduct?.variants || []).find(
+      (v) => String(v._id || v.id) === String(sellerVariantId),
+    );
+    if (sellerVar?.name) {
+      const key = normalizeVariantMatchKey(sellerVar.name);
+      const masterVar = (masterProduct?.variants || []).find(
+        (v) => normalizeVariantMatchKey(v.name) === key,
+      );
+      masterVariantId = masterVar?._id || masterVar?.id || null;
+    }
+    // Fallback: if seller listing IS the master (or ids equal), use seller variant directly.
+    if (!masterVariantId && masterId === sellerId) {
+      masterVariantId = sellerVariantId;
+    }
+  }
+
+  const variantKey = masterVariantId
+    ? String(masterVariantId)
+    : sellerVariantId
+      ? String(sellerVariantId)
+      : "novar";
+
+  // Pass masterVariantId so syncProductStock updates variants[].stock (Products HA source).
   await receiveInventoryAtHub({
     productId: masterId,
+    variantId: masterVariantId,
     quantity: qty,
     hubId,
     reason: "manual_pr_hub_receive",
-    idempotencyKey: `manual_pr_hub_ha:${prId}:${masterId}:${variantKey}:${qty}`,
+    idempotencyKey: `manual_pr_hub_ha_v2:${prId}:${masterId}:${variantKey}:${qty}`,
   });
 
   await moveSellerCommitToTransit({
@@ -174,10 +209,16 @@ export const transferManualPRInventoryAtHubReceive = async ({
     quantity: qty,
     sellerId: pr.vendorId,
     reason: "manual_pr_hub_receive_seller_commit_clear",
-    idempotencyKey: `manual_pr_hub_sc:${prId}:${sellerId}:${variantKey}:${qty}`,
+    idempotencyKey: `manual_pr_hub_sc_v2:${prId}:${sellerId}:${sellerVariantId || "novar"}:${qty}`,
   });
 
-  return { applied: true, masterProductId: masterId, sellerProductId: sellerId, quantity: qty };
+  return {
+    applied: true,
+    masterProductId: masterId,
+    masterVariantId: masterVariantId ? String(masterVariantId) : null,
+    sellerProductId: sellerId,
+    quantity: qty,
+  };
 };
 
 /**

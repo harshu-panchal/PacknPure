@@ -1129,9 +1129,9 @@ export const verifyInward = async (req, res) => {
               reason: "verify_inward_order_linked",
             });
           } else {
-            // Manual PR: primary transfer is at Hub Receive. Re-run with same
-            // idempotency keys so legacy PRs (received before the fix) still land stock,
-            // and already-transferred PRs are no-ops.
+            // Manual PR: primary transfer is at Hub Receive.
+            // Only re-run at QA when seller commit / PR line commit still remains
+            // (legacy receive that skipped inventory). Avoids double-adding HA.
             const prLine = pr.items?.find((line) => {
               const lineProductId = String(line.productId?._id || line.productId);
               const lineSellerId = String(line.selectedSellerProductId || lineProductId);
@@ -1144,22 +1144,52 @@ export const verifyInward = async (req, res) => {
             const sellerProductId = prLine?.selectedSellerProductId
               ? String(prLine.selectedSellerProductId)
               : String(item.sellerProductId || productId);
+            const sellerVariantId = prLine?.variantId || item.variantId || null;
+            const lineCommitLeft = Math.max(0, Number(prLine?.committedQty || 0));
+
+            let sellerCommitLeft = 0;
             try {
-              const { transferManualPRInventoryAtHubReceive } = await import(
-                "../services/manualPurchaseRequestInventoryService.js"
-              );
-              await transferManualPRInventoryAtHubReceive({
-                pr,
-                masterProductId: productId,
-                sellerProductId,
-                sellerVariantId: prLine?.variantId || item.variantId || null,
-                acceptedQty,
-                hubId,
-              });
-            } catch (manualInvErr) {
-              console.warn(
-                `[Inward] Manual PR idempotent transfer at QA failed:`,
-                manualInvErr.message,
+              const ProductModel = (await import("../models/product.js")).default;
+              const sellerDoc = await ProductModel.findById(sellerProductId)
+                .select("stock committedStock variants")
+                .lean();
+              if (sellerVariantId && Array.isArray(sellerDoc?.variants)) {
+                const sv = sellerDoc.variants.find(
+                  (v) => String(v._id) === String(sellerVariantId),
+                );
+                sellerCommitLeft = Math.max(0, Number(sv?.committedStock || 0));
+              } else {
+                sellerCommitLeft = Math.max(0, Number(sellerDoc?.committedStock || 0));
+              }
+            } catch (_) {
+              sellerCommitLeft = lineCommitLeft;
+            }
+
+            if (lineCommitLeft > 0 || sellerCommitLeft > 0) {
+              try {
+                const { transferManualPRInventoryAtHubReceive } = await import(
+                  "../services/manualPurchaseRequestInventoryService.js"
+                );
+                await transferManualPRInventoryAtHubReceive({
+                  pr,
+                  masterProductId: productId,
+                  sellerProductId,
+                  sellerVariantId,
+                  acceptedQty: Math.min(
+                    acceptedQty,
+                    Math.max(lineCommitLeft, sellerCommitLeft, acceptedQty),
+                  ),
+                  hubId,
+                });
+              } catch (manualInvErr) {
+                console.warn(
+                  `[Inward] Manual PR transfer at QA failed:`,
+                  manualInvErr.message,
+                );
+              }
+            } else {
+              console.log(
+                `[Inward] Manual PR ${pr.requestId}: hub transfer already applied at receive; skipping QA inventory.`,
               );
             }
           }

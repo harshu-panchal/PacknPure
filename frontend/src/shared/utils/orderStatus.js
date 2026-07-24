@@ -28,10 +28,10 @@ function legacyFromWorkflow(workflowStatus) {
   switch (workflowStatus) {
     case WORKFLOW_STATUS.CREATED:
     case WORKFLOW_STATUS.SELLER_PENDING:
-    case WORKFLOW_STATUS.DELIVERY_SEARCH:
       return "pending";
+    // Match backend legacyStatusFromWorkflow — search/accepted means confirmed.
+    case WORKFLOW_STATUS.DELIVERY_SEARCH:
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
-      return "confirmed";
     case WORKFLOW_STATUS.DELIVERY_ASSIGNED:
     case WORKFLOW_STATUS.PICKUP_READY:
       return "confirmed";
@@ -40,11 +40,28 @@ function legacyFromWorkflow(workflowStatus) {
     case WORKFLOW_STATUS.DELIVERED:
       return "delivered";
     case WORKFLOW_STATUS.CANCELLED:
+    case "ORDER_CANCELLED":
       return "cancelled";
     default:
       return "pending";
   }
 }
+
+/** Workflow still before / without a rider — legacy `status` may already be confirmed (Express hub auto-confirm). */
+const EARLY_WORKFLOW_STATUSES = new Set([
+  WORKFLOW_STATUS.CREATED,
+  WORKFLOW_STATUS.SELLER_PENDING,
+  WORKFLOW_STATUS.SELLER_ACCEPTED,
+  WORKFLOW_STATUS.DELIVERY_SEARCH,
+  "ORDER_PLACED",
+  "PAYMENT_CONFIRMED",
+  "INVENTORY_RESERVED",
+  "PROCUREMENT_COMPLETED",
+  "READY_FOR_DELIVERY",
+  "PACKING",
+  "QA_PENDING",
+  "QA_PASSED",
+]);
 
 /**
  * Normalized legacy bucket (matches Order.status enum + v2 workflow mapping).
@@ -53,6 +70,8 @@ function legacyFromWorkflow(workflowStatus) {
 export function getLegacyStatusFromOrder(order) {
   if (!order) return "pending";
   const v = Number(order.workflowVersion) || 0;
+  const rawStatus = String(order.status ?? "pending").toLowerCase();
+
   if (v >= 2 && order.workflowStatus) {
     const workflowStatus = String(order.workflowStatus).toUpperCase();
 
@@ -63,10 +82,25 @@ export function getLegacyStatusFromOrder(order) {
       return "delivered";
     }
     if (
+      workflowStatus === WORKFLOW_STATUS.CANCELLED ||
+      workflowStatus === "ORDER_CANCELLED"
+    ) {
+      return "cancelled";
+    }
+    if (
       workflowStatus === WORKFLOW_STATUS.DELIVERY_ASSIGNED ||
       workflowStatus === WORKFLOW_STATUS.PICKUP_READY
     ) {
       return "confirmed";
+    }
+
+    // Express + hub stock auto-confirm sets status=confirmed while workflow may
+    // still be CREATED and deliveryBoy remains null. Prefer explicit legacy status.
+    if (rawStatus === "confirmed" && EARLY_WORKFLOW_STATUSES.has(workflowStatus)) {
+      return "confirmed";
+    }
+    if (rawStatus === "cancelled") {
+      return "cancelled";
     }
 
     return legacyFromWorkflow(workflowStatus);
@@ -80,8 +114,7 @@ export function getLegacyStatusFromOrder(order) {
     return "confirmed";
   }
 
-  const s = String(order.status ?? "pending").toLowerCase();
-  if (LEGACY_ENUM.has(s)) return s;
+  if (LEGACY_ENUM.has(rawStatus)) return rawStatus;
   return "pending";
 }
 
