@@ -37,6 +37,7 @@ import {
     getDeliverySubline,
     formatSlotDateFull,
 } from '@/shared/utils/deliverySnapshot';
+import { OrderInvoiceModal } from '../components/invoice';
 
 const OrderDetail = () => {
     const { orderId } = useParams();
@@ -44,6 +45,7 @@ const OrderDetail = () => {
     const { showToast } = useToast();
     const [order, setOrder] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
     const fetchDetail = async () => {
         setIsLoading(true);
@@ -183,7 +185,11 @@ const OrderDetail = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => setIsInvoiceOpen(true)}
+                        className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+                    >
                         <Printer className="h-4 w-4 text-slate-400" />
                         Print Invoice
                     </button>
@@ -557,6 +563,12 @@ const OrderDetail = () => {
                     </Card>
                 </div>
             </div>
+
+            <OrderInvoiceModal
+                isOpen={isInvoiceOpen}
+                onClose={() => setIsInvoiceOpen(false)}
+                order={order}
+            />
         </div>
     );
 };

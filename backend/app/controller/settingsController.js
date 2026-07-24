@@ -116,7 +116,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry slaHours procurementFailureAction enableMultiSellerAllocation createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry slaHours procurementFailureAction enableMultiSellerAllocation createdAt",
       )
       .lean();
 
