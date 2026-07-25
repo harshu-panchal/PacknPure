@@ -15,6 +15,54 @@ import {
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Parse optional lat/lng. Missing → undefined (backward compatible).
+ * Present but invalid → null (caller should reject).
+ */
+const parseOptionalCoordinate = (value, { min, max }) => {
+    if (value === undefined || value === null || value === "") return undefined;
+    const num = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(num) || num < min || num > max) return null;
+    return num;
+};
+
+const normalizePlaceId = (value) => {
+    if (value === undefined || value === null || value === "") return undefined;
+    const id = String(value).trim();
+    return id.length > 0 ? id.slice(0, 256) : undefined;
+};
+
+const sanitizeAddressEntry = (addr) => {
+    if (!addr || typeof addr !== "object") {
+        return { address: addr };
+    }
+
+    const next = { ...addr };
+    const lat = parseOptionalCoordinate(addr?.location?.lat ?? addr?.latitude ?? addr?.userLatitude, {
+        min: -90,
+        max: 90,
+    });
+    const lng = parseOptionalCoordinate(addr?.location?.lng ?? addr?.longitude ?? addr?.userLongitude, {
+        min: -180,
+        max: 180,
+    });
+
+    if (lat === null || lng === null) {
+        return { error: "Address latitude/longitude must be valid numbers" };
+    }
+
+    if (lat !== undefined && lng !== undefined) {
+        next.location = { lat, lng };
+    } else if (addr.location === null) {
+        next.location = undefined;
+    }
+
+    const placeId = normalizePlaceId(addr.placeId ?? addr.userPlaceId);
+    if (placeId !== undefined) next.placeId = placeId;
+
+    return { address: next };
+};
+
 const generateToken = (customer) =>
     jwt.sign(
         { id: customer._id, role: "customer" },
@@ -183,8 +231,22 @@ export const getCustomerProfile = async (req, res) => {
 ================================ */
 export const updateCustomerProfile = async (req, res) => {
     try {
-        const { name, email, addresses, businessName, businessAddress, businessType, contactPerson, panNo, gstNo, fssaiNumber, avatar } =
-            req.body;
+        const {
+            name,
+            email,
+            addresses,
+            businessName,
+            businessAddress,
+            businessType,
+            contactPerson,
+            panNo,
+            gstNo,
+            fssaiNumber,
+            avatar,
+            businessLatitude,
+            businessLongitude,
+            businessPlaceId,
+        } = req.body;
 
         const customer = await Customer.findById(req.user.id);
         if (!customer) {
@@ -200,8 +262,56 @@ export const updateCustomerProfile = async (req, res) => {
         if (panNo !== undefined) customer.panNo = panNo;
         if (gstNo !== undefined) customer.gstNo = gstNo;
         if (fssaiNumber !== undefined) customer.fssaiNumber = fssaiNumber;
-        if (addresses !== undefined) customer.addresses = addresses;
         if (avatar !== undefined) customer.avatar = avatar ? String(avatar).trim() : "";
+
+        if (addresses !== undefined) {
+            if (!Array.isArray(addresses)) {
+                return handleResponse(res, 400, "Addresses must be an array");
+            }
+            const sanitized = [];
+            for (const addr of addresses) {
+                const result = sanitizeAddressEntry(addr);
+                if (result.error) {
+                    return handleResponse(res, 400, result.error);
+                }
+                sanitized.push(result.address);
+            }
+            customer.addresses = sanitized;
+        }
+
+        // Business coordinates — optional; missing keeps legacy profiles working
+        if (
+            businessLatitude !== undefined ||
+            businessLongitude !== undefined ||
+            businessPlaceId !== undefined
+        ) {
+            const lat = parseOptionalCoordinate(businessLatitude, { min: -90, max: 90 });
+            const lng = parseOptionalCoordinate(businessLongitude, { min: -180, max: 180 });
+
+            if (lat === null || lng === null) {
+                return handleResponse(
+                    res,
+                    400,
+                    "Business latitude/longitude must be valid numbers"
+                );
+            }
+
+            // Only update when both are provided together, or clear when explicitly null
+            if (lat !== undefined && lng !== undefined) {
+                customer.businessLatitude = lat;
+                customer.businessLongitude = lng;
+            } else if (businessLatitude === null && businessLongitude === null) {
+                customer.businessLatitude = undefined;
+                customer.businessLongitude = undefined;
+            }
+
+            if (businessPlaceId !== undefined) {
+                customer.businessPlaceId =
+                    businessPlaceId === null || businessPlaceId === ""
+                        ? undefined
+                        : normalizePlaceId(businessPlaceId);
+            }
+        }
 
         await customer.save();
 

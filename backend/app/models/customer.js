@@ -18,7 +18,10 @@ const addressSchema = new mongoose.Schema({
     landmark: String,
     city: String,
     state: String,
+    country: String,
     pincode: String,
+    /** Google Place ID for the selected address (optional; manual entries omit this). */
+    placeId: String,
     location: {
         lat: Number,
         lng: Number,
@@ -36,6 +39,17 @@ const userSchema = new mongoose.Schema(
             trim: true,
         },
         businessAddress: {
+            type: String,
+            trim: true,
+        },
+        /** Precise business location from Google Places (optional for legacy profiles). */
+        businessLatitude: {
+            type: Number,
+        },
+        businessLongitude: {
+            type: Number,
+        },
+        businessPlaceId: {
             type: String,
             trim: true,
         },

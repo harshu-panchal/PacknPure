@@ -3,6 +3,7 @@ import { User, Sparkles, ChevronRight, Loader2, Mail, MapPin, Building2, FileTex
 import { toast } from 'sonner';
 import { customerApi } from '../../services/customerApi';
 import { BRAND_COLOR, BRAND_COLOR_DARK, BRAND_COLOR_LIGHT } from '../../constants/brandTheme';
+import AddressAutocompleteInput from './AddressAutocompleteInput';
 
 const businessTypes = [
     "Restaurant", "Cafe", "Cloud Kitchen", "QSR", "Bakery", "Sweet Shop", 
@@ -36,6 +37,9 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
         gstNo: '',
         fssaiNumber: '',
     });
+    // Optional Places metadata — never blocks save if missing (manual entry OK)
+    const [userLocation, setUserLocation] = useState(null);
+    const [businessLocation, setBusinessLocation] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [visible, setVisible] = useState(false);
     const [animIn, setAnimIn] = useState(false);
@@ -73,6 +77,8 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
             const t = setTimeout(() => {
                 setVisible(false);
                 setShowConfirmLogout(false);
+                setUserLocation(null);
+                setBusinessLocation(null);
                 setForm({
                     name: '',
                     address: '',
@@ -93,6 +99,20 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
 
     const handleChange = (field) => (e) => {
         setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    };
+
+    const handleUserPlaceSelect = (place) => {
+        setUserLocation(place);
+        if (place?.address) {
+            setForm((prev) => ({ ...prev, address: place.address }));
+        }
+    };
+
+    const handleBusinessPlaceSelect = (place) => {
+        setBusinessLocation(place);
+        if (place?.address) {
+            setForm((prev) => ({ ...prev, businessAddress: place.address }));
+        }
     };
 
     const isEmailValid = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -166,7 +186,29 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
 
         setIsLoading(true);
         try {
-            const response = await customerApi.updateProfile({
+            const addressPayload = {
+                label: 'home',
+                fullAddress: trimmedAddress,
+                landmark: trimmedLandmark,
+            };
+
+            if (
+                userLocation &&
+                Number.isFinite(userLocation.lat) &&
+                Number.isFinite(userLocation.lng)
+            ) {
+                addressPayload.location = {
+                    lat: userLocation.lat,
+                    lng: userLocation.lng,
+                };
+                if (userLocation.placeId) addressPayload.placeId = userLocation.placeId;
+                if (userLocation.city) addressPayload.city = userLocation.city;
+                if (userLocation.state) addressPayload.state = userLocation.state;
+                if (userLocation.country) addressPayload.country = userLocation.country;
+                if (userLocation.postalCode) addressPayload.pincode = userLocation.postalCode;
+            }
+
+            const profilePayload = {
                 name: trimmedName,
                 email: trimmedEmail,
                 businessName: trimmedBusinessName,
@@ -175,14 +217,22 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                 panNo: trimmedPanNo,
                 gstNo: trimmedGstNo,
                 fssaiNumber: trimmedFssai,
-                addresses: [
-                    {
-                        label: 'home',
-                        fullAddress: trimmedAddress,
-                        landmark: trimmedLandmark,
-                    }
-                ]
-            });
+                addresses: [addressPayload],
+            };
+
+            if (
+                businessLocation &&
+                Number.isFinite(businessLocation.lat) &&
+                Number.isFinite(businessLocation.lng)
+            ) {
+                profilePayload.businessLatitude = businessLocation.lat;
+                profilePayload.businessLongitude = businessLocation.lng;
+                if (businessLocation.placeId) {
+                    profilePayload.businessPlaceId = businessLocation.placeId;
+                }
+            }
+
+            const response = await customerApi.updateProfile(profilePayload);
             toast.success(`Welcome, ${trimmedName}! 🎉`);
             onSuccess?.(trimmedName, response.data.result);
         } catch (err) {
@@ -314,18 +364,19 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                                 )}
                             </div>
 
-                            {/* Address */}
+                            {/* Address — Google Places Autocomplete (same visual field) */}
                             <div className={fieldClass} style={inputClass(form.address.length > 0)}>
                                 <MapPin size={18} className="shrink-0 text-slate-400" />
-                                <input
-                                    type="text"
+                                <AddressAutocompleteInput
                                     value={form.address}
                                     onChange={handleChange('address')}
+                                    onPlaceSelect={handleUserPlaceSelect}
                                     placeholder="Your address *"
                                     maxLength={200}
                                     autoComplete="street-address"
                                     disabled={isLoading}
                                     className={inputInnerClass}
+                                    enabled={open && visible}
                                 />
                             </div>
 
@@ -375,17 +426,18 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                                 />
                             </div>
 
-                            {/* Business Address */}
+                            {/* Business Address — Google Places Autocomplete (same visual field) */}
                             <div className={fieldClass} style={inputClass(form.businessAddress.length > 0)}>
                                 <MapPin size={18} className="shrink-0 text-slate-400" />
-                                <input
-                                    type="text"
+                                <AddressAutocompleteInput
                                     value={form.businessAddress}
                                     onChange={handleChange('businessAddress')}
+                                    onPlaceSelect={handleBusinessPlaceSelect}
                                     placeholder="Business address *"
                                     maxLength={200}
                                     disabled={isLoading}
                                     className={inputInnerClass}
+                                    enabled={open && visible}
                                 />
                             </div>
 
