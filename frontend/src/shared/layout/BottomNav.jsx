@@ -7,16 +7,15 @@ import {
     Wallet,
 } from 'lucide-react';
 
-import { useAuth } from '@/core/context/AuthContext';
-
 /** Primary mobile bottom navigation for seller/admin shell. */
 const BottomNav = () => {
-    const { role } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Define the primary bottom nav items based on user role
-    const primaryItems = role === 'admin' ? [
+    // Path-based (not auth role) so panel nav never flips mid-tap on mobile
+    const isAdminPanel = location.pathname.startsWith('/admin');
+
+    const primaryItems = isAdminPanel ? [
         { label: 'Dashboard', path: '/admin', icon: LayoutDashboard, end: true },
         { label: 'Orders', path: '/admin/orders/all', icon: ClipboardList },
         { label: 'Products', path: '/admin/products', icon: Box },
@@ -36,6 +35,11 @@ const BottomNav = () => {
             location.pathname === item.path ||
             location.pathname.startsWith(`${item.path}/`)
         );
+    };
+
+    const goTo = (path) => {
+        if (location.pathname === path) return;
+        navigate(path);
     };
 
     return (
@@ -58,9 +62,13 @@ const BottomNav = () => {
                             type="button"
                             aria-label={item.label}
                             aria-current={active ? 'page' : undefined}
-                            onClick={() => navigate(item.path)}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                goTo(item.path);
+                            }}
                             className={cn(
-                                "flex flex-1 flex-col items-center justify-center gap-1 min-w-0 max-w-[5.5rem] px-1 transition-all duration-300 touch-manipulation",
+                                "flex flex-1 flex-col items-center justify-center gap-1 min-w-0 max-w-[5.5rem] px-1 transition-all duration-300 touch-manipulation relative z-10",
                                 active ? "text-primary" : "text-gray-500 hover:text-gray-300"
                             )}
                         >

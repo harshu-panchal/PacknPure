@@ -1,6 +1,7 @@
-import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import React, { Suspense, useMemo } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import DashboardLayout from "@shared/layout/DashboardLayout";
+import Loader from "@shared/components/ui/Loader";
 import {
   HiOutlineSquares2X2,
   HiOutlineCube,
@@ -38,7 +39,6 @@ const Profile = React.lazy(() => import("../pages/Profile"));
 const Withdrawals = React.lazy(() => import("../pages/Withdrawals"));
 const Notifications = React.lazy(() => import("../pages/Notifications"));
 
-// POS Components
 const PosDashboard = React.lazy(() => import("@shared/pos/pages/PosDashboard"));
 const PosTerminals = React.lazy(() => import("@shared/pos/pages/PosTerminals"));
 const PosCheckout = React.lazy(() => import("@shared/pos/pages/PosCheckout"));
@@ -110,47 +110,108 @@ const navItems = [
   { label: "Profile", path: "/seller/profile", icon: HiOutlineUser },
 ];
 
+/** Map /seller/* path → page without relying on descendant <Routes> splat matching. */
+function resolveSellerPage(pathname) {
+  const sub = pathname.replace(/^\/seller\/?/, "").replace(/\/$/, "");
+
+  if (!sub) return <Dashboard />;
+
+  switch (sub) {
+    case "products":
+      return <ProductManagement />;
+    case "products/add":
+      return <AddProduct />;
+    case "barcodes":
+      return <BarcodeStickerManagement />;
+    case "catalog":
+      return <CatalogListing />;
+    case "inventory":
+      return <StockManagement />;
+    case "orders":
+      return <Navigate to="/seller/procurement" replace />;
+    case "procurement":
+      return <ProcurementRequests />;
+    case "returns":
+      return <Returns />;
+    case "tracking":
+      return <DeliveryTracking />;
+    case "analytics":
+      return <Analytics />;
+    case "withdrawals":
+      return <Withdrawals />;
+    case "transactions":
+      return <Transactions />;
+    case "notifications":
+      return <Notifications />;
+    case "earnings":
+      return <Earnings />;
+    case "profile":
+      return <Profile />;
+    default:
+      return null;
+  }
+}
+
 const SellerRoutes = () => {
+  const { pathname } = useLocation();
+  const isPos = pathname.startsWith("/seller/pos");
+
+  const page = useMemo(() => {
+    if (isPos) return null;
+    return resolveSellerPage(pathname);
+  }, [pathname, isPos]);
+
   return (
     <DashboardLayout navItems={navItems} title="Vendor Panel">
-      <Routes>
-        <Route index element={<Dashboard />} />
-        <Route path="products" element={<ProductManagement />} />
-        <Route path="products/add" element={<AddProduct />} />
-        <Route path="barcodes" element={<BarcodeStickerManagement />} />
-        <Route path="catalog" element={<CatalogListing />} />
-        <Route path="inventory" element={<StockManagement />} />
-        <Route path="orders" element={<Navigate to="/seller/procurement" replace />} />
-        <Route path="procurement" element={<ProcurementRequests />} />
-        <Route path="returns" element={<Returns />} />
-        <Route path="tracking" element={<DeliveryTracking />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="withdrawals" element={<Withdrawals />} />
-        <Route path="transactions" element={<Transactions />} />
-        <Route path="notifications" element={<Notifications />} />
-        <Route path="earnings" element={<Earnings />} />
-        <Route path="profile" element={<Profile />} />
-
-        {/* POS Routes wrapped in PosLayout */}
-        <Route path="pos" element={
-          <PosEngineProvider role="seller">
-            <PosLayout />
-          </PosEngineProvider>
-        }>
-          <Route index element={<PosDashboard />} />
-          <Route path="terminals" element={<PosTerminals />} />
-          <Route path="checkout" element={<PosCheckout />} />
-          <Route path="receipt/:orderId" element={<PosReceiptPage />} />
-          <Route path="orders" element={<CurrentOrders />} />
-          <Route path="sessions" element={<PosSessions />} />
-          <Route path="cash-drawer" element={<PosCashDrawer />} />
-          <Route path="returns" element={<PosReturns />} />
-          <Route path="reports" element={<PosReports />} />
-          <Route path="settings" element={<PosSettings />} />
-        </Route>
-
-        <Route path="*" element={<Navigate to="/seller" replace />} />
-      </Routes>
+      <Suspense fallback={<Loader />}>
+        {isPos ? (
+          <Routes>
+            <Route
+              path="pos"
+              element={
+                <PosEngineProvider role="seller">
+                  <PosLayout />
+                </PosEngineProvider>
+              }
+            >
+              <Route index element={<PosDashboard />} />
+              <Route path="terminals" element={<PosTerminals />} />
+              <Route path="checkout" element={<PosCheckout />} />
+              <Route path="receipt/:orderId" element={<PosReceiptPage />} />
+              <Route path="orders" element={<CurrentOrders />} />
+              <Route path="sessions" element={<PosSessions />} />
+              <Route path="cash-drawer" element={<PosCashDrawer />} />
+              <Route path="returns" element={<PosReturns />} />
+              <Route path="reports" element={<PosReports />} />
+              <Route path="settings" element={<PosSettings />} />
+            </Route>
+            <Route
+              path="/seller/pos/*"
+              element={
+                <PosEngineProvider role="seller">
+                  <PosLayout />
+                </PosEngineProvider>
+              }
+            >
+              <Route index element={<PosDashboard />} />
+              <Route path="terminals" element={<PosTerminals />} />
+              <Route path="checkout" element={<PosCheckout />} />
+              <Route path="receipt/:orderId" element={<PosReceiptPage />} />
+              <Route path="orders" element={<CurrentOrders />} />
+              <Route path="sessions" element={<PosSessions />} />
+              <Route path="cash-drawer" element={<PosCashDrawer />} />
+              <Route path="returns" element={<PosReturns />} />
+              <Route path="reports" element={<PosReports />} />
+              <Route path="settings" element={<PosSettings />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/seller/pos" replace />} />
+          </Routes>
+        ) : page != null ? (
+          page
+        ) : (
+          <Navigate to="/seller" replace />
+        )}
+      </Suspense>
     </DashboardLayout>
   );
 };

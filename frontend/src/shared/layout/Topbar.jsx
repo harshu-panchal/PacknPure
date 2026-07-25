@@ -178,11 +178,11 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
             className={cn(
                 "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2 overflow-hidden",
                 usesShellChrome
-                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6 md:overflow-visible"
+                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6"
                     : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-4 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
             )}
         >
-            <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-hidden md:overflow-visible">
+            <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-hidden">
                 <button
                     type="button"
                     onClick={onMenuClick}
@@ -239,7 +239,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                 </form>
             </div>
 
-            <div className="flex items-center gap-0.5 sm:gap-2 md:gap-3 flex-shrink-0 max-w-[55%] sm:max-w-none min-w-0">
+            <div className="flex items-center gap-0.5 sm:gap-2 md:gap-3 flex-shrink-0">
                 <div className="relative flex-shrink-0" ref={notificationRef}>
                     <button
                         type="button"
@@ -274,6 +274,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                 <button
                     type="button"
                     aria-label="Open profile"
+                    title={user?.name || 'Profile'}
                     onClick={() => {
                         if (location.pathname.startsWith('/admin')) {
                             navigate('/admin/profile');
@@ -285,16 +286,17 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                             navigate('/profile');
                         }
                     }}
-                    className="flex items-center gap-1.5 sm:gap-2.5 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md min-h-11 min-w-0 max-w-[9.5rem] sm:max-w-[11rem] md:max-w-none overflow-hidden flex-shrink"
+                    className="inline-flex items-center gap-2 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md h-9 max-h-9 overflow-hidden flex-shrink-0"
                 >
                     <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform flex-shrink-0">
                         {user?.name?.[0] || 'A'}
                     </div>
-                    <div className="text-left min-w-0 overflow-hidden flex-1 md:flex-none">
-                        <p className="text-[11px] sm:text-xs font-bold text-gray-900 leading-tight truncate whitespace-nowrap md:max-w-[9rem]">
+                    {/* Mobile: avatar only — long names must not expand/overlap the header */}
+                    <div className="hidden md:block text-left min-w-0 max-w-[9rem]">
+                        <p className="text-xs font-bold text-gray-900 leading-tight truncate">
                             {user?.name || 'Demo User'}
                         </p>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider truncate whitespace-nowrap md:max-w-[9rem]">
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider truncate">
                             {user?.role || 'Member'}
                         </p>
                     </div>

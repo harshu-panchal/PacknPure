@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+import { Outlet } from 'react-router-dom';
 import ProtectedRoute from '@core/guards/ProtectedRoute';
 import RoleGuard from '@core/guards/RoleGuard';
 import { UserRole } from '@core/constants/roles';
@@ -24,46 +25,65 @@ export const authRoutes = [
   { path: 'pickup/auth', element: <PickupAuth /> },
 ];
 
-/** Role dashboards — lazy-loaded sub-routers. */
+/**
+ * RR v7: multi-segment splats like `seller/*` break descendant <Routes> matching.
+ * Split into path + child splat so /seller/earnings resolves inside SellerModule.
+ */
 export const roleModuleRoutes = [
   {
-    path: 'seller/*',
+    path: 'seller',
     element: (
       <ProtectedRoute>
         <RoleGuard allowedRoles={[UserRole.SELLER]}>
-          <SellerModule />
+          <Outlet />
         </RoleGuard>
       </ProtectedRoute>
     ),
+    children: [
+      { index: true, element: <SellerModule /> },
+      { path: '*', element: <SellerModule /> },
+    ],
   },
   {
-    path: 'admin/*',
+    path: 'admin',
     element: (
       <ProtectedRoute>
         <RoleGuard allowedRoles={[UserRole.ADMIN]}>
-          <AdminModule />
+          <Outlet />
         </RoleGuard>
       </ProtectedRoute>
     ),
+    children: [
+      { index: true, element: <AdminModule /> },
+      { path: '*', element: <AdminModule /> },
+    ],
   },
   {
-    path: 'delivery/*',
+    path: 'delivery',
     element: (
       <ProtectedRoute>
         <RoleGuard allowedRoles={[UserRole.DELIVERY]}>
-          <DeliveryModule />
+          <Outlet />
         </RoleGuard>
       </ProtectedRoute>
     ),
+    children: [
+      { index: true, element: <DeliveryModule /> },
+      { path: '*', element: <DeliveryModule /> },
+    ],
   },
   {
-    path: 'pickup/*',
+    path: 'pickup',
     element: (
       <ProtectedRoute>
         <RoleGuard allowedRoles={[UserRole.PICKUP_PARTNER]}>
-          <PickupModule />
+          <Outlet />
         </RoleGuard>
       </ProtectedRoute>
     ),
+    children: [
+      { index: true, element: <PickupModule /> },
+      { path: '*', element: <PickupModule /> },
+    ],
   },
 ];

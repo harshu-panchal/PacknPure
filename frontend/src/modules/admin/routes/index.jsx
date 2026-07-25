@@ -390,7 +390,7 @@ const AdminRoutes = () => {
           <Route path="reports" element={<PosReports />} />
           <Route path="settings" element={<PosSettings />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </DashboardLayout>
   );

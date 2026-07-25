@@ -352,11 +352,15 @@ const Sidebar = ({
       <aside
         id="app-sidebar"
         aria-hidden={!isDesktop && !isMobileOpen}
+        {...(!isDesktop && !isMobileOpen ? { inert: true } : {})}
         className={cn(
           "fixed inset-y-0 left-0 bg-[#0a0c10] text-gray-400 border-r border-white/5 shadow-[20px_0_60px_rgba(0,0,0,0.4)] flex flex-col z-shell-drawer transition-transform duration-300 ease-out",
           isDesktop
             ? cn(isCollapsed ? 'w-20' : sidebarWidth, 'translate-x-0')
-            : cn(sidebarWidth, isMobileOpen ? 'translate-x-0' : '-translate-x-full'),
+            : cn(
+                sidebarWidth,
+                isMobileOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
+              ),
         )}
       >
         <SidebarContent {...commonProps} />
