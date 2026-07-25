@@ -3,8 +3,9 @@
  * Active only when <html> has .app-mobile-hardened (set by mobileAppHardening.js).
  * Desktop web is unaffected.
  *
- * IMPORTANT: Do NOT set touch-action on `*` — it breaks finger-scroll inside
- * overflow-y-auto panes (delivery / pickup nested scroll shells).
+ * Scroll safety: never set touch-action on html/body/* — that breaks finger
+ * scrolling in nested overflow panes (delivery / pickup). Zoom is blocked via
+ * viewport meta (maximum-scale=1) instead.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -12,15 +13,7 @@
 /* -------------------------------------------------------------------------- */
 
 html.app-mobile-hardened,
-html.app-mobile-hardened body {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-  /* Document-level only: blocks double-tap zoom, keeps native scroll */
-  touch-action: manipulation;
-}
-
+html.app-mobile-hardened body,
 html.app-mobile-hardened #root {
   -webkit-user-select: none;
   user-select: none;
@@ -28,22 +21,11 @@ html.app-mobile-hardened #root {
   -webkit-tap-highlight-color: transparent;
 }
 
-html.app-mobile-hardened * {
+html.app-mobile-hardened *:not(input):not(textarea):not(select):not([contenteditable]):not([contenteditable='true']):not([contenteditable='plaintext-only']) {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
-}
-
-/* Nested scroll regions — explicit pan so finger scroll always works */
-html.app-mobile-hardened .overflow-y-auto,
-html.app-mobile-hardened .overflow-auto,
-html.app-mobile-hardened .overflow-y-scroll,
-html.app-mobile-hardened .overflow-x-auto,
-html.app-mobile-hardened .overflow-scroll,
-html.app-mobile-hardened [data-lenis-prevent],
-html.app-mobile-hardened [data-lenis-prevent-touch] {
-  touch-action: pan-x pan-y !important;
 }
 
 /* Preserve typing / focus in form controls & contenteditable */
@@ -58,7 +40,6 @@ html.app-mobile-hardened textarea * {
   -webkit-user-select: text !important;
   user-select: text !important;
   -webkit-touch-callout: default;
-  touch-action: auto;
 }
 
 /* Keep search / OTP / password usable */
@@ -126,10 +107,4 @@ html.app-mobile-hardened [contenteditable]::-moz-selection,
 html.app-mobile-hardened [contenteditable='true']::-moz-selection {
   background: Highlight;
   color: HighlightText;
-}
-
-/* Opt-out for maps / scanners that need multi-touch */
-html.app-mobile-hardened [data-allow-zoom],
-html.app-mobile-hardened [data-allow-zoom] * {
-  touch-action: auto !important;
 }

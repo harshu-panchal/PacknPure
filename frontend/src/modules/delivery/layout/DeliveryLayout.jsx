@@ -573,11 +573,14 @@ const DeliveryLayout = () => {
         )}
 
       <main
-        className={`h-full min-h-screen overflow-y-auto overscroll-contain ${
+        className={`h-[100dvh] min-h-[100dvh] overflow-y-auto overscroll-contain touch-pan-y ${
           shouldShowBottomNav
             ? "pb-[calc(6rem+env(safe-area-inset-bottom,0px))]"
             : ""
-        } no-scrollbar`}>
+        } no-scrollbar`}
+        data-lenis-prevent
+        data-lenis-prevent-touch="true"
+      >
         <Outlet />
       </main>
 

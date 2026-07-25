@@ -1,14 +1,8 @@
 /**
- * LenisProvider — Global smooth scroll manager.
+ * LenisProvider — Global smooth scroll manager (desktop web only).
  *
- * Architecture:
- *  1. Initialises a single Lenis instance for the whole app.
- *  2. Exposes a `useLenis()` hook so any child can call lenis.scrollTo() etc.
- *  3. Watches document.body via MutationObserver: whenever a modal/drawer
- *     adds `overflow:hidden` or `data-scroll-locked` (Radix UI / custom modals)
- *     it automatically calls lenis.stop(), and resumes on removal.
- *  4. Mobile: touchMultiplier = 1 + smoothTouch = false so native iOS/Android
- *     momentum is preserved and not doubled-up.
+ * On mobile / PWA / coarse-pointer devices Lenis is disabled so nested
+ * overflow scroll shells (delivery, pickup, sheets) keep native finger scroll.
  */
 import { createContext, useContext, useEffect, useRef } from 'react';
 import Lenis from 'lenis';
@@ -18,70 +12,116 @@ const LenisContext = createContext(null);
 
 export const useLenis = () => useContext(LenisContext);
 
+const MOBILE_SCROLL_QUERY =
+  '(max-width: 767.98px), (hover: none) and (pointer: coarse)';
+
+function isMobileScrollEnvironment() {
+  if (typeof window === 'undefined') return true;
+  if (document.documentElement.classList.contains('app-mobile-hardened')) return true;
+  if (window.matchMedia(MOBILE_SCROLL_QUERY).matches) return true;
+  if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
+  if (window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+  if (Boolean(window.navigator.standalone)) return true;
+  return false;
+}
+
 const LenisProvider = ({ children }) => {
-    const lenisRef = useRef(null);
+  const lenisRef = useRef(null);
 
-    useEffect(() => {
-        // ── 1. Create Lenis instance ──────────────────────────────────────
-        const lenis = new Lenis({
-            duration: 1.2,
-            easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-            orientation: 'vertical',
-            gestureOrientation: 'vertical',
-            // Mobile: keep multiplier at 1 (was 2) to avoid over-sensitive scrolling
-            touchMultiplier: 1,
-            // Disable smooth on touch — native momentum is better on iOS/Android
-            smoothTouch: false,
-            // Prevent Lenis from hijacking wheel events inside `data-lenis-prevent` elements
-            prevent: (node) => node.hasAttribute('data-lenis-prevent'),
-        });
-        lenisRef.current = lenis;
+  useEffect(() => {
+    let lenis = null;
+    let rafId = 0;
+    let observer = null;
 
-        // ── 2. RAF loop ───────────────────────────────────────────────────
-        let rafId;
-        function raf(time) {
-            lenis.raf(time);
-            rafId = requestAnimationFrame(raf);
-        }
-        rafId = requestAnimationFrame(raf);
+    const tick = (time) => {
+      lenis?.raf(time);
+      rafId = requestAnimationFrame(tick);
+    };
 
-        // ── 3. MutationObserver: auto-pause when modal opens ─────────────
-        // Radix UI (Dialog/Sheet) sets `data-scroll-locked` on <body>.
-        // Custom modals (SetNameModal, LocationDrawer) set `overflow:hidden` inline.
-        // We watch for both.
-        const observer = new MutationObserver(() => {
-            const body = document.body;
-            const isLocked =
-                body.hasAttribute('data-scroll-locked') ||
-                body.style.overflow === 'hidden' ||
-                body.style.overflowY === 'hidden';
+    const destroyLenis = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (lenis) {
+        lenis.destroy();
+        lenis = null;
+      }
+      lenisRef.current = null;
+      document.documentElement.classList.remove('lenis', 'lenis-smooth');
+    };
 
-            if (isLocked) {
-                lenis.stop();
-            } else {
-                lenis.start();
-            }
-        });
+    const createLenis = () => {
+      if (lenis || isMobileScrollEnvironment()) return;
 
-        observer.observe(document.body, {
-            attributes: true,
-            attributeFilter: ['style', 'data-scroll-locked', 'class'],
-        });
+      lenis = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        orientation: 'vertical',
+        gestureOrientation: 'vertical',
+        touchMultiplier: 1,
+        smoothTouch: false,
+        prevent: (node) =>
+          node.hasAttribute('data-lenis-prevent') ||
+          node.hasAttribute('data-lenis-prevent-touch'),
+      });
+      lenisRef.current = lenis;
+      rafId = requestAnimationFrame(tick);
 
-        // ── 4. Cleanup ────────────────────────────────────────────────────
-        return () => {
-            cancelAnimationFrame(rafId);
-            observer.disconnect();
-            lenis.destroy();
-            lenisRef.current = null;
-        };
-    }, []);
+      observer = new MutationObserver(() => {
+        const body = document.body;
+        const isLocked =
+          body.hasAttribute('data-scroll-locked') ||
+          body.style.overflow === 'hidden' ||
+          body.style.overflowY === 'hidden';
 
-    return (
-        <LenisContext.Provider value={lenisRef}>
-            {children}
-        </LenisContext.Provider>
-    );
+        if (!lenis) return;
+        if (isLocked) lenis.stop();
+        else lenis.start();
+      });
+
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['style', 'data-scroll-locked', 'class'],
+      });
+    };
+
+    const sync = () => {
+      if (isMobileScrollEnvironment()) destroyLenis();
+      else createLenis();
+    };
+
+    sync();
+
+    const media = window.matchMedia(MOBILE_SCROLL_QUERY);
+    const onMedia = () => sync();
+    if (typeof media.addEventListener === 'function') media.addEventListener('change', onMedia);
+    else if (typeof media.addListener === 'function') media.addListener(onMedia);
+
+    const classObserver = new MutationObserver(sync);
+    classObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => {
+      if (typeof media.removeEventListener === 'function') media.removeEventListener('change', onMedia);
+      else if (typeof media.removeListener === 'function') media.removeListener(onMedia);
+      classObserver.disconnect();
+      destroyLenis();
+    };
+  }, []);
+
+  return (
+    <LenisContext.Provider value={lenisRef}>
+      {children}
+    </LenisContext.Provider>
+  );
 };
 
 export default LenisProvider;
