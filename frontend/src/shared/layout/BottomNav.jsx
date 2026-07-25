@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard,
@@ -12,6 +12,8 @@ import { useAuth } from '@/core/context/AuthContext';
 /** Primary mobile bottom navigation for seller/admin shell. */
 const BottomNav = () => {
     const { role } = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
 
     // Define the primary bottom nav items based on user role
     const primaryItems = role === 'admin' ? [
@@ -26,6 +28,16 @@ const BottomNav = () => {
         { label: 'Earnings', path: '/seller/earnings', icon: Wallet },
     ];
 
+    const isItemActive = (item) => {
+        if (item.end) {
+            return location.pathname === item.path;
+        }
+        return (
+            location.pathname === item.path ||
+            location.pathname.startsWith(`${item.path}/`)
+        );
+    };
+
     return (
         <nav
             aria-label="Primary"
@@ -38,22 +50,27 @@ const BottomNav = () => {
             }}
         >
             <div className="h-16 px-1 sm:px-2 flex items-stretch justify-around">
-                {primaryItems.map((item) => (
-                    <NavLink
-                        key={item.path}
-                        to={item.path}
-                        end={item.end}
-                        className={({ isActive }) => cn(
-                            "flex flex-1 flex-col items-center justify-center gap-1 min-w-0 max-w-[5.5rem] px-1 transition-all duration-300 touch-manipulation",
-                            isActive ? "text-primary" : "text-gray-500 hover:text-gray-300"
-                        )}
-                    >
-                        <item.icon className="h-5 w-5 flex-shrink-0" aria-hidden />
-                        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-tight truncate max-w-full leading-none">
-                            {item.label}
-                        </span>
-                    </NavLink>
-                ))}
+                {primaryItems.map((item) => {
+                    const active = isItemActive(item);
+                    return (
+                        <button
+                            key={item.path}
+                            type="button"
+                            aria-label={item.label}
+                            aria-current={active ? 'page' : undefined}
+                            onClick={() => navigate(item.path)}
+                            className={cn(
+                                "flex flex-1 flex-col items-center justify-center gap-1 min-w-0 max-w-[5.5rem] px-1 transition-all duration-300 touch-manipulation",
+                                active ? "text-primary" : "text-gray-500 hover:text-gray-300"
+                            )}
+                        >
+                            <item.icon className="h-5 w-5 flex-shrink-0" aria-hidden />
+                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-tight truncate max-w-full leading-none">
+                                {item.label}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
         </nav>
     );

@@ -176,13 +176,13 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
     return (
         <header
             className={cn(
-                "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2",
+                "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2 overflow-hidden",
                 usesShellChrome
-                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6"
+                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6 md:overflow-visible"
                     : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-4 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
             )}
         >
-            <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-visible">
+            <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-hidden md:overflow-visible">
                 <button
                     type="button"
                     onClick={onMenuClick}
@@ -239,8 +239,8 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                 </form>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 md:gap-3 flex-shrink-0">
-                <div className="relative" ref={notificationRef}>
+            <div className="flex items-center gap-0.5 sm:gap-2 md:gap-3 flex-shrink-0 max-w-[55%] sm:max-w-none min-w-0">
+                <div className="relative flex-shrink-0" ref={notificationRef}>
                     <button
                         type="button"
                         onClick={handleToggleNotifications}
@@ -269,7 +269,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                     </AnimatePresence>
                 </div>
 
-                <div className="hidden sm:block h-8 w-px bg-gray-100 mx-0.5" aria-hidden />
+                <div className="hidden sm:block h-8 w-px bg-gray-100 mx-0.5 flex-shrink-0" aria-hidden />
 
                 <button
                     type="button"
@@ -285,14 +285,18 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                             navigate('/profile');
                         }
                     }}
-                    className="flex items-center space-x-2.5 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md min-h-11"
+                    className="flex items-center gap-1.5 sm:gap-2.5 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md min-h-11 min-w-0 max-w-[9.5rem] sm:max-w-[11rem] md:max-w-none overflow-hidden flex-shrink"
                 >
                     <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform flex-shrink-0">
                         {user?.name?.[0] || 'A'}
                     </div>
-                    <div className="hidden md:block text-left min-w-0">
-                        <p className="text-xs font-bold text-gray-900 leading-tight truncate max-w-[9rem]">{user?.name || 'Demo User'}</p>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider truncate">{user?.role || 'Member'}</p>
+                    <div className="text-left min-w-0 overflow-hidden flex-1 md:flex-none">
+                        <p className="text-[11px] sm:text-xs font-bold text-gray-900 leading-tight truncate whitespace-nowrap md:max-w-[9rem]">
+                            {user?.name || 'Demo User'}
+                        </p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider truncate whitespace-nowrap md:max-w-[9rem]">
+                            {user?.role || 'Member'}
+                        </p>
                     </div>
                 </button>
 
@@ -300,7 +304,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                     type="button"
                     onClick={handleLogout}
                     aria-label="Sign out"
-                    className="touch-target inline-flex items-center justify-center gap-1.5 px-2 sm:px-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50"
+                    className="touch-target inline-flex items-center justify-center gap-1.5 px-1.5 sm:px-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50 flex-shrink-0"
                 >
                     <HiOutlineLogout className="h-4 w-4 flex-shrink-0" />
                     <span className="hidden lg:inline">Sign Out</span>

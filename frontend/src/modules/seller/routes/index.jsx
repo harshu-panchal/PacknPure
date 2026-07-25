@@ -114,25 +114,25 @@ const SellerRoutes = () => {
   return (
     <DashboardLayout navItems={navItems} title="Vendor Panel">
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/products" element={<ProductManagement />} />
-        <Route path="/products/add" element={<AddProduct />} />
-        <Route path="/barcodes" element={<BarcodeStickerManagement />} />
-        <Route path="/catalog" element={<CatalogListing />} />
-        <Route path="/inventory" element={<StockManagement />} />
-        <Route path="/orders" element={<Navigate to="/seller/procurement" replace />} />
-        <Route path="/procurement" element={<ProcurementRequests />} />
-        <Route path="/returns" element={<Returns />} />
-        <Route path="/tracking" element={<DeliveryTracking />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/withdrawals" element={<Withdrawals />} />
-        <Route path="/transactions" element={<Transactions />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/earnings" element={<Earnings />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route index element={<Dashboard />} />
+        <Route path="products" element={<ProductManagement />} />
+        <Route path="products/add" element={<AddProduct />} />
+        <Route path="barcodes" element={<BarcodeStickerManagement />} />
+        <Route path="catalog" element={<CatalogListing />} />
+        <Route path="inventory" element={<StockManagement />} />
+        <Route path="orders" element={<Navigate to="/seller/procurement" replace />} />
+        <Route path="procurement" element={<ProcurementRequests />} />
+        <Route path="returns" element={<Returns />} />
+        <Route path="tracking" element={<DeliveryTracking />} />
+        <Route path="analytics" element={<Analytics />} />
+        <Route path="withdrawals" element={<Withdrawals />} />
+        <Route path="transactions" element={<Transactions />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="earnings" element={<Earnings />} />
+        <Route path="profile" element={<Profile />} />
 
         {/* POS Routes wrapped in PosLayout */}
-        <Route path="/pos" element={
+        <Route path="pos" element={
           <PosEngineProvider role="seller">
             <PosLayout />
           </PosEngineProvider>
