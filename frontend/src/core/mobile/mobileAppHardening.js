@@ -84,18 +84,11 @@ export function initMobileAppHardening() {
     else if (typeof mq.addListener === 'function') mq.addListener(onChange);
   });
 
-  // Block pinch-zoom / multi-touch zoom gestures (iOS Safari + some WebViews)
+  // Block pinch-zoom gestures (iOS Safari). Do NOT attach a non-passive
+  // document touchmove listener — that breaks native finger scrolling.
   const onGesture = (e) => {
     if (!shouldHardenMobileApp()) return;
     e.preventDefault();
-  };
-
-  // Block two-finger pinch via touchmove
-  const onTouchMove = (e) => {
-    if (!shouldHardenMobileApp()) return;
-    if (e.touches && e.touches.length > 1) {
-      e.preventDefault();
-    }
   };
 
   // Suppress long-press context menu / callout (not on editable fields)
@@ -121,7 +114,6 @@ export function initMobileAppHardening() {
   document.addEventListener('gesturestart', onGesture, { passive: false });
   document.addEventListener('gesturechange', onGesture, { passive: false });
   document.addEventListener('gestureend', onGesture, { passive: false });
-  document.addEventListener('touchmove', onTouchMove, { passive: false });
   document.addEventListener('contextmenu', onContextMenu, { passive: false });
   document.addEventListener('dragstart', onDragStart, { passive: false });
 
@@ -133,7 +125,6 @@ export function initMobileAppHardening() {
     document.removeEventListener('gesturestart', onGesture);
     document.removeEventListener('gesturechange', onGesture);
     document.removeEventListener('gestureend', onGesture);
-    document.removeEventListener('touchmove', onTouchMove);
     document.removeEventListener('contextmenu', onContextMenu);
     document.removeEventListener('dragstart', onDragStart);
     applyHardening(false);
