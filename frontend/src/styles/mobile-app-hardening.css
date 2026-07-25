@@ -1,0 +1,115 @@
+/**
+ * Mobile / PWA app hardening styles.
+ * Active only when <html> has .app-mobile-hardened (set by mobileAppHardening.js).
+ * Desktop web is unaffected.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Selection, callout, tap highlight                                          */
+/* -------------------------------------------------------------------------- */
+
+html.app-mobile-hardened,
+html.app-mobile-hardened body,
+html.app-mobile-hardened #root {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Disables double-tap zoom; keeps scroll / pan */
+  touch-action: manipulation;
+}
+
+html.app-mobile-hardened * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Preserve typing / focus in form controls & contenteditable */
+html.app-mobile-hardened input,
+html.app-mobile-hardened textarea,
+html.app-mobile-hardened select,
+html.app-mobile-hardened [contenteditable],
+html.app-mobile-hardened [contenteditable='true'],
+html.app-mobile-hardened [contenteditable='plaintext-only'],
+html.app-mobile-hardened input *,
+html.app-mobile-hardened textarea * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default;
+}
+
+/* Keep search / OTP / password usable */
+html.app-mobile-hardened input[type='text'],
+html.app-mobile-hardened input[type='search'],
+html.app-mobile-hardened input[type='email'],
+html.app-mobile-hardened input[type='tel'],
+html.app-mobile-hardened input[type='password'],
+html.app-mobile-hardened input[type='number'],
+html.app-mobile-hardened input[type='url'],
+html.app-mobile-hardened input:not([type]),
+html.app-mobile-hardened textarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Images — no drag / save callout                                            */
+/* -------------------------------------------------------------------------- */
+
+html.app-mobile-hardened img,
+html.app-mobile-hardened svg,
+html.app-mobile-hardened picture,
+html.app-mobile-hardened video {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Links / buttons — no sticky tap flash                                      */
+/* -------------------------------------------------------------------------- */
+
+html.app-mobile-hardened a,
+html.app-mobile-hardened button,
+html.app-mobile-hardened [role='button'] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Selection UI chrome                                                        */
+/* -------------------------------------------------------------------------- */
+
+html.app-mobile-hardened ::selection {
+  background: transparent;
+  color: inherit;
+}
+
+html.app-mobile-hardened ::-moz-selection {
+  background: transparent;
+  color: inherit;
+}
+
+html.app-mobile-hardened input::selection,
+html.app-mobile-hardened textarea::selection,
+html.app-mobile-hardened [contenteditable]::selection,
+html.app-mobile-hardened [contenteditable='true']::selection {
+  background: Highlight;
+  color: HighlightText;
+}
+
+html.app-mobile-hardened input::-moz-selection,
+html.app-mobile-hardened textarea::-moz-selection,
+html.app-mobile-hardened [contenteditable]::-moz-selection,
+html.app-mobile-hardened [contenteditable='true']::-moz-selection {
+  background: Highlight;
+  color: HighlightText;
+}
+
+/* Opt-out for maps / scanners that need multi-touch */
+html.app-mobile-hardened [data-allow-zoom],
+html.app-mobile-hardened [data-allow-zoom] * {
+  touch-action: auto;
+}

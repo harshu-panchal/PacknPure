@@ -5,12 +5,14 @@ import { ToastProvider } from './shared/components/ui/Toast';
 import Loader from './shared/components/ui/Loader';
 import ErrorBoundary from './shared/components/ErrorBoundary';
 import LenisProvider from './shared/components/LenisProvider';
+import MobileAppHardening from './core/components/MobileAppHardening';
 
 function App() {
   return (
     <ErrorBoundary>
       <SettingsProvider>
         <ToastProvider>
+          <MobileAppHardening />
           <Suspense fallback={<Loader fullScreen />}>
             <LenisProvider>
               <AppRouter />

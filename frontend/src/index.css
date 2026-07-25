@@ -1,5 +1,6 @@
 ﻿@import "tailwindcss";
 @import "./styles/design-system.css";
+@import "./styles/mobile-app-hardening.css";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
