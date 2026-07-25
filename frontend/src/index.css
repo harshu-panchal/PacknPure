@@ -572,14 +572,8 @@ body {
   -moz-appearance: textfield;
 }
 
-
-/* Hide arrows in number input */
-.hide-spin-button::-webkit-outer-spin-button,
-.hide-spin-button::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.hide-spin-button[type=number] {
-  -moz-appearance: textfield;
+/* Google Places Autocomplete dropdown above profile / auth modals */
+.pac-container {
+  z-index: 10050 !important;
 }
 
