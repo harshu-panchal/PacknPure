@@ -4,6 +4,8 @@ const MASTER_ID = "507f1f77bcf86cd799439011";
 const VARIANT_ID = "507f1f77bcf86cd799439012";
 const SELLER_ID = "507f1f77bcf86cd799439013";
 const SELLER_PRODUCT_ID = "507f1f77bcf86cd799439014";
+const ORDER_OID = "507f1f77bcf86cd799439099";
+const SESSION_OID = "507f1f77bcf86cd799439088";
 
 const masterProduct = {
   _id: MASTER_ID,
@@ -79,14 +81,27 @@ jest.unstable_mockModule("../app/models/product.js", () => ({
       }
       return mockFindChain([]);
     }),
-    findById: jest.fn(async (id) => {
-      if (String(id) === SELLER_PRODUCT_ID) {
-        return {
+    findById: jest.fn((id) => {
+      const sid = String(id);
+      let doc = null;
+      if (sid === SELLER_PRODUCT_ID) {
+        doc = {
           _id: SELLER_PRODUCT_ID,
+          sellerId: SELLER_ID,
+          stock: 100,
+          committedStock: 0,
           variants: sellerListing.variants,
         };
+      } else if (sid === MASTER_ID) {
+        doc = masterProduct;
       }
-      return null;
+      return {
+        select: () => ({
+          lean: async () => doc,
+        }),
+        lean: async () => doc,
+        then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject),
+      };
     }),
     updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
   },
@@ -95,17 +110,85 @@ jest.unstable_mockModule("../app/models/product.js", () => ({
 const insertedPrs = [];
 jest.unstable_mockModule("../app/models/purchaseRequest.js", () => ({
   default: {
+    create: jest.fn(async (doc) => {
+      const saved = { ...doc, _id: `pr-${insertedPrs.length}` };
+      insertedPrs.push(saved);
+      return saved;
+    }),
     insertMany: jest.fn(async (docs) => {
       insertedPrs.push(...docs);
       return docs.map((d, i) => ({ ...d, _id: `pr-${i}` }));
     }),
+    findOne: jest.fn(() => ({
+      select: () => ({ lean: async () => null }),
+      lean: async () => null,
+    })),
   },
 }));
 
+jest.unstable_mockModule("../app/models/procurementSession.js", () => {
+  const sessionState = {
+    _id: SESSION_OID,
+    orderId: ORDER_OID,
+    hubId: "MAIN_HUB",
+    status: "open",
+    items: [],
+    allocations: [],
+    metadata: {},
+    retryCount: 0,
+    save: jest.fn(async function save() {
+      return this;
+    }),
+  };
+  return {
+    default: {
+      findOne: jest.fn(async () => null),
+      create: jest.fn(async (doc) => {
+        Object.assign(sessionState, doc);
+        sessionState.items = [];
+        sessionState.allocations = [];
+        sessionState.metadata = doc.metadata || {};
+        return sessionState;
+      }),
+      findById: jest.fn(() => {
+        const result = Promise.resolve(sessionState);
+        result.lean = async () => sessionState;
+        return result;
+      }),
+      findOneAndUpdate: jest.fn(async (_filter, update) => {
+        // Simulate atomic reservation claim used by tryClaimAllocationReservation.
+        if (update?.$set) {
+          Object.assign(sessionState, update.$set);
+          const allocMatch = update.$set["allocations.$.reservationState"];
+          if (allocMatch) {
+            const alloc = sessionState.allocations?.[0];
+            if (alloc) {
+              alloc.reservationState = update.$set["allocations.$.reservationState"];
+              alloc.reservedQty = update.$set["allocations.$.reservedQty"] ?? alloc.reservedQty;
+            }
+          }
+        }
+        return sessionState;
+      }),
+      findByIdAndUpdate: jest.fn(async () => sessionState),
+    },
+  };
+});
+
 jest.unstable_mockModule("../app/models/setting.js", () => ({
   default: {
-    findOne: jest.fn(() => ({ lean: async () => ({ sellerTimeoutMinutes: 15 }) })),
+    findOne: jest.fn(() => ({
+      lean: async () => ({
+        sellerResponseTimeout: 15,
+        enableMultiSellerAllocation: false,
+      }),
+    })),
   },
+}));
+
+jest.unstable_mockModule("../app/services/inventory/inventoryEngine.js", () => ({
+  freezeSellerInventory: jest.fn(async () => ({ ok: true })),
+  releaseSellerInventory: jest.fn(async () => ({ ok: true })),
 }));
 
 describe("hub split fulfillment (hub 100 + seller 100, order 150)", () => {
@@ -140,7 +223,7 @@ describe("hub split fulfillment (hub 100 + seller 100, order 150)", () => {
     expect(plan.shortages[0].shortageQty).toBe(50);
     expect(plan.shortages[0].availableQtyAtHub).toBe(100);
 
-    const order = { _id: "order1", orderId: "ORD-SPLIT-150" };
+    const order = { _id: ORDER_OID, orderId: "ORD-SPLIT-150" };
     const prs = await createAutoPurchaseRequests({
       order,
       shortages: plan.shortages,

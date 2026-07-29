@@ -148,6 +148,10 @@ export const createSellerGroupedPurchaseRequests = async ({
     const preparedLines = [];
 
     for (const item of vendorItems) {
+      const retryNumber = toInt(item.retryNumber || 0);
+      const allocReason = retryNumber > 0 ? "cascade_retry" : "initial_allocation";
+      const eventPrefix = retryNumber > 0 ? "retry" : "initial";
+
       const reserved = procurementSession
         ? await reserveAllocation({
             procurementSessionId: procurementSession._id,
@@ -157,9 +161,9 @@ export const createSellerGroupedPurchaseRequests = async ({
             vendorId: item.vendorId,
             selectedSellerProductId: item.selectedSellerProductId || null,
             rankedSellers: item.rankedSellers || [],
-            retryNumber: 0,
-            reason: "initial_allocation",
-            eventKey: `initial:${String(order._id)}:${String(item.productId)}:${String(item.variantId || "root")}:${String(item.vendorId)}:${Number(item.shortageQty || 0)}`,
+            retryNumber,
+            reason: allocReason,
+            eventKey: `${eventPrefix}:${String(order._id)}:${String(item.productId)}:${String(item.variantId || "root")}:${String(item.vendorId)}:${Number(item.shortageQty || 0)}`,
           })
         : null;
 

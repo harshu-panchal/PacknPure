@@ -53,8 +53,15 @@ export const rankSellerAllocations = async ({
   hubLat = 0,
   hubLng = 0,
   enableMultiSellerAllocation = false,
+  excludeVendorIds = [],
 }) => {
   if (!baseProduct || shortageQty <= 0) return [];
+
+  const excluded = new Set(
+    (Array.isArray(excludeVendorIds) ? excludeVendorIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
 
   const matchOr = [{ masterProductId: baseProduct._id }];
   if (String(baseProduct.name || "").trim()) {
@@ -74,13 +81,21 @@ export const rankSellerAllocations = async ({
     .populate("sellerId", "location rating createdAt")
     .lean();
 
-  const inStock = candidates.filter(
-    (row) => sellerAvailableForMasterVariant(row, variantId, baseProduct) > 0,
-  );
+  const inStock = candidates.filter((row) => {
+    const sellerId =
+      row.sellerId?._id != null ? String(row.sellerId._id) : String(row.sellerId || "");
+    if (sellerId && excluded.has(sellerId)) return false;
+    return sellerAvailableForMasterVariant(row, variantId, baseProduct) > 0;
+  });
   if (!inStock.length) return [];
 
   const scored = inStock.map((row) => {
     const unitCost = normalizeMoney(effectiveCatalogPrice(row, variantId, baseProduct));
+    const gstEnabled = Boolean(row.gstEnabled);
+    const gstRate = gstEnabled ? Number(row.gstRate) || 0 : 0;
+    const gstAmount = normalizeMoney(unitCost * (gstRate / 100));
+    // First priority: cheapest final supply cost (unit + GST), then nearest to hub.
+    const finalSupplyCost = normalizeMoney(unitCost + gstAmount);
     const seller = row.sellerId || {};
     let distance = Infinity;
     if (seller.location?.coordinates?.length === 2) {
@@ -90,6 +105,9 @@ export const rankSellerAllocations = async ({
     return {
       ...row,
       unitCost,
+      finalSupplyCost,
+      gstEnabled,
+      gstRate,
       distance,
       rating: Number(seller.rating || 0),
       createdAt: seller.createdAt ? new Date(seller.createdAt).getTime() : Date.now(),
@@ -97,9 +115,9 @@ export const rankSellerAllocations = async ({
     };
   });
 
-  // Keep exact existing ranking order.
+  // Cheapest final supply cost first, then nearest, then rating.
   scored.sort((a, b) => {
-    if (a.unitCost !== b.unitCost) return a.unitCost - b.unitCost;
+    if (a.finalSupplyCost !== b.finalSupplyCost) return a.finalSupplyCost - b.finalSupplyCost;
     if (a.distance !== b.distance) return a.distance - b.distance;
     if (a.rating !== b.rating) return b.rating - a.rating;
     return a.createdAt - b.createdAt;
@@ -136,6 +154,7 @@ export const rankSellerAllocations = async ({
       selectedSellerProductId: vendor._id ? String(vendor._id) : null,
       vendorUnitCost: vendor.unitCost,
       vendorQuotedPrice: vendor.unitCost,
+      finalSupplyCost: vendor.finalSupplyCost,
       pricingStrategy: "ranked_cheapest_nearest",
       gstEnabled: Boolean(vendor.gstEnabled),
       gstRate: Number(vendor.gstRate) || 0,
