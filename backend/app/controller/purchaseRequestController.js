@@ -209,19 +209,10 @@ const assignPickupToRequest = async (doc, partner) => {
 
 const findPrLine = (pr, productId, variantId = null) => {
   const targetKey = buildPrLineKey(productId, variantId);
-  const targetPid = String(
-    productId?._id != null ? productId._id : productId || "",
-  );
-  const targetVid = variantId != null && variantId !== "" ? String(variantId) : "";
-
   return (pr.items || []).find((line) => {
     const row = normalizePrLine(line);
-    const rowPid = String(row.productId?._id || row.productId || "");
-    const rowVid = row.variantId != null && row.variantId !== "" ? String(row.variantId) : "";
-    const key = row.itemKey || buildPrLineKey(rowPid || row.productId, row.variantId);
-    if (key === targetKey) return true;
-    // Populated productId used to break key matching ("[object Object]::root").
-    return Boolean(targetPid) && rowPid === targetPid && rowVid === targetVid;
+    const key = row.itemKey || buildPrLineKey(row.productId, row.variantId);
+    return key === targetKey;
   });
 };
 
@@ -1492,23 +1483,13 @@ export const respondSellerPurchaseRequest = async (req, res) => {
       return handleResponse(res, 400, "Invalid action");
     }
 
-    // Per-line response (single- or multi-product). Seller UI always sends
-    // accept_line / reject_line; gating on isMultiLine caused single-line
-    // reject_line to fall through into the accept path.
-    if (["accept_line", "reject_line"].includes(normalizedAction)) {
-      // Single-line PRs: allow missing productId and use the only line.
-      let effectiveProductId = lineProductId;
-      let effectiveVariantId = lineVariantId;
-      if (!effectiveProductId && (pr.items || []).length === 1) {
-        const only = normalizePrLine(pr.items[0]);
-        effectiveProductId = only.productId?._id || only.productId;
-        effectiveVariantId = only.variantId || null;
-      }
-      if (!effectiveProductId) {
+    // Per-line response for multi-product purchase requests
+    if (isMultiLine && ["accept_line", "reject_line"].includes(normalizedAction)) {
+      if (!lineProductId) {
         return handleResponse(res, 400, "productId is required for line-level response");
       }
 
-      const targetLine = findPrLine(pr, effectiveProductId, effectiveVariantId);
+      const targetLine = findPrLine(pr, lineProductId, lineVariantId);
       if (!targetLine) {
         return handleResponse(res, 404, "Product line not found in this request");
       }
@@ -1572,31 +1553,25 @@ export const respondSellerPurchaseRequest = async (req, res) => {
                 ? retryQty
                 : Math.max(0, Number(updatedLine.requestedQty || updatedLine.shortageQty || 0));
             if (pr.procurementSessionId && allocId) {
-              try {
-                await releaseAllocationSellerStock({
-                  procurementSessionId: pr.procurementSessionId,
-                  allocationId: allocId,
-                  purchaseRequestId: pr._id,
-                  orderId: pr.orderId || null,
-                  quantity: releaseQty,
-                  eventType: "SELLER_REJECTED",
-                  reason:
-                    updatedLine.lineStatus === "rejected"
-                      ? "seller_line_rejected"
-                      : "seller_line_partial_release",
-                  actor: { id: sellerId, type: "seller" },
-                  transactionId: `pr_release:${String(pr._id)}:${String(allocId)}:${releaseQty}`,
-                });
-              } catch (releaseErr) {
-                console.warn("[Line Fallback] Stock release failed:", releaseErr.message);
-              }
+              await releaseAllocationSellerStock({
+                procurementSessionId: pr.procurementSessionId,
+                allocationId: allocId,
+                purchaseRequestId: pr._id,
+                orderId: pr.orderId || null,
+                quantity: releaseQty,
+                eventType: "SELLER_REJECTED",
+                reason:
+                  updatedLine.lineStatus === "rejected"
+                    ? "seller_line_rejected"
+                    : "seller_line_partial_release",
+                actor: { id: sellerId, type: "seller" },
+                transactionId: `pr_release:${String(pr._id)}:${String(allocId)}:${releaseQty}`,
+              });
             }
-            const lineProductId =
-              updatedLine.productId?._id || updatedLine.productId || effectiveProductId;
             await fallbackPurchaseRequestLine(
               pr._id,
-              lineProductId,
-              updatedLine.variantId || effectiveVariantId || null,
+              updatedLine.productId,
+              updatedLine.variantId || null,
               retryQty,
             );
           }

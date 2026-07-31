@@ -3,26 +3,9 @@ import PurchaseRequest from "../models/purchaseRequest.js";
 import Product from "../models/product.js";
 import { sellerAvailableForMasterVariant } from "./allocationEngine.js";
 
-/** Normalize ObjectId / populated doc / string to a stable id string. */
-export const resolveEntityId = (value) => {
-  if (value == null || value === "") return "";
-  if (typeof value === "object") {
-    if (value._id != null && value._id !== "") return String(value._id);
-    if (typeof value.toHexString === "function") return value.toHexString();
-    if (typeof value.toString === "function") {
-      const asString = value.toString();
-      if (asString && asString !== "[object Object]") return asString;
-    }
-    return "";
-  }
-  return String(value);
-};
+export const buildItemKey = (productId, variantId = null) =>
+  `${String(productId)}::${variantId ? String(variantId) : "root"}`;
 
-export const buildItemKey = (productId, variantId = null) => {
-  const pid = resolveEntityId(productId);
-  const vid = variantId != null && variantId !== "" ? resolveEntityId(variantId) : "";
-  return `${pid}::${vid || "root"}`;
-};
 const toInt = (v) => Math.max(0, Number(v || 0));
 
 export const RESERVATION_STATE = {
@@ -248,19 +231,9 @@ export const getActiveAllocatedQty = (session, itemKey) => {
 
 /** Remaining shortage not yet covered by active in-flight PR allocations. */
 export const getUncoveredRemainingQty = (session, itemKey) => {
-  if (!session) return 0;
-  let item = (session.items || []).find((row) => row.itemKey === itemKey);
-  if (!item && itemKey) {
-    const pid = String(itemKey).split("::")[0];
-    item = (session.items || []).find(
-      (row) =>
-        String(row.itemKey || "").startsWith(`${pid}::`) ||
-        resolveEntityId(row.productId) === pid,
-    );
-  }
+  const item = session?.items?.find((row) => row.itemKey === itemKey);
   if (!item) return 0;
-  const key = item.itemKey || itemKey;
-  return Math.max(0, toInt(item.remainingQty) - getActiveAllocatedQty(session, key));
+  return Math.max(0, toInt(item.remainingQty) - getActiveAllocatedQty(session, itemKey));
 };
 
 export const isInventoryCommittedForAllocation = (session, allocationId) => {

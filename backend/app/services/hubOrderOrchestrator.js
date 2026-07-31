@@ -9,14 +9,12 @@ import {
   resolveSellerVariantIdSync,
 } from "../utils/productHelpers.js";
 import { distanceMeters } from "../utils/geoUtils.js";
-import ProcurementSession from "../models/procurementSession.js";
 import {
   ensureProcurementSession,
   reserveAllocation,
   attachPurchaseRequestAllocation,
   markAllocationTimeout,
   buildItemKey,
-  getAttemptedVendorIds,
   getEligibleFallbackSellers,
   persistRankedSellersForItem,
   getUncoveredRemainingQty,
@@ -36,12 +34,7 @@ import {
   getProcurementFailureAction,
   getProcurementRetryBatchDelayMs,
 } from "./settingsService.js";
-
-/** Count of prior seller attempts for an item — used as the next allocation retryNumber. */
-export const getNextRetryNumber = (session, itemKey) => {
-  if (!session || !itemKey) return 0;
-  return (session.allocations || []).filter((a) => a.itemKey === itemKey && a.vendorId).length;
-};
+import { procurementRetryQueue, JOB_NAMES } from "../queues/orderQueues.js";
 
 const HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const toInt = (v) => Math.max(0, Number(v || 0));
@@ -90,29 +83,28 @@ export const scheduleRetryBatch = async (orderId, procurementSessionId) => {
     return;
   }
 
-  // Keep cascade responsive (settings default of 2 minutes looked "stuck").
-  const configuredMs = await getProcurementRetryBatchDelayMs();
-  const delayMs = Math.min(configuredMs, Number(process.env.PROCUREMENT_RETRY_MAX_DELAY_MS || 10_000));
-  const payload = {
-    orderId: String(orderId),
-    procurementSessionId: String(procurementSessionId),
-  };
+  const delayMs = await getProcurementRetryBatchDelayMs();
+  const jobId = `procurement:retry:${String(orderId)}`;
 
-  // Always run inline. Depending on Redis/Bull alone left rejected/expired PRs stuck
-  // whenever Redis was down or the worker never drained the delayed job.
-  console.log(
-    `[RetryBatch] Inline cascade for order ${orderId} in ${delayMs}ms`,
-  );
-  setTimeout(() => {
-    import("../jobs/procurementRetryJob.js")
-      .then(({ executeRetryBatch }) => executeRetryBatch(payload))
-      .catch(async (err) => {
-        console.warn(`[RetryBatch] Inline retry failed for order ${orderId}:`, err.message);
-        await ProcurementSessionModel.findByIdAndUpdate(procurementSessionId, {
-          $set: { retryBatchScheduledAt: null },
-        });
-      });
-  }, delayMs);
+  try {
+    await procurementRetryQueue.add(
+      JOB_NAMES.PROCUREMENT_RETRY,
+      {
+        orderId: String(orderId),
+        procurementSessionId: String(procurementSessionId),
+      },
+      { delay: delayMs, jobId, removeOnComplete: true },
+    );
+    console.log(
+      `[RetryBatch] Scheduled grouped retry for order ${orderId} in ${delayMs}ms (job: ${jobId})`,
+    );
+  } catch (err) {
+    // If queue is unavailable (e.g. Redis down), reset the lock so manual or future retries work.
+    console.warn(`[RetryBatch] Failed to schedule retry for order ${orderId}:`, err.message);
+    await ProcurementSessionModel.findByIdAndUpdate(procurementSessionId, {
+      $set: { retryBatchScheduledAt: null },
+    });
+  }
 };
 
 /** Physical seller variant stock (matches seller/admin portal UI). */
@@ -409,7 +401,6 @@ export const createAutoPurchaseRequests = async ({
     hubLat,
     hubLng,
     variantId = null,
-    excludeVendorIds = [],
   ) => {
     const enableMultiSeller = await isMultiSellerAllocationEnabled();
     return rankSellerAllocations({
@@ -419,7 +410,6 @@ export const createAutoPurchaseRequests = async ({
       hubLat,
       hubLng,
       enableMultiSellerAllocation: enableMultiSeller,
-      excludeVendorIds,
     });
   };
 
@@ -436,17 +426,6 @@ export const createAutoPurchaseRequests = async ({
     : [];
   const fallbackProductMap = new Map(fallbackProducts.map((p) => [String(p._id), p]));
 
-  // Existing session (retry waves): exclude already-attempted sellers from ranking.
-  let existingSession = null;
-  if (order?._id) {
-    try {
-      existingSession = await ProcurementSession.findOne({ orderId: order._id }).lean();
-    } catch (err) {
-      // Invalid/non-ObjectId order ids (e.g. unit tests) — treat as no prior session.
-      existingSession = null;
-    }
-  }
-
   // Fetch hub location for distance calculation
   const hubLat = Number(process.env.HUB_LOCATION_LAT || process.env.DEFAULT_HUB_LAT || 0);
   const hubLng = Number(process.env.HUB_LOCATION_LNG || process.env.DEFAULT_HUB_LNG || 0);
@@ -455,42 +434,17 @@ export const createAutoPurchaseRequests = async ({
   for (const item of shortages) {
     const productId = String(item.productId || "");
     const baseProduct = item.baseProduct || fallbackProductMap.get(productId) || null;
-    const itemKey = buildItemKey(item.productId, item.variantId);
-    const attemptedVendorIds = existingSession
-      ? [...getAttemptedVendorIds(existingSession, itemKey)]
-      : [];
-    const attemptedSet = new Set(attemptedVendorIds);
-    const mappedVendorId = item.vendorId ? String(item.vendorId) : null;
-    const canUseDirectVendor =
-      mappedVendorId &&
-      !attemptedSet.has(mappedVendorId) &&
-      sellerAvailableForMasterVariant(baseProduct, item.variantId, baseProduct) >=
-        Number(item.shortageQty || 0);
 
-    if (canUseDirectVendor) {
+    if (item.vendorId && sellerAvailableForMasterVariant(baseProduct, item.variantId, baseProduct) >= Number(item.shortageQty || 0)) {
       const selfCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
       const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
       const baseGstAmount = Number((selfCost * (baseRate / 100)).toFixed(2));
       const finalSupply = Number((selfCost + baseGstAmount).toFixed(2));
       const totalProcurement = Number((finalSupply * Number(item.shortageQty || 0)).toFixed(2));
 
-      // Still rank other sellers so reject/timeout can cascade (cheapest → nearest).
-      // eslint-disable-next-line no-await-in-loop
-      const otherSelections = await selectCheapestSellers(
-        baseProduct,
-        item.shortageQty,
-        hubLat,
-        hubLng,
-        item.variantId || null,
-        [...attemptedVendorIds, mappedVendorId],
-      );
-      const rankedFallbacks = otherSelections
-        .map((s) => s.vendorId)
-        .filter(Boolean);
-
       enrichedShortages.push({
         ...item,
-        vendorId: mappedVendorId,
+        vendorId: String(item.vendorId),
         selectedSellerProductId: baseProduct?.ownerType === "seller" ? String(baseProduct?._id || "") : null,
         vendorUnitCost: selfCost,
         vendorQuotedPrice: selfCost,
@@ -502,8 +456,7 @@ export const createAutoPurchaseRequests = async ({
         totalProcurementCost: totalProcurement,
         marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
         marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
-        rankedSellers: rankedFallbacks,
-        retryNumber: getNextRetryNumber(existingSession, itemKey),
+        rankedSellers: [],
       });
     } else {
       // eslint-disable-next-line no-await-in-loop
@@ -513,7 +466,6 @@ export const createAutoPurchaseRequests = async ({
         hubLat,
         hubLng,
         item.variantId || null,
-        attemptedVendorIds,
       );
       if (selections.length === 0) {
         enrichedShortages.push({
@@ -562,7 +514,6 @@ export const createAutoPurchaseRequests = async ({
             marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
             marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
             rankedSellers: fallbacks,
-            retryNumber: getNextRetryNumber(existingSession, itemKey),
           });
         }
 
@@ -589,7 +540,6 @@ export const createAutoPurchaseRequests = async ({
             marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
             marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
             rankedSellers: [],
-            retryNumber: getNextRetryNumber(existingSession, itemKey),
           });
         }
       }
@@ -649,13 +599,6 @@ export const createAutoPurchaseRequests = async ({
   for (const item of enrichedShortages) {
     if (!item.vendorId) continue;
 
-    const itemKey = buildItemKey(item.productId, item.variantId);
-    const retryNumber = toInt(
-      item.retryNumber ?? getNextRetryNumber(procurementSession, itemKey),
-    );
-    const allocReason = retryNumber > 0 ? "cascade_retry" : "initial_allocation";
-    const eventPrefix = retryNumber > 0 ? "retry" : "initial";
-
     const reserved = procurementSession
       ? await reserveAllocation({
           procurementSessionId: procurementSession._id,
@@ -665,9 +608,9 @@ export const createAutoPurchaseRequests = async ({
           vendorId: item.vendorId,
           selectedSellerProductId: item.selectedSellerProductId || null,
           rankedSellers: item.rankedSellers || [],
-          retryNumber,
-          reason: allocReason,
-          eventKey: `${eventPrefix}:${String(order._id)}:${String(item.productId)}:${String(item.variantId || "root")}:${String(item.vendorId)}:${Number(item.shortageQty || 0)}`,
+          retryNumber: 0,
+          reason: "initial_allocation",
+          eventKey: `initial:${String(order._id)}:${String(item.productId)}:${String(item.variantId || "root")}:${String(item.vendorId)}:${Number(item.shortageQty || 0)}`,
         })
       : null;
 
@@ -730,8 +673,6 @@ export const createAutoPurchaseRequests = async ({
       items: [{
         productId: item.productId,
         variantId: item.variantId || undefined,
-        itemKey: buildItemKey(item.productId, item.variantId),
-        allocationId: allocationId || undefined,
         requiredQty: item.requiredQty,
         availableQtyAtHub: item.availableQtyAtHub,
         shortageQty: actualQty,
@@ -768,7 +709,7 @@ export const createAutoPurchaseRequests = async ({
 /**
  * Mark procurement exhausted when no eligible sellers remain in the session.
  */
-export async function markProcurementExhausted(pr, session) {
+async function markProcurementExhausted(pr, session) {
   if (session) {
     const hasUncovered = (session.items || []).some(
       (item) => getUncoveredRemainingQty(session, item.itemKey) > 0,
@@ -933,19 +874,22 @@ export const fallbackPurchaseRequest = async (prId, remainingQty = null) => {
 
   if (stillUncovered <= 0) return null;
 
-  // Prefer known ranked fallbacks; if the list is empty (e.g. older PRs),
-  // still schedule a retry so createAutoPurchaseRequests can re-rank excluding
-  // attempted sellers. Exhaustion is handled by the retry job when none remain.
+  // Check if there are any eligible fallback sellers left in the ranked list.
+  // If none remain, mark procurement exhausted (order cancelled/on-hold) immediately
+  // — no point in scheduling a batch when there are no sellers to try.
   const eligibleSellers = session
     ? getEligibleFallbackSellers(session, itemKey, pr)
     : (pr.rankedSellers || []).map((id) => String(id));
 
-  if (eligibleSellers.length === 0 && !pr.procurementSessionId) {
+  if (eligibleSellers.length === 0) {
     const recheckUncovered = session ? getUncoveredRemainingQty(session, itemKey) : stillUncovered;
     if (recheckUncovered <= 0) return null;
     return markProcurementExhausted(pr, session);
   }
 
+  // Defer new PR creation to the grouped retry batch job.
+  // The batch job re-runs the full allocation + grouping pipeline after the wait period,
+  // so all concurrent rejections from the same order can be re-bundled correctly.
   if (pr.procurementSessionId) {
     await scheduleRetryBatch(pr.orderId, pr.procurementSessionId);
   }
@@ -968,8 +912,7 @@ export const fallbackPurchaseRequestLine = async (
 
   const itemKey = buildItemKey(productId, variantId);
   const line = (pr.items || []).find((row) => {
-    const rowPid = row.productId?._id || row.productId;
-    const rowKey = row.itemKey || buildItemKey(rowPid, row.variantId);
+    const rowKey = row.itemKey || buildItemKey(row.productId, row.variantId);
     return rowKey === itemKey;
   });
 
@@ -986,25 +929,17 @@ export const fallbackPurchaseRequestLine = async (
     : null;
 
   // If already fully covered by another in-flight allocation, nothing to do.
-  // When caller passes an explicit remainingQty (reject/timeout), always continue —
-  // itemKey mismatches can falsely report uncovered=0 and skip cascade.
-  const uncovered = session ? getUncoveredRemainingQty(session, itemKey) : qty;
-  if (session && uncovered <= 0 && remainingQty === null) {
+  if (session && getUncoveredRemainingQty(session, itemKey) <= 0) {
     return null;
   }
-  if (session && uncovered <= 0 && toInt(remainingQty) > 0) {
-    console.warn(
-      `[FallbackLine] Session uncovered=0 for ${itemKey} but retryQty=${remainingQty} — scheduling cascade anyway`,
-    );
-  }
-  // Prefer known ranked fallbacks; if empty, still schedule retry so re-ranking
-  // can find the next cheapest seller. Exhaustion happens in the retry job.
+
+  // Check if any eligible fallback sellers remain before scheduling the batch.
   const metaRank = session?.metadata?.rankedSellerIdsByItem?.[itemKey] || [];
   const eligibleSellers = session
     ? getEligibleFallbackSellers(session, itemKey, { rankedSellers: metaRank })
     : (pr.rankedSellers || []).map(String);
 
-  if (eligibleSellers.length === 0 && !pr.procurementSessionId) {
+  if (eligibleSellers.length === 0) {
     const stillUncovered = session ? getUncoveredRemainingQty(session, itemKey) : qty;
     if (stillUncovered > 0) {
       return markProcurementExhausted(pr, session);

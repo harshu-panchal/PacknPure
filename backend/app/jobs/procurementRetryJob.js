@@ -14,89 +14,17 @@
 import ProcurementSession from "../models/procurementSession.js";
 import Product from "../models/product.js";
 import Order from "../models/order.js";
-import PurchaseRequest from "../models/purchaseRequest.js";
 import { procurementRetryQueue, JOB_NAMES } from "../queues/orderQueues.js";
-import {
-  getUncoveredRemainingQty,
-  getEligibleFallbackSellers,
-} from "../services/procurementSessionService.js";
-import {
-  createAutoPurchaseRequests,
-  markProcurementExhausted,
-} from "../services/hubOrderOrchestrator.js";
+import { getUncoveredRemainingQty } from "../services/procurementSessionService.js";
+import { createAutoPurchaseRequests } from "../services/hubOrderOrchestrator.js";
 
 const toInt = (v) => Math.max(0, Number(v || 0));
-
-/**
- * Find a PR to anchor exhaustion bookkeeping (prefer latest failed/expired/rejected).
- */
-const findAnchorPrForExhaustion = async (orderId, procurementSessionId) => {
-  const pr = await PurchaseRequest.findOne({
-    orderId,
-    procurementSessionId,
-    status: {
-      $in: [
-        "expired",
-        "seller_rejected",
-        "procurement_failed",
-        "created",
-        "closed",
-      ],
-    },
-  }).sort({ updatedAt: -1 });
-  if (pr) return pr;
-  return PurchaseRequest.findOne({ orderId, procurementSessionId }).sort({ updatedAt: -1 });
-};
-
-/**
- * After a retry wave: if shortage remains with no next seller (or create produced
- * nothing while eligible list is empty), exhaust procurement so orders do not stick.
- */
-const resolveUncoveredAfterRetry = async ({
-  orderId,
-  procurementSessionId,
-  newPrCount,
-}) => {
-  const session = await ProcurementSession.findById(procurementSessionId);
-  if (!session || session.status !== "open") return;
-
-  const uncoveredItems = (session.items || []).filter(
-    (item) => getUncoveredRemainingQty(session, item.itemKey) > 0,
-  );
-  if (uncoveredItems.length === 0) return;
-
-  let anyEligible = false;
-  for (const item of uncoveredItems) {
-    const eligible = getEligibleFallbackSellers(session, item.itemKey, null);
-    if (eligible.length > 0) {
-      anyEligible = true;
-      break;
-    }
-  }
-
-  // Exclusion during ranking should always assign the next eligible seller.
-  // If none remain, or create returned 0 PRs while uncovered, exhaust.
-  if (!anyEligible || newPrCount === 0) {
-    const anchorPr = await findAnchorPrForExhaustion(orderId, procurementSessionId);
-    if (!anchorPr) {
-      console.warn(
-        `[ProcurementRetryJob] Uncovered shortage for order ${orderId} but no PR to exhaust.`,
-      );
-      return;
-    }
-    console.log(
-      `[ProcurementRetryJob] Exhausting procurement for order ${orderId} ` +
-        `(uncovered=${uncoveredItems.length}, newPrs=${newPrCount}, eligible=${anyEligible})`,
-    );
-    await markProcurementExhausted(anchorPr, session);
-  }
-};
 
 /**
  * Core logic executed by the Bull job.
  * @param {{ orderId: string, procurementSessionId: string }} data
  */
-export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
+const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
   if (!orderId || !procurementSessionId) {
     console.warn("[ProcurementRetryJob] Missing orderId or procurementSessionId — skipping.");
     return;
@@ -154,7 +82,6 @@ export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
 
   // Reconstruct the shortages array from the uncovered session items.
   // vendorId: null forces a fresh allocation ranking (no pre-assigned vendor).
-  // Attempted sellers are excluded inside createAutoPurchaseRequests via session.
   const shortages = uncoveredItems
     .map((item) => {
       const shortageQty = getUncoveredRemainingQty(session, item.itemKey);
@@ -165,7 +92,7 @@ export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
         requiredQty: toInt(item.requiredQty),
         availableQtyAtHub: 0,
         shortageQty,
-        vendorId: null, // force fresh seller selection among remaining sellers
+        vendorId: null, // force fresh seller selection
         baseProduct: productMap.get(String(item.productId)) || null,
       };
     })
@@ -184,11 +111,11 @@ export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
       `(${shortages.length} unfulfilled item(s))`,
   );
 
-  let newPrs = [];
   try {
     // Re-run the full initial creation pipeline:
-    // rankSellerAllocations (excluding attempted) → group → createSellerGroupedPurchaseRequests
-    newPrs = await createAutoPurchaseRequests({
+    // rankSellerAllocations → groupEnrichedShortagesByVendor → createSellerGroupedPurchaseRequests
+    // This correctly re-groups items going to the same seller into a single PR.
+    const newPrs = await createAutoPurchaseRequests({
       order,
       shortages,
       hubId: session.hubId || "MAIN_HUB",
@@ -200,39 +127,10 @@ export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
     );
   } catch (err) {
     // createAutoPurchaseRequests throws when items are out of stock (allowUnassigned=false).
+    // markProcurementExhausted inside it handles notification + cancel/hold.
     console.error(
       `[ProcurementRetryJob] Re-allocation failed for order ${orderId}:`,
       err.message,
-    );
-    // Still try exhaustion so uncovered shortage does not stick forever.
-    try {
-      await resolveUncoveredAfterRetry({
-        orderId,
-        procurementSessionId,
-        newPrCount: 0,
-      });
-    } catch (exhaustErr) {
-      console.error(
-        `[ProcurementRetryJob] Exhaustion after failed re-allocation also failed:`,
-        exhaustErr.message,
-      );
-    }
-    await ProcurementSession.findByIdAndUpdate(procurementSessionId, {
-      $set: { retryBatchScheduledAt: null },
-    });
-    return;
-  }
-
-  try {
-    await resolveUncoveredAfterRetry({
-      orderId,
-      procurementSessionId,
-      newPrCount: newPrs.length,
-    });
-  } catch (exhaustErr) {
-    console.error(
-      `[ProcurementRetryJob] Post-retry exhaustion check failed for order ${orderId}:`,
-      exhaustErr.message,
     );
   }
 
@@ -254,12 +152,19 @@ export const startProcurementRetryJob = () => {
 
   procurementRetryQueue.process(JOB_NAMES.PROCUREMENT_RETRY, async (job) => {
     console.log(
-      `[ProcurementRetryJob] Processing job ${job.id} for order ${job.data?.orderId}`,
+      `[ProcurementRetryJob] Processing retry batch for order ${job.data?.orderId}`,
     );
-    await executeRetryBatch(job.data || {});
+    await executeRetryBatch(job.data);
   });
 
-  console.log("[ProcurementRetryJob] Listening on procurement-retry queue.");
+  procurementRetryQueue.on("failed", (job, err) => {
+    console.error(
+      `[ProcurementRetryJob] Job failed for order ${job.data?.orderId}:`,
+      err.message,
+    );
+  });
+
+  console.log("[ProcurementRetryJob] Processor registered on 'procurement-retry' queue.");
 };
 
 export default startProcurementRetryJob;
