@@ -24,7 +24,6 @@ import { deliveryApi } from "../services/deliveryApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
-import Tesseract from "tesseract.js";
 
 const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
@@ -38,8 +37,8 @@ const PATTERNS = {
   aadhar: /^\d{12}$/,
   ifsc: /^[A-Z]{4}0[A-Z0-9]{6}$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  dl: /^[A-Z]{2}[0-9]{2}[0-9]{11}$/,
-  vehicle: /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/,
+  dl: /^.+$/,
+  vehicle: /^.+$/,
   account: /^\d{9,18}$/,
   name: /^[a-zA-Z\s]+$/,
 };
@@ -110,6 +109,7 @@ const DeliveryAuth = () => {
     if (type === "aadhar") setAadharVerified(null);
 
     try {
+      const { default: Tesseract } = await import("tesseract.js");
       const result = await Tesseract.recognize(file, 'eng', {
         logger: (m) => {
           if (m.status === 'recognizing text') {
@@ -251,8 +251,8 @@ const DeliveryAuth = () => {
         if (!PATTERNS.phone.test(signupPhone)) { toast.error("Please enter a valid 10-digit Indian phone number"); return; }
         if (!PATTERNS.email.test(tEmail)) { toast.error("Please enter a valid email address"); return; }
         if (tAddress.length < 10) { toast.error("Please enter a proper address"); return; }
-        if (!PATTERNS.vehicle.test(signupVehicleNumber)) { toast.error("Please enter a valid Vehicle Number"); return; }
-        if (!PATTERNS.dl.test(signupDLNumber)) { toast.error("Please enter a valid DL Number"); return; }
+        if (!signupVehicleNumber.trim()) { toast.error("Please enter a Vehicle Number"); return; }
+        if (!signupDLNumber.trim()) { toast.error("Please enter a Driving License Number"); return; }
         if (!PATTERNS.aadhar.test(signupAadharNumber)) { toast.error("Please enter a valid 12-digit Aadhar Number"); return; }
         if (!PATTERNS.pan.test(signupPanNumber)) { toast.error("Please enter a valid PAN Number"); return; }
         if (!signupAccountHolder.trim()) { toast.error("Please enter Account Holder Name"); return; }
@@ -620,12 +620,12 @@ const DeliveryAuth = () => {
                             </button>
                             <button
                               onClick={() => {
-                                if (!PATTERNS.vehicle.test(signupVehicleNumber)) {
-                                  toast.error("Please enter a valid Vehicle Number");
+                                if (!signupVehicleNumber.trim()) {
+                                  toast.error("Please enter a Vehicle Number");
                                   return;
                                 }
-                                if (!PATTERNS.dl.test(signupDLNumber)) {
-                                  toast.error("Please enter a valid Driving License Number");
+                                if (!signupDLNumber.trim()) {
+                                  toast.error("Please enter a Driving License Number");
                                   return;
                                 }
                                 setSignupStep(3);

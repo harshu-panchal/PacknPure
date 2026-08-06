@@ -1,6 +1,7 @@
 import express from "express"
 import dotenv from "dotenv"
 import http from "http"
+import compression from "compression"
 import { Server } from "socket.io"
 import connectDB from "./app/dbConfig/dbConfig.js"
 import setupRoutes from "./app/routes/index.js";
@@ -62,6 +63,7 @@ if (process.env.ENABLE_INLINE_QUEUE_WORKER === "true") {
 
 // Middleware
 app.use(cors(corsOptions));
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 

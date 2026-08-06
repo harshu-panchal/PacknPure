@@ -1,7 +1,6 @@
 import React from 'react';
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
 import { Printer, Download, Share2 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 
@@ -12,8 +11,9 @@ export const ReceiptModal = ({ open, onOpenChange, orderData }) => {
         window.print();
     };
 
-    const handleDownloadPdf = () => {
+    const handleDownloadPdf = async () => {
         try {
+            const { default: jsPDF } = await import('jspdf');
             const doc = new jsPDF();
             doc.setFontSize(16);
             doc.text("PacknPure Receipt", 20, 20);

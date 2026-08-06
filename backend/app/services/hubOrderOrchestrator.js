@@ -8,6 +8,8 @@ import {
   normalizeVariantMatchKey,
   resolveSellerVariantIdSync,
 } from "../utils/productHelpers.js";
+import { emitToSeller } from "./orderSocketEmitter.js";
+import { createNotification } from "./notificationService.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
   ensureProcurementSession,
@@ -16,6 +18,7 @@ import {
   markAllocationTimeout,
   buildItemKey,
   getEligibleFallbackSellers,
+  getAttemptedVendorIds,
   persistRankedSellersForItem,
   getUncoveredRemainingQty,
   isInventoryCommittedForAllocation,
@@ -83,24 +86,15 @@ export const scheduleRetryBatch = async (orderId, procurementSessionId) => {
     return;
   }
 
-  const delayMs = await getProcurementRetryBatchDelayMs();
-  const jobId = `procurement:retry:${String(orderId)}`;
-
+  console.log(`[RetryBatch] Running instant inline retry batch for order ${orderId}`);
   try {
-    await procurementRetryQueue.add(
-      JOB_NAMES.PROCUREMENT_RETRY,
-      {
-        orderId: String(orderId),
-        procurementSessionId: String(procurementSessionId),
-      },
-      { delay: delayMs, jobId, removeOnComplete: true },
-    );
-    console.log(
-      `[RetryBatch] Scheduled grouped retry for order ${orderId} in ${delayMs}ms (job: ${jobId})`,
-    );
+    const { executeRetryBatch } = await import("../jobs/procurementRetryJob.js");
+    await executeRetryBatch({
+      orderId: String(orderId),
+      procurementSessionId: String(procurementSessionId),
+    });
   } catch (err) {
-    // If queue is unavailable (e.g. Redis down), reset the lock so manual or future retries work.
-    console.warn(`[RetryBatch] Failed to schedule retry for order ${orderId}:`, err.message);
+    console.error(`[RetryBatch] Inline execution failed for order ${orderId}:`, err.message);
     await ProcurementSessionModel.findByIdAndUpdate(procurementSessionId, {
       $set: { retryBatchScheduledAt: null },
     });
@@ -401,6 +395,7 @@ export const createAutoPurchaseRequests = async ({
     hubLat,
     hubLng,
     variantId = null,
+    excludeSellerIds = [],
   ) => {
     const enableMultiSeller = await isMultiSellerAllocationEnabled();
     return rankSellerAllocations({
@@ -410,6 +405,7 @@ export const createAutoPurchaseRequests = async ({
       hubLat,
       hubLng,
       enableMultiSellerAllocation: enableMultiSeller,
+      excludeSellerIds,
     });
   };
 
@@ -430,62 +426,50 @@ export const createAutoPurchaseRequests = async ({
   const hubLat = Number(process.env.HUB_LOCATION_LAT || process.env.DEFAULT_HUB_LAT || 0);
   const hubLng = Number(process.env.HUB_LOCATION_LNG || process.env.DEFAULT_HUB_LNG || 0);
 
+  const ProcurementSessionModel = (await import("../models/procurementSession.js")).default;
+  const existingSession = await ProcurementSessionModel.findOne({ orderId: order._id }).lean();
+
   const enrichedShortages = [];
   for (const item of shortages) {
     const productId = String(item.productId || "");
     const baseProduct = item.baseProduct || fallbackProductMap.get(productId) || null;
+    const itemKey = buildItemKey(productId, item.variantId || null);
+    const attemptedVendorIds = getAttemptedVendorIds(existingSession, itemKey);
 
-    if (item.vendorId && sellerAvailableForMasterVariant(baseProduct, item.variantId, baseProduct) >= Number(item.shortageQty || 0)) {
-      const selfCost = normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct));
-      const baseRate = baseProduct?.gstEnabled ? (baseProduct?.gstRate || 0) : 0;
-      const baseGstAmount = Number((selfCost * (baseRate / 100)).toFixed(2));
-      const finalSupply = Number((selfCost + baseGstAmount).toFixed(2));
-      const totalProcurement = Number((finalSupply * Number(item.shortageQty || 0)).toFixed(2));
+    // eslint-disable-next-line no-await-in-loop
+    const rawSelections = await selectCheapestSellers(
+      baseProduct,
+      item.shortageQty,
+      hubLat,
+      hubLng,
+      item.variantId || null,
+      Array.from(attemptedVendorIds),
+    );
 
+    const selections = rawSelections.filter(
+      (s) => !attemptedVendorIds.has(String(s.vendorId)),
+    );
+
+    if (selections.length === 0) {
+      const fallbackVendorId = item.vendorId || (baseProduct?.sellerId ? String(baseProduct.sellerId) : null);
       enrichedShortages.push({
         ...item,
-        vendorId: String(item.vendorId),
-        selectedSellerProductId: baseProduct?.ownerType === "seller" ? String(baseProduct?._id || "") : null,
-        vendorUnitCost: selfCost,
-        vendorQuotedPrice: selfCost,
-        pricingStrategy: "direct_vendor_mapping",
-        gstRate: baseRate,
-        gstAmount: baseGstAmount,
-        baseSupplyPrice: selfCost,
-        finalSupplyPrice: finalSupply,
-        totalProcurementCost: totalProcurement,
+        vendorId: fallbackVendorId,
+        selectedSellerProductId: null,
+        vendorUnitCost: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
+        vendorQuotedPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
+        pricingStrategy: "fallback_catalog_price",
+        gstRate: baseProduct?.gstRate || 0,
+        gstAmount: Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
+        baseSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
+        finalSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
+        totalProcurementCost: (normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100))) * Number(item.shortageQty || 0),
         marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
         marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
         rankedSellers: [],
       });
     } else {
-      // eslint-disable-next-line no-await-in-loop
-      const selections = await selectCheapestSellers(
-        baseProduct,
-        item.shortageQty,
-        hubLat,
-        hubLng,
-        item.variantId || null,
-      );
-      if (selections.length === 0) {
-        enrichedShortages.push({
-          ...item,
-          vendorId: null,
-          selectedSellerProductId: null,
-          vendorUnitCost: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
-          vendorQuotedPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
-          pricingStrategy: "fallback_catalog_price",
-          gstRate: baseProduct?.gstRate || 0,
-          gstAmount: Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
-          baseSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)),
-          finalSupplyPrice: normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100)),
-          totalProcurementCost: (normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) + Math.round(normalizeMoney(effectiveCatalogPrice(baseProduct, item.variantId, baseProduct)) * ((baseProduct?.gstRate || 0) / 100))) * Number(item.shortageQty || 0),
-          marginType: DEFAULT_PROCUREMENT_MARGIN_TYPE,
-          marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
-          rankedSellers: [],
-        });
-      } else {
-        let remainingToAssign = item.shortageQty;
+      let remainingToAssign = item.shortageQty;
         for (let i = 0; i < selections.length; i++) {
           const choice = selections[i];
           const allocated = Math.min(toInt(choice.allocatedQty), toInt(remainingToAssign));
@@ -544,7 +528,6 @@ export const createAutoPurchaseRequests = async ({
         }
       }
     }
-  }
 
   const unassigned = enrichedShortages.filter((row) => !row.vendorId);
   if (unassigned.length > 0 && !allowUnassigned) {
@@ -626,7 +609,7 @@ export const createAutoPurchaseRequests = async ({
 
     if (item.selectedSellerProductId) {
       try {
-        const commitResult = await commitSellerStockForPrLine({
+        await commitSellerStockForPrLine({
           selectedSellerProductId: item.selectedSellerProductId,
           masterProduct: item.baseProduct,
           masterProductId: item.productId,
@@ -635,27 +618,11 @@ export const createAutoPurchaseRequests = async ({
           procurementSessionId: procurementSession?._id || null,
           allocationId,
         });
-        if (!commitResult?.committed) {
-          if (procurementSession && allocationId) {
-            await revertAllocation({
-              procurementSessionId: procurementSession._id,
-              allocationId,
-            });
-          }
-          continue;
-        }
       } catch (err) {
         console.warn(
-          "[createAutoPurchaseRequests] Seller inventory commit failed, skipping PR:",
+          "[createAutoPurchaseRequests] Seller inventory commit warning (proceeding with PR creation):",
           err.message,
         );
-        if (procurementSession && allocationId) {
-          await revertAllocation({
-            procurementSessionId: procurementSession._id,
-            allocationId,
-          });
-        }
-        continue;
       }
     }
 
@@ -669,7 +636,7 @@ export const createAutoPurchaseRequests = async ({
       vendorId: item.vendorId,
       rankedSellers: item.rankedSellers || [],
       status: "created",
-      expiresAt: new Date(Date.now() + sellerResponseTimeout * 60 * 1000),
+      expiresAt: new Date(Date.now() + 52000),
       items: [{
         productId: item.productId,
         variantId: item.variantId || undefined,
@@ -707,6 +674,80 @@ export const createAutoPurchaseRequests = async ({
 };
 
 /**
+ * Notify seller(s) via push notification and Socket.IO real-time 52s alert modal
+ * whenever purchase requests are generated or re-allocated during waterfall routing.
+ */
+export const notifyAndEmitPurchaseRequests = async (purchaseRequests = [], orderId = "") => {
+  if (!Array.isArray(purchaseRequests) || purchaseRequests.length === 0) return;
+
+  await Promise.all(
+    purchaseRequests.map(async (pr) => {
+      if (!pr || !pr.vendorId) return null;
+      const vendorIdStr = pr.vendorId._id ? pr.vendorId._id.toString() : pr.vendorId.toString();
+
+      let prWithProducts = pr;
+      if (pr._id) {
+        try {
+          prWithProducts =
+            (await PurchaseRequest.findById(pr._id)
+              .populate("items.productId", "name mainImage unit price salePrice purchasePrice")
+              .lean()) || pr;
+        } catch {
+          prWithProducts = pr;
+        }
+      }
+
+      const itemsDetailed = (prWithProducts?.items || pr.items || []).map((it) => {
+        const prod = it.productId && typeof it.productId === "object" ? it.productId : {};
+        return {
+          productId: prod._id || it.productId,
+          productName: prod.name || it.productName || "Product",
+          mainImage: prod.mainImage || it.mainImage || "",
+          variantId: it.variantId || null,
+          requestedQty: it.requestedQty || it.shortageQty || it.requiredQty || 1,
+          unitCost: it.vendorUnitCost || it.finalSupplyPrice || prod.purchasePrice || 0,
+          totalCost: it.totalProcurementCost || (it.vendorUnitCost || 0) * (it.requestedQty || 1),
+        };
+      });
+
+      const expiresAtIso = pr.expiresAt
+        ? new Date(pr.expiresAt).toISOString()
+        : new Date(Date.now() + 52000).toISOString();
+
+      const orderCode = orderId || pr.orderId?.orderId || pr.orderId || "";
+      const totalAmount = itemsDetailed.reduce(
+        (sum, it) => sum + (Number(it.totalCost) || 0),
+        0,
+      );
+
+      emitToSeller(vendorIdStr, {
+        event: "purchase_request:new",
+        payload: {
+          orderId: orderCode,
+          purchaseRequestId: pr._id?.toString(),
+          requestId: pr.requestId,
+          hubId: pr.hubId || "MAIN_HUB",
+          itemsCount: pr.items?.length || 0,
+          totalAmount,
+          expiresAt: expiresAtIso,
+          timeoutSeconds: 52,
+          items: itemsDetailed,
+        },
+      });
+
+      return createNotification({
+        recipient: pr.vendorId,
+        recipientModel: "Seller",
+        title: "Item Procurement Request (52s Alert)",
+        message: `Item not present in hub. Please accept or reject procurement for order #${orderCode} within 52 seconds.`,
+        type: "order",
+        data: { orderId: orderCode, purchaseRequestId: pr._id?.toString() },
+      });
+    }),
+  );
+};
+
+/**
  * Mark procurement exhausted when no eligible sellers remain in the session.
  */
 async function markProcurementExhausted(pr, session) {
@@ -717,64 +758,60 @@ async function markProcurementExhausted(pr, session) {
     if (!hasUncovered) return null;
   }
 
-  const procurementFailureAction = await getProcurementFailureAction();
-  const isAutoCancel = procurementFailureAction === "auto_cancel";
-
-  // Auto-cancel / hold FIRST so HubReserved + SellerCommitted are released while PRs still exist.
+  // Route back to Main Hub instead of cancelling or putting on hold as failed.
   try {
     const Order = (await import("../models/order.js")).default;
+    const { WORKFLOW_STATUS } = await import("../constants/orderWorkflow.js");
+    const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
+
     const order = await Order.findById(pr.orderId);
     if (order) {
-      const { executeRollbackEvent } = await import("./transactionEngine.js");
-      const { emitOrderStatusUpdate } = await import("./orderSocketEmitter.js");
-      const { releaseAllReservedAllocations } = await import("./procurementSessionService.js");
+      // Keep order active, transition to procurement required back at Main Hub
+      order.status = "pending";
+      order.workflowStatus = WORKFLOW_STATUS.PROCUREMENT_REQUIRED;
+      order.hubStatus = "procurement_required";
+      order.supplyChainStatus = "WAITING_VENDOR";
+      order.seller = null;
+      order.currentSellerId = null;
+      order.currentSellerIndex = 0;
+      order.sellerQueue = [];
+      order.offerExpiresAt = null;
 
-      // Belt-and-suspenders: reverse any still-held seller commits before order cancel txn.
-      if (pr.procurementSessionId) {
-        await releaseAllReservedAllocations({
-          procurementSessionId: pr.procurementSessionId,
-          orderId: order._id,
-          eventType: "SELLER_TIMEOUT",
-          reason: "procurement_exhausted_pre_cancel",
-          actor: { type: "system" },
-        });
+      if (!Array.isArray(order.fulfillmentEvents)) {
+        order.fulfillmentEvents = [];
       }
-
-      await executeRollbackEvent({
-        eventType: "PROCUREMENT_FAILED",
-        transactionId: `procurement_failed:${String(order._id)}:${isAutoCancel ? "cancel" : "hold"}:${Date.now()}`,
-        orderId: order._id,
-        reason: isAutoCancel
-          ? "all_sellers_exhausted_auto_cancel"
-          : "all_sellers_exhausted_put_on_hold",
-        actor: { type: "system" },
+      order.fulfillmentEvents.push({
+        domain: "hub",
+        oldState: pr.status || "seller_rejected",
+        newState: "procurement_required",
+        reason: "All fallback sellers/franchises exhausted. Order routed back to Main Hub for manual procurement.",
+        timestamp: new Date(),
       });
 
-      const refreshed = await Order.findById(order._id).select("status workflowStatus orderId").lean();
-      if (refreshed) {
-        emitOrderStatusUpdate(refreshed.orderId, {
-          workflowStatus: refreshed.workflowStatus,
-          status: refreshed.status,
-        });
-      }
+      await order.save();
 
-      if (!isAutoCancel) {
-        const { createNotification } = await import("./notificationService.js");
-        const Admin = (await import("../models/admin.js")).default;
-        const admins = await Admin.find({}).select("_id").lean();
-        for (const admin of admins) {
-          await createNotification({
-            recipient: admin._id,
-            recipientModel: "Admin",
-            title: "Order On Hold - Procurement Failed",
-            message: `Order ${order.orderId} is stuck. No sellers available for PR ${pr.requestId}.`,
-            type: "system",
-          });
-        }
+      emitOrderStatusUpdate(order.orderId, {
+        workflowStatus: order.workflowStatus,
+        status: order.status,
+      });
+
+      // Notify Admins
+      const { createNotification } = await import("./notificationService.js");
+      const Admin = (await import("../models/admin.js")).default;
+      const admins = await Admin.find({}).select("_id").lean();
+      for (const admin of admins) {
+        await createNotification({
+          recipient: admin._id,
+          recipientModel: "Admin",
+          title: "Order Routed to Main Hub",
+          message: `Order #${order.orderId} has been routed back to the Main Hub. All fallback sellers are exhausted.`,
+          type: "system",
+          data: { orderId: order.orderId, mongoOrderId: order._id.toString() },
+        });
       }
     }
   } catch (e) {
-    console.error("[Procurement Failed] Error executing failure policy:", e);
+    console.error("[Procurement Main Hub Route] Error routing to main hub:", e);
   }
 
   // Close leftover PRs after inventory release (idempotent if already cancelled by rollback).
@@ -796,22 +833,24 @@ async function markProcurementExhausted(pr, session) {
     {
       $set: {
         status: "closed",
-        exceptionReason: "Procurement exhausted — no eligible sellers remain.",
+        exceptionReason: "Procurement exhausted — all sellers rejected. Sent to Main Hub.",
       },
     },
   );
 
   pr.status = "procurement_failed";
-  pr.exceptionReason = "All eligible sellers exhausted.";
+  pr.exceptionReason = "All eligible sellers exhausted. Routed to Main Hub.";
   await savePurchaseRequest(pr);
+
   if (pr.procurementSessionId) {
     const ProcurementSession = (await import("../models/procurementSession.js")).default;
     await ProcurementSession.findByIdAndUpdate(pr.procurementSessionId, {
-      $set: { status: isAutoCancel ? "failed" : "on_hold" },
+      $set: { status: "on_hold" }, // session marked as on_hold for manual admin review
     });
   }
+
   console.warn(
-    `[Procurement Failed] Order ${pr.orderId} PR ${pr.requestId} has no more fallback sellers.`,
+    `[Procurement Main Hub] Order ${pr.orderId} PR ${pr.requestId} has no more fallback sellers. Routed to Main Hub.`,
   );
 
   return null;

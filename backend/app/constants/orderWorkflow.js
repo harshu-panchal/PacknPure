@@ -45,11 +45,15 @@ export const WORKFLOW_STATUS = {
   OUT_FOR_DELIVERY: "OUT_FOR_DELIVERY",
   DELIVERED: "DELIVERED",
   CANCELLED: "CANCELLED",
+  // Seller Fallback Routing (additive)
+  PENDING_SELLER_OFFER: "PENDING_SELLER_OFFER",
+  SELLER_OFFER_ACCEPTED: "SELLER_OFFER_ACCEPTED",
+  NO_SELLER_AVAILABLE: "NO_SELLER_AVAILABLE",
 };
 
 /** Milliseconds — override via env in services */
 export const DEFAULT_SELLER_TIMEOUT_MS = () =>
-  parseInt(process.env.SELLER_TIMEOUT_MS || "60000", 10);
+  parseInt(process.env.SELLER_TIMEOUT_MS || "52000", 10);
 export const DEFAULT_DELIVERY_TIMEOUT_MS = () =>
   parseInt(
     process.env.DELIVERY_TIMEOUT_MS ||
@@ -108,6 +112,13 @@ export function legacyStatusFromWorkflow(workflowStatus) {
     case WORKFLOW_STATUS.DELIVERED:
       return "delivered";
     case WORKFLOW_STATUS.CANCELLED:
+      return "cancelled";
+    // Seller Fallback Routing (additive)
+    case WORKFLOW_STATUS.PENDING_SELLER_OFFER:
+      return "pending";
+    case WORKFLOW_STATUS.SELLER_OFFER_ACCEPTED:
+      return "confirmed";
+    case WORKFLOW_STATUS.NO_SELLER_AVAILABLE:
       return "cancelled";
     default:
       return "pending";

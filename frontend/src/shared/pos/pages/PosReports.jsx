@@ -3,7 +3,6 @@ import { BarChart3, TrendingUp, Users, Calendar, Banknote, ShoppingBag } from 'l
 import { Button } from '@mui/material';
 import { posApi } from '../services/posApi';
 import { usePosEngine } from '../context/PosEngineContext';
-import jsPDF from 'jspdf';
 import brandLogo from '../../../assets/brand_logo.png';
 
 export default function PosReports() {
@@ -34,6 +33,7 @@ export default function PosReports() {
     const handleExport = async () => {
         if (!reportData) return;
 
+        const { default: jsPDF } = await import('jspdf');
         const doc = new jsPDF();
         
         // Helper to load image

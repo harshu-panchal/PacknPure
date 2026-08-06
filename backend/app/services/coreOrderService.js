@@ -4,6 +4,7 @@ import Cart from "../models/cart.js";
 import Product from "../models/product.js";
 import Transaction from "../models/transaction.js";
 import Admin from "../models/admin.js";
+import PurchaseRequest from "../models/purchaseRequest.js";
 import { createNotification, createNotificationBatch } from "./notificationService.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { startHubDeliverySearchAtomic } from "./orderWorkflowService.js";
@@ -11,6 +12,7 @@ import {
   planHubFulfillment,
   reserveHubInventory,
   createAutoPurchaseRequests,
+  notifyAndEmitPurchaseRequests,
 } from "./purchaseRequestService.js";
 import { getSlaDeadline } from "./settingsService.js";
 import {
@@ -323,28 +325,7 @@ export const executeCoreOrderFulfillment = async ({
       if (sessionIdFromPr) {
         newOrder.procurementSessionId = sessionIdFromPr;
       }
-      await Promise.all(
-        purchaseRequests.map((pr) => {
-          if (!pr.vendorId) return null;
-          emitToSeller(pr.vendorId.toString(), {
-            event: "purchase_request:new",
-            payload: {
-              orderId,
-              purchaseRequestId: pr._id?.toString(),
-              itemsCount: pr.items?.length || 0,
-              totalAmount: validatedPricing?.total || 0
-            }
-          });
-          return createNotification({
-            recipient: pr.vendorId,
-            recipientModel: "Seller",
-            title: "Vendor Purchase Request",
-            message: `A purchase request has been created for order #${orderId}.`,
-            type: "order",
-            data: { orderId, purchaseRequestId: pr._id?.toString() },
-          });
-        })
-      );
+      await notifyAndEmitPurchaseRequests(purchaseRequests, orderId);
     }
 
     if (hubPlan.shortages.length > 0) {

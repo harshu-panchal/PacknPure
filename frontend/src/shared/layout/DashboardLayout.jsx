@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import SellerEarningsContext, { defaultEarnings } from '@/modules/seller/context/SellerEarningsContext';
 import { useSellerDashboard } from '@/modules/seller/hooks/useSellerDashboard';
 import { useAdminOrderNotifications } from '@/modules/admin/hooks/useAdminOrderNotifications';
+import SellerItemRequestModal from '../components/SellerItemRequestModal';
 
 const MD_QUERY = '(min-width: 768px)';
 
@@ -184,6 +185,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
         </motion.main>
       </motion.div>
 
+      {isSeller && <SellerItemRequestModal isSeller={isSeller} />}
       {hasBottomNav && <BottomNav />}
     </motion.div>
   );

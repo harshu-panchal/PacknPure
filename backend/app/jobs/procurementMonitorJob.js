@@ -12,7 +12,7 @@ import { getPickupTimeoutMs, getHubReceiveTimeoutMs } from "../services/settings
 import { scheduleRetryBatch } from "../services/hubOrderOrchestrator.js";
 
 const toInt = (v) => Math.max(0, Number(v || 0));
-const MONITOR_INTERVAL_MS = 60 * 1000; // Check every 1 minute
+const MONITOR_INTERVAL_MS = 2 * 1000; // Check every 2 seconds for instant 52s timeout detection
 
 const notifyAdmins = async (title, message, data = {}) => {
   const admins = await Admin.find({}).select("_id").lean();

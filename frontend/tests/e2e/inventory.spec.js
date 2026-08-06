@@ -6,8 +6,8 @@ test.describe('End-to-End Stock Reservation Architecture', () => {
     await page.goto('/admin');
     
     // Fill credentials (using the ones from .env)
-    await page.getByPlaceholder(/email/i).fill('Grhapoch@gmail.com');
-    await page.getByPlaceholder(/password/i).fill('grhapoch123');
+    await page.getByPlaceholder(/email/i).fill('admin@gmail.com');
+    await page.getByPlaceholder(/password/i).fill('123456');
     await page.getByRole('button', { name: /login|sign in/i }).click();
 
     // Verify successful login by waiting for Dashboard or Sidebar

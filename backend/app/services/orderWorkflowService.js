@@ -3,6 +3,7 @@ import Order from "../models/order.js";
 import DeliveryAssignment from "../models/deliveryAssignment.js";
 import OrderOtp from "../models/orderOtp.js";
 import Notification from "../models/notification.js";
+import PurchaseRequest from "../models/purchaseRequest.js";
 import { createNotification } from "./notificationService.js";
 import Seller from "../models/seller.js";
 import { getDeliveryTimeoutMs, getDeliveryOtpExpiryMs } from "./settingsService.js";
@@ -643,8 +644,42 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
 export async function processSellerTimeoutJob({ orderId }) {
   const now = new Date();
   const order = await Order.findOne({ orderId, workflowVersion: { $gte: 2 } });
-  if (!order || order.workflowStatus !== WORKFLOW_STATUS.SELLER_PENDING) return;
+  if (!order) return;
 
+  const isHubOrProcurement =
+    order.hubFlowEnabled ||
+    order.procurementRequired ||
+    Boolean(order.procurementSessionId);
+
+  const purchaseRequests = await PurchaseRequest.find({
+    orderId: order._id,
+    status: "created",
+  });
+
+  if (isHubOrProcurement || purchaseRequests.length > 0) {
+    console.log(
+      `[processSellerTimeoutJob] Hub procurement order ${orderId} timed out — triggering fallback to next seller.`,
+    );
+
+    if (purchaseRequests.length > 0) {
+      const { fallbackPurchaseRequest, updateOnePurchaseRequest } =
+        await import("./purchaseRequestService.js");
+
+      for (const pr of purchaseRequests) {
+        await updateOnePurchaseRequest(
+          { _id: pr._id, status: "created" },
+          { $set: { status: "expired" } },
+        );
+        await fallbackPurchaseRequest(pr._id);
+      }
+    } else if (order.procurementSessionId) {
+      const { scheduleRetryBatch } = await import("./purchaseRequestService.js");
+      await scheduleRetryBatch(order.orderId, order.procurementSessionId);
+    }
+    return;
+  }
+
+  if (order.workflowStatus !== WORKFLOW_STATUS.SELLER_PENDING) return;
   if (order.sellerPendingExpiresAt && order.sellerPendingExpiresAt > now) {
     return;
   }
@@ -658,7 +693,7 @@ export async function processSellerTimeoutJob({ orderId }) {
     toState: WORKFLOW_STATUS.CANCELLED,
     assign: {
       cancelledBy: "system",
-      cancelReason: "Seller timeout (60s)",
+      cancelReason: "Seller timeout (52s)",
       status: "cancelled",
     },
     options: { actor: { role: "system" }, reason: "seller_timeout" },

@@ -175,7 +175,7 @@ export const createSellerGroupedPurchaseRequests = async ({
 
       if (item.selectedSellerProductId) {
         try {
-          const commitResult = await commitSellerStockForPrLine({
+          await commitSellerStockForPrLine({
             selectedSellerProductId: item.selectedSellerProductId,
             masterProduct: item.baseProduct,
             masterProductId: item.productId,
@@ -184,27 +184,11 @@ export const createSellerGroupedPurchaseRequests = async ({
             procurementSessionId: procurementSession?._id || null,
             allocationId,
           });
-          if (!commitResult?.committed) {
-            if (procurementSession && allocationId) {
-              await revertAllocation({
-                procurementSessionId: procurementSession._id,
-                allocationId,
-              });
-            }
-            continue;
-          }
         } catch (err) {
           console.warn(
-            "[createSellerGroupedPurchaseRequests] Seller commit failed, reverting allocation:",
+            "[createSellerGroupedPurchaseRequests] Seller commit warning (proceeding with PR creation):",
             err.message,
           );
-          if (procurementSession && allocationId) {
-            await revertAllocation({
-              procurementSessionId: procurementSession._id,
-              allocationId,
-            });
-          }
-          continue;
         }
       }
 
@@ -245,7 +229,7 @@ export const createSellerGroupedPurchaseRequests = async ({
       vendorId,
       rankedSellers: mergedRankedSellers,
       status: "created",
-      expiresAt: new Date(Date.now() + sellerResponseTimeout * 60 * 1000),
+      expiresAt: new Date(Date.now() + 52000),
       items: prItems,
       notes: `Multi-product PR for order ${order.orderId} (${preparedLines.length} items)`,
     });

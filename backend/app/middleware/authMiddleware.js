@@ -47,28 +47,30 @@ export const verifyToken = async (req, res, next) => {
       return handleResponse(res, 401, "Invalid token role");
     }
 
-    const exists = await mongoose.model(modelName).exists({ _id: id });
-    if (!exists) {
+    // Single lookup covers both the existence check here and the verification
+    // check in isAccountVerified (shared via req.authAccount) — avoids a second
+    // near-duplicate query on every seller/delivery/pickup_partner request.
+    const account = await mongoose
+      .model(modelName)
+      .findById(id)
+      .select("isActive isVerified shopName name")
+      .lean();
+
+    if (!account) {
       return handleResponse(res, 401, "Account no longer exists. Please login again.");
     }
 
-    if (role === "customer") {
-      const customer = await mongoose
-        .model("User")
-        .findById(id)
-        .select("isActive")
-        .lean();
-      if (customer && customer.isActive === false) {
-        const support = await getPlatformSupportContact();
-        return handleResponse(res, 403, SUSPENDED_MESSAGE, {
-          suspended: true,
-          supportEmail: support.supportEmail,
-          supportPhone: support.supportPhone,
-        });
-      }
+    if (role === "customer" && account.isActive === false) {
+      const support = await getPlatformSupportContact();
+      return handleResponse(res, 403, SUSPENDED_MESSAGE, {
+        suspended: true,
+        supportEmail: support.supportEmail,
+        supportPhone: support.supportPhone,
+      });
     }
 
     req.user = { ...decoded, id, role };
+    req.authAccount = account;
     next();
   } catch (error) {
     return handleResponse(res, 401, "Invalid or expired token");
@@ -113,11 +115,14 @@ export const isAccountVerified = async (req, res, next) => {
     else if (role === "pickup_partner") modelName = "PickupPartner";
     else return next();
 
-    const account = await mongoose
-      .model(modelName)
-      .findById(id)
-      .select("isVerified isActive shopName name")
-      .lean();
+    // Reuse the account doc verifyToken already fetched (same fields) when present.
+    const account =
+      req.authAccount ||
+      (await mongoose
+        .model(modelName)
+        .findById(id)
+        .select("isVerified isActive shopName name")
+        .lean());
 
     if (!account) {
       return handleResponse(res, 403, "Account not found");

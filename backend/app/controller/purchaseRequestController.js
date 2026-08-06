@@ -1477,10 +1477,17 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     }
 
     const isMultiLine = (pr.items || []).length > 1;
-    const normalizedAction = String(action).toLowerCase();
+    let normalizedAction = String(action).toLowerCase();
 
     if (!["accept", "reject", "partial", "accept_line", "reject_line"].includes(normalizedAction)) {
       return handleResponse(res, 400, "Invalid action");
+    }
+
+    // Single-line requests only understand accept/reject/partial; the *_line
+    // variants (always sent by the seller alert modal) are equivalent here.
+    if (!isMultiLine) {
+      if (normalizedAction === "reject_line") normalizedAction = "reject";
+      else if (normalizedAction === "accept_line") normalizedAction = "accept";
     }
 
     // Per-line response for multi-product purchase requests

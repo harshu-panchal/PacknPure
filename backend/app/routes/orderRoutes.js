@@ -26,6 +26,10 @@ import {
   verifyDeliveryOtp,
   getOrderRoute,
 } from "../controller/orderWorkflowController.js";
+import {
+  handleAcceptSellerOffer,
+  handleRejectSellerOffer,
+} from "../controller/sellerFallbackController.js";
 import { getDeliveryTimeline } from "../controller/deliveryTimelineController.js";
 import {
   customerInitiateMaskedCall,
@@ -171,6 +175,20 @@ router.get(
   verifyToken,
   allowRoles("customer", "user", "delivery", "seller", "admin"),
   getOrderRoute,
+);
+
+// Seller Fallback Routing (additive)
+router.put(
+  "/seller-offer/accept/:orderId",
+  verifyToken,
+  allowRoles("seller"),
+  handleAcceptSellerOffer,
+);
+router.put(
+  "/seller-offer/reject/:orderId",
+  verifyToken,
+  allowRoles("seller"),
+  handleRejectSellerOffer,
 );
 
 export default router;

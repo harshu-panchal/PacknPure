@@ -53,11 +53,8 @@ async function throttleLocationUpdate(deliveryId, lat, lng) {
 export const getDeliveryStats = async (req, res) => {
     try {
         const deliveryBoyId = new mongoose.Types.ObjectId(req.user.id);
-        console.log(`[Stats] Fetching for Partner: ${deliveryBoyId}`);
 
-        const orders = await Order.find({ deliveryBoy: deliveryBoyId, status: 'delivered' });
-        const totalDeliveries = orders.length;
-        console.log(`[Stats] Delivered Orders found: ${totalDeliveries}`);
+        const totalDeliveries = await Order.countDocuments({ deliveryBoy: deliveryBoyId, status: 'delivered' });
 
         // Today's earnings - Using a more robust date check
         const startOfToday = new Date();
@@ -67,9 +64,9 @@ export const getDeliveryStats = async (req, res) => {
             user: deliveryBoyId,
             userModel: 'Delivery',
             createdAt: { $gte: startOfToday }
-        });
-
-        console.log(`Found ${allTransactions.length} transactions for today for user ${deliveryBoyId}`);
+        })
+            .select('status type amount')
+            .lean();
 
         const todayEarnings = allTransactions
             .filter(t => t.status === 'Settled' && (t.type === 'Delivery Earning' || t.type === 'Incentive' || t.type === 'Bonus'))
@@ -84,9 +81,9 @@ export const getDeliveryStats = async (req, res) => {
             user: deliveryBoyId,
             userModel: 'Delivery',
             type: { $in: ['Cash Collection', 'Cash Settlement'] }
-        });
-
-        console.log(`Found ${cashTransactions.length} cash transactions for user ${deliveryBoyId}`);
+        })
+            .select('type amount')
+            .lean();
 
         const cashCollected = cashTransactions.reduce((acc, t) => {
             return t.type === 'Cash Collection' ? acc + t.amount : acc - Math.abs(t.amount);
@@ -111,7 +108,8 @@ export const getDeliveryEarnings = async (req, res) => {
         const deliveryBoyId = new mongoose.Types.ObjectId(req.user.id);
         const transactions = await Transaction.find({ user: deliveryBoyId, userModel: 'Delivery' })
             .sort({ createdAt: -1 })
-            .populate("order", "orderId pricing");
+            .populate("order", "orderId pricing")
+            .lean();
 
         const totalEarnings = transactions
             .filter(t => t.status === 'Settled' && (t.type === 'Delivery Earning' || t.type === 'Incentive' || t.type === 'Bonus'))

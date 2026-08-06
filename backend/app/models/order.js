@@ -199,6 +199,9 @@ const orderSchema = new mongoose.Schema(
         "delivered",
         "cancelled",
         "voided",
+        "PENDING_SELLER",
+        "ACCEPTED",
+        "NO_SELLER_AVAILABLE",
       ],
       default: "pending",
     },
@@ -490,6 +493,22 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+    // === Seller Fallback Routing (additive) ===
+    sellerQueue: [
+      {
+        sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "Seller" },
+        price: { type: Number, default: 0 },
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+        variantId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      },
+    ],
+    currentSellerIndex: { type: Number, default: 0 },
+    currentSellerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Seller",
+      default: null,
+    },
+    offerExpiresAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -501,6 +520,8 @@ orderSchema.index({ seller: 1, returnStatus: 1, returnRequestedAt: -1 });
 orderSchema.index({ workflowStatus: 1, sellerPendingExpiresAt: 1 });
 orderSchema.index({ workflowStatus: 1, deliverySearchExpiresAt: 1 });
 orderSchema.index({ deliveryBoy: 1, workflowStatus: 1 });
+// Seller fallback routing: efficient lookup for timeout scanner
+orderSchema.index({ status: 1, offerExpiresAt: 1 });
 
 // BUGFIX: Pre-save hook to validate customer reference integrity
 orderSchema.pre('save', function(next) {

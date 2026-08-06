@@ -21,6 +21,7 @@ export {
   planHubFulfillment,
   reserveHubInventory,
   scheduleRetryBatch,
+  notifyAndEmitPurchaseRequests,
 } from "./hubOrderOrchestrator.js";
 
 export {

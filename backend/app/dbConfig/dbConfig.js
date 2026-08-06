@@ -28,7 +28,28 @@ const connectDB = async () => {
         } catch (indexErr) {
             console.warn('[Product] Legacy index cleanup:', indexErr.message);
         }
-        
+
+        // First-boot bootstrap only: seed one admin when the DB has none at all.
+        // Never re-run for an existing/changed admin — avoids clobbering a real password.
+        try {
+            const { default: Admin } = await import('../models/admin.js');
+            const adminCount = await Admin.countDocuments();
+            if (adminCount === 0) {
+                const adminEmail = (process.env.ADMIN_EMAIL || "admin@gmail.com").trim().toLowerCase();
+                const adminPassword = process.env.ADMIN_PASSWORD || "123456";
+                await Admin.create({
+                    name: "Master Admin",
+                    email: adminEmail,
+                    password: adminPassword,
+                    role: "admin",
+                    isVerified: true
+                });
+                console.log(`✓ Seeded initial admin account (${adminEmail}) — change this password immediately`);
+            }
+        } catch (seedErr) {
+            console.warn('[Admin Seed]:', seedErr.message);
+        }
+
         console.log('✓ MongoDB connected successfully');
         
         // Connection event listeners

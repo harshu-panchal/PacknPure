@@ -52,8 +52,15 @@ export const PRCountdown = ({ expiresAt, status, onExpired }) => {
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
 
+    if (hours > 0) {
+      return [
+        String(hours).padStart(2, "0"),
+        String(minutes).padStart(2, "0"),
+        String(seconds).padStart(2, "0"),
+      ].join(":");
+    }
+
     return [
-      String(hours).padStart(2, "0"),
       String(minutes).padStart(2, "0"),
       String(seconds).padStart(2, "0"),
     ].join(":");
@@ -62,6 +69,9 @@ export const PRCountdown = ({ expiresAt, status, onExpired }) => {
   const timerColorClass = () => {
     if (secondsLeft <= 0) {
       return "text-slate-500 bg-slate-50 border-slate-100";
+    }
+    if (secondsLeft <= 52) {
+      return "text-amber-800 bg-amber-100 border-amber-300 animate-pulse font-black";
     }
     if (secondsLeft > 30 * 60) {
       return "text-emerald-700 bg-emerald-50 border-emerald-100 animate-pulse";

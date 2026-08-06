@@ -16,7 +16,7 @@ import Product from "../models/product.js";
 import Order from "../models/order.js";
 import { procurementRetryQueue, JOB_NAMES } from "../queues/orderQueues.js";
 import { getUncoveredRemainingQty } from "../services/procurementSessionService.js";
-import { createAutoPurchaseRequests } from "../services/hubOrderOrchestrator.js";
+import { createAutoPurchaseRequests, notifyAndEmitPurchaseRequests } from "../services/hubOrderOrchestrator.js";
 
 const toInt = (v) => Math.max(0, Number(v || 0));
 
@@ -24,7 +24,7 @@ const toInt = (v) => Math.max(0, Number(v || 0));
  * Core logic executed by the Bull job.
  * @param {{ orderId: string, procurementSessionId: string }} data
  */
-const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
+export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
   if (!orderId || !procurementSessionId) {
     console.warn("[ProcurementRetryJob] Missing orderId or procurementSessionId — skipping.");
     return;
@@ -63,7 +63,7 @@ const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
 
   if (uncoveredItems.length === 0) {
     console.log(
-      `[ProcurementRetryJob] All items fulfilled for order ${orderId} — nothing to retry.`,
+      `[ProcurementRetryJob] All items fulfilled or fully covered by active allocations for order ${orderId} — nothing to retry.`,
     );
     await ProcurementSession.findByIdAndUpdate(procurementSessionId, {
       $set: { retryBatchScheduledAt: null },
@@ -108,7 +108,8 @@ const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
 
   console.log(
     `[ProcurementRetryJob] Re-running allocation for order ${orderId} ` +
-      `(${shortages.length} unfulfilled item(s))`,
+      `(${shortages.length} unfulfilled item(s)). Shortages:`,
+    shortages.map(s => ({ productId: s.productId, shortageQty: s.shortageQty, variantId: s.variantId }))
   );
 
   try {
@@ -122,16 +123,29 @@ const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
       allowUnassigned: false,
     });
 
+    if (newPrs.length > 0) {
+      await notifyAndEmitPurchaseRequests(newPrs, order.orderId || orderId);
+    }
+
     console.log(
       `[ProcurementRetryJob] Created ${newPrs.length} grouped PR(s) for order ${orderId}.`,
     );
   } catch (err) {
     // createAutoPurchaseRequests throws when items are out of stock (allowUnassigned=false).
-    // markProcurementExhausted inside it handles notification + cancel/hold.
     console.error(
       `[ProcurementRetryJob] Re-allocation failed for order ${orderId}:`,
       err.message,
     );
+    try {
+      const PurchaseRequest = (await import("../models/purchaseRequest.js")).default;
+      const pr = await PurchaseRequest.findOne({ orderId }).sort({ createdAt: -1 });
+      if (pr) {
+        const { fallbackPurchaseRequest } = await import("../services/purchaseRequestService.js");
+        await fallbackPurchaseRequest(pr._id);
+      }
+    } catch (fallbackErr) {
+      console.error("[ProcurementRetryJob] Safeguard fallback failed:", fallbackErr.message);
+    }
   }
 
   // Always reset the lock so future rejection waves can schedule a new batch

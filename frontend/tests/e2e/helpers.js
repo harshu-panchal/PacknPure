@@ -2,8 +2,8 @@ import { expect } from '@playwright/test';
 
 export async function loginAsAdmin(page) {
   await page.goto('/admin');
-  await page.getByPlaceholder(/email/i).fill('Grhapoch@gmail.com');
-  await page.getByPlaceholder(/pin/i).fill('grhapoch123');
+  await page.getByPlaceholder(/email/i).fill('admin@gmail.com');
+  await page.getByPlaceholder(/pin/i).fill('123456');
   await page.getByRole('button', { name: /enter terminal/i }).click();
   await expect(page.getByText(/dashboard/i).first()).toBeVisible({ timeout: 15000 });
 }

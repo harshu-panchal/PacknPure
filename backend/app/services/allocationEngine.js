@@ -53,33 +53,60 @@ export const rankSellerAllocations = async ({
   hubLat = 0,
   hubLng = 0,
   enableMultiSellerAllocation = false,
+  excludeSellerIds = [],
 }) => {
   if (!baseProduct || shortageQty <= 0) return [];
 
-  const matchOr = [{ masterProductId: baseProduct._id }];
+  const matchOr = [{ _id: baseProduct._id }, { masterProductId: baseProduct._id }];
   if (String(baseProduct.name || "").trim()) {
-    matchOr.push({ name: String(baseProduct.name).trim() });
+    const escapedName = baseProduct.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matchOr.push({ name: new RegExp(escapedName, "i") });
   }
-  if (baseProduct.categoryId && baseProduct.subcategoryId) {
-    matchOr.push({ categoryId: baseProduct.categoryId, subcategoryId: baseProduct.subcategoryId });
+  if (baseProduct.categoryId) {
+    matchOr.push({ categoryId: baseProduct.categoryId });
   }
 
-  const candidates = await Product.find({
-    ownerType: "seller",
-    status: "active",
+  let candidates = await Product.find({
     sellerId: { $ne: null },
+    status: { $nin: ["inactive", "rejected"] },
     $or: matchOr,
   })
     .select("_id sellerId stock name categoryId subcategoryId price salePrice purchasePrice variants gstRate gstEnabled")
     .populate("sellerId", "location rating createdAt")
     .lean();
 
+  if (baseProduct.sellerId) {
+    const baseSellerIdStr = typeof baseProduct.sellerId === "object" ? String(baseProduct.sellerId._id || baseProduct.sellerId) : String(baseProduct.sellerId);
+    const alreadyFound = candidates.some((c) => {
+      const sid = c.sellerId ? (c.sellerId._id ? String(c.sellerId._id) : String(c.sellerId)) : null;
+      return sid === baseSellerIdStr;
+    });
+    if (!alreadyFound) {
+      const fullBase = await Product.findById(baseProduct._id)
+        .select("_id sellerId stock name categoryId subcategoryId price salePrice purchasePrice variants gstRate gstEnabled")
+        .populate("sellerId", "location rating createdAt")
+        .lean();
+      if (fullBase && fullBase.sellerId) {
+        candidates.push(fullBase);
+      }
+    }
+  }
+
+  if (Array.isArray(excludeSellerIds) && excludeSellerIds.length > 0) {
+    const excludeSet = new Set(excludeSellerIds.map(String));
+    candidates = candidates.filter((c) => {
+      const sid = c.sellerId ? (c.sellerId._id ? String(c.sellerId._id) : String(c.sellerId)) : null;
+      return !excludeSet.has(sid);
+    });
+  }
+
   const inStock = candidates.filter(
     (row) => sellerAvailableForMasterVariant(row, variantId, baseProduct) > 0,
   );
-  if (!inStock.length) return [];
+  const eligibleList = inStock.length > 0 ? inStock : candidates;
+  if (!eligibleList.length) return [];
 
-  const scored = inStock.map((row) => {
+  const scored = eligibleList.map((row) => {
     const unitCost = normalizeMoney(effectiveCatalogPrice(row, variantId, baseProduct));
     const seller = row.sellerId || {};
     let distance = Infinity;
