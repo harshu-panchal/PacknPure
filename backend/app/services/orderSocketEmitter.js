@@ -219,6 +219,95 @@ export function emitDeliveryBroadcast(payload) {
   });
 }
 
+function normalizePickupPartnerId(partnerId) {
+  if (partnerId == null) return null;
+  if (typeof partnerId === "object" && partnerId._id) {
+    return partnerId._id.toString();
+  }
+  return String(partnerId);
+}
+
+/** Broadcast a new pickup request to every online pickup partner candidate. */
+export function emitPickupBroadcast(candidateIds, payload) {
+  const s = getIo();
+  if (!s) return;
+  const body = {
+    ...payload,
+    at: new Date().toISOString(),
+  };
+  for (const id of candidateIds || []) {
+    const pid = normalizePickupPartnerId(id);
+    if (!pid) continue;
+    s.to(`pickup:${pid}`).emit("pickup:broadcast", body);
+  }
+}
+
+export function emitToPickupPartner(partnerId, { event, payload }) {
+  const s = getIo();
+  const pid = normalizePickupPartnerId(partnerId);
+  if (!s || !pid || !event) return;
+  s.to(`pickup:${pid}`).emit(event, payload);
+}
+
+/**
+ * Retract a pickup request from every candidate except the winner (or everyone,
+ * when winnerPartnerId is null e.g. a superseded/cancelled broadcast).
+ */
+export async function retractPickupBroadcastForRequest(requestId, winnerPartnerId) {
+  const s = getIo();
+  const winnerId = normalizePickupPartnerId(winnerPartnerId);
+  const winnerObjectId =
+    winnerId && mongoose.Types.ObjectId.isValid(winnerId)
+      ? new mongoose.Types.ObjectId(winnerId)
+      : null;
+
+  try {
+    const query = {
+      recipientModel: "PickupPartner",
+      type: "order",
+      "data.requestId": requestId,
+    };
+    if (winnerObjectId) {
+      query.recipient = { $ne: winnerObjectId };
+    }
+
+    const notifications = await Notification.find(query)
+      .select("_id recipient")
+      .lean();
+
+    const recipientIds = [
+      ...new Set(
+        notifications
+          .map((n) => n.recipient?.toString?.() || String(n.recipient || ""))
+          .filter(Boolean),
+      ),
+    ];
+
+    if (s) {
+      for (const recipientId of recipientIds) {
+        s.to(`pickup:${recipientId}`).emit("pickup:broadcast:withdrawn", {
+          requestId,
+          winnerPickupPartnerId: winnerId,
+          at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (notifications.length) {
+      await Notification.deleteMany(query);
+    }
+
+    return { removedCount: notifications.length };
+  } catch (error) {
+    console.warn(
+      "[retractPickupBroadcastForRequest] failed",
+      requestId,
+      error.message,
+    );
+    return { removedCount: 0 };
+  }
+}
+
 export function emitToCustomer(customerId, { event, payload }) {
   const s = getIo();
   if (!s || !customerId) return;

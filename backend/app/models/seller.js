@@ -117,6 +117,26 @@ const sellerSchema = new mongoose.Schema(
       default: 0,
     },
     lastLogin: Date,
+    bankName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    accountHolder: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    accountNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    ifsc: {
+      type: String,
+      default: "",
+      trim: true,
+    },
   },
 
   { timestamps: true },

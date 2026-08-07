@@ -150,6 +150,7 @@ const purchaseRequestSchema = new mongoose.Schema(
       default: "",
     },
     pickupAssignedAt: Date,
+    pickupBroadcastExpiresAt: Date,
     receivedAtHubAt: Date,
     verifiedAt: Date,
     status: {
@@ -160,6 +161,7 @@ const purchaseRequestSchema = new mongoose.Schema(
         "seller_rejected",
         "expired",
         "seller_failed",
+        "pickup_broadcasting",
         "pickup_assigned",
         "pickup_cancelled",
         "picked",

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import Button from '@shared/components/ui/Button';
@@ -30,6 +30,21 @@ const Withdrawals = () => {
     const { user } = useAuth();
     const isVerified = user?.isVerified;
     const { earningsData: data, earningsLoading: loading, refreshEarnings } = useSellerEarnings();
+    const [profile, setProfile] = useState(null);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const res = await sellerApi.getProfile();
+                if (res.data?.success) {
+                    setProfile(res.data.result);
+                }
+            } catch (err) {
+                console.error("Failed to fetch profile in Withdrawals:", err);
+            }
+        };
+        fetchProfile();
+    }, []);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -232,7 +247,7 @@ const Withdrawals = () => {
                                         className="text-[10px] sm:text-xs font-black px-2.5 py-0.5 uppercase tracking-widest rounded-lg shrink-0"
                                     >
                                         {item.status === 'Settled' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : (item.status === 'Pending' || item.status === 'Processing') ? <Clock className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-                                        {item.status}
+                                        {(item.status === 'Pending' || item.status === 'Processing') ? 'PAYMENT PENDING' : item.status === 'Settled' ? 'PAYMENT APPROVED' : item.status === 'Failed' ? 'PAYMENT FAILED' : item.status.toUpperCase()}
                                     </Badge>
                                 </div>
                                 <div className="flex justify-between items-center border-t border-slate-50 pt-3">
@@ -290,7 +305,7 @@ const Withdrawals = () => {
                                                 className="text-[10px] sm:text-xs font-black px-2.5 py-0.5 uppercase tracking-widest rounded-lg"
                                             >
                                                 {item.status === 'Settled' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : (item.status === 'Pending' || item.status === 'Processing') ? <Clock className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-                                                {item.status}
+                                                {(item.status === 'Pending' || item.status === 'Processing') ? 'PAYMENT PENDING' : item.status === 'Settled' ? 'PAYMENT APPROVED' : item.status === 'Failed' ? 'PAYMENT FAILED' : item.status.toUpperCase()}
                                             </Badge>
                                             {item.reason && <p className="text-[10px] sm:text-xs text-rose-500 font-bold mt-1 uppercase italic">{item.reason}</p>}
                                         </td>
@@ -368,8 +383,14 @@ const Withdrawals = () => {
                                     <Building2 className="h-5 w-5 text-indigo-400" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="text-xs font-black text-slate-900 uppercase">HDFC Bank Limited</p>
-                                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">Acct Ending in **** 4589</p>
+                                    <p className="text-xs font-black text-slate-900 uppercase">
+                                        {profile?.bankName || "No Bank Configured"}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">
+                                        {profile?.accountNumber
+                                            ? `Acct: **** ${profile.accountNumber.slice(-4)}`
+                                            : "Please set bank details in Profile"}
+                                    </p>
                                 </div>
                                 <ArrowRight className="h-4 w-4 text-slate-300" />
                             </div>

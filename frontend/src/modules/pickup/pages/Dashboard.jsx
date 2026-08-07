@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState, Suspense } from "react";
 import { useAuth } from "@core/context/AuthContext";
 import { toast } from "sonner";
-import { Package, CheckCircle, Truck, RefreshCw, Clock } from "lucide-react";
+import { Package, CheckCircle, Truck, RefreshCw, Clock, Radio } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import AssignmentCard from "../components/AssignmentCard";
 import TripOverviewCard from "../components/TripOverviewCard";
@@ -19,6 +19,7 @@ import {
   StatsSkeleton,
 } from "../components/ui";
 import { usePickupAssignments } from "../hooks/usePickupAssignments";
+import { usePickupBroadcasts } from "../hooks/usePickupBroadcasts";
 import { useLiveLocation } from "../hooks/useLiveLocation";
 import { usePickupNotifications } from "../hooks/usePickupNotifications";
 import { usePickupAlertContext } from "../context/PickupAlertContext";
@@ -65,6 +66,10 @@ const Dashboard = () => {
 
   const { rows, loading, refreshing, error, stats, fetchAssignments } =
     usePickupAssignments(statusFilter);
+
+  const { broadcasts, acceptingId, acceptBroadcast } = usePickupBroadcasts({
+    onAccepted: () => fetchAssignments({ silent: true, force: true }),
+  });
 
   const { alerts, unreadCount, markAllRead } = usePickupNotifications(rows);
   React.useEffect(() => {
@@ -383,6 +388,40 @@ const Dashboard = () => {
       )}
 
       <main className="pickup-safe-x mx-auto max-w-2xl space-y-4 py-4 sm:space-y-5 sm:py-5">
+        {broadcasts.length > 0 && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-teal-700">
+              <Radio size={13} className="animate-pulse" /> Incoming Requests
+            </p>
+            {broadcasts.map((b) => (
+              <PickupCard
+                key={b.requestId}
+                variant="tinted"
+                padding="sm"
+                className="flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-900">
+                    {b.vendorName || "Vendor"}
+                  </p>
+                  <p className="truncate text-[11px] font-semibold text-slate-500">
+                    {b.itemSummary}
+                    {b.itemCount > 1 ? ` (+${b.itemCount - 1} more)` : ""} · {b.requestId}
+                  </p>
+                </div>
+                <PickupButton
+                  size="sm"
+                  className="shrink-0"
+                  loading={acceptingId === b.requestId}
+                  onClick={() => acceptBroadcast(b.requestId)}
+                >
+                  Accept
+                </PickupButton>
+              </PickupCard>
+            ))}
+          </div>
+        )}
+
         {statusFilter === "active" && (
           <TripOverviewCard trip={trip} hubName={hubAddress || "Hub"} partnerLoc={partnerLoc} />
         )}

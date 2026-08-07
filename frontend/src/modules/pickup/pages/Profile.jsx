@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { clearPickupSessionData } from "../utils/sessionCleanup";
 import { getApiErrorMessage } from "../utils/assignmentUtils";
 import { usePickupProfile } from "../hooks/usePickupProfile";
+import { pickupApi } from "../services/pickupApi";
 import {
   PickupButton,
   PickupInput,
@@ -119,7 +120,14 @@ const Profile = () => {
 
   const balance = Number(profile?.walletBalance || 0);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Best-effort — a partner who logs out must stop receiving new pickup
+    // requests, even if they forgot to tap "Go Offline" first.
+    try {
+      await pickupApi.updateProfile({ isOnline: false });
+    } catch {
+      /* proceed with logout regardless */
+    }
     clearPickupSessionData();
     logout();
   };
@@ -209,12 +217,12 @@ const Profile = () => {
               <div className="flex min-w-0 items-center gap-3">
                 <div
                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    profile?.isActive ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                    profile?.isOnline ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
                   }`}
                 >
                   <div
                     className={`h-2.5 w-2.5 rounded-full ${
-                      profile?.isActive ? "bg-emerald-500 pickup-pulse-dot" : "bg-amber-400"
+                      profile?.isOnline ? "bg-emerald-500 pickup-pulse-dot" : "bg-amber-400"
                     }`}
                   />
                 </div>
@@ -223,13 +231,28 @@ const Profile = () => {
                     Online status
                   </p>
                   <p className="truncate text-sm font-bold text-slate-900">
-                    {profile?.isActive ? "Online · Ready for pickups" : "Offline · Contact hub"}
+                    {profile?.isOnline ? "Online · Ready for pickups" : "Offline · Toggled off"}
                   </p>
                 </div>
               </div>
-              <PickupBadge variant={profile?.isActive ? "success" : "warning"}>
-                {profile?.isActive ? "Online" : "Offline"}
-              </PickupBadge>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await updateProfile({ isOnline: !profile?.isOnline });
+                    toast.success(!profile?.isOnline ? "You are now online!" : "You are now offline!");
+                  } catch (err) {
+                    toast.error("Failed to toggle status");
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                  profile?.isOnline
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                {profile?.isOnline ? "Go Offline" : "Go Online"}
+              </button>
             </PickupCard>
 
             <PickupCard padding="md" className="flex items-center justify-between gap-3">

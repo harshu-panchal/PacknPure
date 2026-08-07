@@ -264,6 +264,7 @@ const DeliveryPartnerProfile = () => {
                                             <th className="px-6 py-4">Date & Time</th>
                                             <th className="px-6 py-4">Customer</th>
                                             <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Delivery Rating</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -299,11 +300,33 @@ const DeliveryPartnerProfile = () => {
                                                             {order.status}
                                                         </Badge>
                                                     </td>
+                                                    <td className="px-6 py-4">
+                                                        {order.deliveryRating ? (
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-0.5 text-amber-500">
+                                                                    {[1, 2, 3, 4, 5].map((s) => (
+                                                                        <Star
+                                                                            key={s}
+                                                                            size={12}
+                                                                            className={cn("fill-current", s <= order.deliveryRating ? "opacity-100" : "opacity-20")}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                                {order.deliveryFeedback && (
+                                                                    <p className="text-[10px] font-medium text-slate-500 italic max-w-[180px] truncate" title={order.deliveryFeedback}>
+                                                                        "{order.deliveryFeedback}"
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400 font-semibold">—</span>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-12 text-center">
+                                                <td colSpan={5} className="px-6 py-12 text-center">
                                                     <Package className="h-8 w-8 text-slate-300 mx-auto mb-3" />
                                                     <p className="text-xs font-bold text-slate-500">No recent rides found.</p>
                                                 </td>

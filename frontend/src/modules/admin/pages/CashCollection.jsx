@@ -104,6 +104,37 @@ const CashCollection = () => {
         fetchData(ridersPage, p);
     };
 
+    const [editingLimitRiderId, setEditingLimitRiderId] = useState(null);
+    const [newLimitValue, setNewLimitValue] = useState('');
+    const [updatingLimit, setUpdatingLimit] = useState(false);
+
+    const handleUpdateLimit = async (riderId, limitAmount) => {
+        if (limitAmount === '' || isNaN(limitAmount) || Number(limitAmount) < 0) {
+            toast.error("Please enter a valid non-negative limit");
+            return;
+        }
+        try {
+            setUpdatingLimit(true);
+            const res = await adminApi.updateRiderCashLimit(riderId, Number(limitAmount));
+            if (res.data.success) {
+                toast.success("Rider limit updated successfully");
+                setEditingLimitRiderId(null);
+                setNewLimitValue('');
+                if (selectedRider && selectedRider.id === riderId) {
+                    setSelectedRider(prev => ({ ...prev, limit: Number(limitAmount) }));
+                }
+                fetchData(ridersPage, historyPage);
+            } else {
+                toast.error(res.data.message || "Failed to update limit");
+            }
+        } catch (error) {
+            console.error("Limit update error:", error);
+            toast.error("Failed to update rider cash limit");
+        } finally {
+            setUpdatingLimit(false);
+        }
+    };
+
     // Fetch deep dive details when a rider is selected
     useEffect(() => {
         const fetchRiderDetails = async () => {
@@ -300,9 +331,52 @@ const CashCollection = () => {
                                         </td>
                                         <td className="px-6 py-6">
                                             <div className="space-y-2 max-w-[180px]">
-                                                <div className="flex justify-between items-end">
+                                                <div className="flex justify-between items-end gap-2">
                                                     <span className="text-lg font-black text-slate-900">₹{rider.currentCash.toLocaleString()}</span>
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Limit: ₹{rider.limit}</span>
+                                                    {editingLimitRiderId === rider.id ? (
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="number"
+                                                                value={newLimitValue}
+                                                                onChange={(e) => setNewLimitValue(e.target.value)}
+                                                                className="w-16 px-1.5 py-0.5 text-[10px] font-bold border border-slate-200 rounded outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 bg-white"
+                                                                placeholder="Limit"
+                                                                disabled={updatingLimit}
+                                                                autoFocus
+                                                            />
+                                                            <button
+                                                                onClick={() => handleUpdateLimit(rider.id, newLimitValue)}
+                                                                disabled={updatingLimit}
+                                                                className="px-1 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[8px] font-black uppercase tracking-tighter"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingLimitRiderId(null);
+                                                                    setNewLimitValue('');
+                                                                }}
+                                                                disabled={updatingLimit}
+                                                                className="px-1 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded text-[8px] font-black uppercase tracking-tighter"
+                                                            >
+                                                                X
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1 group/limit">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Limit: ₹{rider.limit}</span>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingLimitRiderId(rider.id);
+                                                                    setNewLimitValue(rider.limit.toString());
+                                                                }}
+                                                                className="opacity-0 group-hover/limit:opacity-100 p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all"
+                                                                title="Edit limit"
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                                                     <motion.div
@@ -443,6 +517,32 @@ const CashCollection = () => {
                                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-2">Pending COD Orders</p>
                                 <h4 className="text-3xl font-black text-slate-900">{selectedRider.pendingOrders}</h4>
                                 <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase">Requires immediate sync</p>
+                            </Card>
+                            <Card className="p-4 border-none bg-slate-50 ring-1 ring-slate-100 rounded-xl flex items-center justify-between col-span-2">
+                                <div>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-0.5">Rider Cash Limit</p>
+                                    <p className="text-sm font-bold text-slate-800">Current Limit: <span className="font-black text-emerald-600">₹{selectedRider.limit}</span></p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        type="number"
+                                        defaultValue={selectedRider.limit}
+                                        key={selectedRider.id + "-" + selectedRider.limit}
+                                        id="modal-limit-input"
+                                        className="w-24 px-2 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 bg-white"
+                                        placeholder="New limit"
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            const val = document.getElementById("modal-limit-input")?.value;
+                                            handleUpdateLimit(selectedRider.id, val);
+                                        }}
+                                        disabled={updatingLimit}
+                                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                                    >
+                                        Update
+                                    </button>
+                                </div>
                             </Card>
                         </div>
 

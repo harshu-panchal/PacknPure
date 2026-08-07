@@ -64,9 +64,10 @@ const ActiveDeliveryBoys = () => {
                 status: r.isOnline ? 'available' : 'offline',
                 vehicle: r.vehicleType,
                 vehicleNum: r.vehicleNumber || 'N/A',
-                rating: 4.5, // Mock rating for now
-                totalOrders: 0, // Mock total orders
-                todayEarnings: 0, // Mock earnings
+                rating: r.rating || 0,
+                reviewCount: r.reviewCount || 0,
+                totalOrders: r.totalOrders || 0,
+                todayEarnings: r.todayEarnings || 0,
                 location: r.currentArea || 'Unknown',
                 lastSync: 'Now',
                 joinDate: new Date(r.createdAt).toLocaleDateString()

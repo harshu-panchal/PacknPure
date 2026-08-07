@@ -1808,3 +1808,74 @@ export const skipOrder = async (req, res) => {
   }
 };
 
+/* ===============================
+   RATE DELIVERY PARTNER
+================================ */
+export const rateDeliveryPartner = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, feedback } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return handleResponse(res, 400, "Rating must be between 1 and 5");
+    }
+
+    const orderKey = orderMatchQueryFromRouteParam(orderId);
+    if (!orderKey) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    const order = await Order.findOne(orderKey);
+    if (!order) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    // Verify order is delivered/completed (Delivered is common, but also check completed)
+    const normalizedStatus = String(order.status || "").toLowerCase();
+    if (normalizedStatus !== "delivered" && normalizedStatus !== "completed") {
+      return handleResponse(res, 400, "Order must be completed before rating");
+    }
+
+    // Ensure there is an assigned delivery partner
+    if (!order.deliveryBoy) {
+      return handleResponse(res, 400, "No delivery partner was assigned to this order");
+    }
+
+    // Save rating to order
+    order.deliveryRating = Number(rating);
+    if (feedback !== undefined) {
+      order.deliveryFeedback = String(feedback || "").trim();
+    }
+    await order.save();
+
+    // Recalculate average rating for delivery partner
+    const deliveryBoyId = order.deliveryBoy;
+    const stats = await Order.aggregate([
+      {
+        $match: {
+          deliveryBoy: new mongoose.Types.ObjectId(deliveryBoyId),
+          deliveryRating: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: "$deliveryBoy",
+          averageRating: { $avg: "$deliveryRating" },
+          totalReviews: { $sum: 1 }
+        }
+      }
+    ]);
+
+    if (stats.length > 0) {
+      await Delivery.findByIdAndUpdate(deliveryBoyId, {
+        rating: Number(stats[0].averageRating.toFixed(2)),
+        reviewCount: stats[0].totalReviews
+      });
+    }
+
+    return handleResponse(res, 200, "Delivery partner rated successfully", order);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+

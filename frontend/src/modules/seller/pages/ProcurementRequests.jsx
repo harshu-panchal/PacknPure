@@ -18,6 +18,7 @@ const STATUS_OPTIONS = [
   { label: "All", value: "all" },
   { label: "Created", value: "created" },
   { label: "Vendor Confirmed", value: "vendor_confirmed" },
+  { label: "Searching For Rider", value: "pickup_broadcasting" },
   { label: "Pickup Assigned", value: "pickup_assigned" },
   { label: "Picked", value: "picked" },
   { label: "Hub Delivered", value: "hub_delivered" },
@@ -34,6 +35,8 @@ const statusVariant = (status) => {
       return "warning";
     case "vendor_confirmed":
       return "info";
+    case "pickup_broadcasting":
+      return "warning";
     case "pickup_assigned":
       return "primary";
     case "picked":
@@ -85,6 +88,43 @@ const ProcurementRequests = () => {
   const [commitMap, setCommitMap] = useState({});
   const [attachmentMap, setAttachmentMap] = useState({});
   const [savingId, setSavingId] = useState("");
+  const [onlineRiders, setOnlineRiders] = useState([]);
+
+  const fetchOnlineRiders = async () => {
+    try {
+      const res = await sellerApi.getPickupPartners({ status: "all" });
+      if (res.data?.success) {
+        const list = (res.data.result?.items || []).filter(
+          (r) => r.isOnline && r.isActive && r.isVerified && ["available", "active"].includes(r.statusRaw)
+        );
+        setOnlineRiders(list);
+      }
+    } catch (err) {
+      console.error("Failed to load online riders:", err);
+    }
+  };
+
+  const handleManualAssign = async (rowId, riderId) => {
+    if (!riderId) return;
+    setSavingId(`${rowId}:assign`);
+    try {
+      const res = await sellerApi.assignPickupPartner(rowId, riderId);
+      if (res.data?.success) {
+        showToast("Rider assigned successfully!", "success");
+        fetchRows();
+      } else {
+        showToast(res.data?.message || "Failed to assign rider", "error");
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || "Failed to assign rider", "error");
+    } finally {
+      setSavingId("");
+    }
+  };
+
+  useEffect(() => {
+    fetchOnlineRiders();
+  }, []);
 
   const fetchRows = async () => {
     try {
@@ -578,7 +618,17 @@ const ProcurementRequests = () => {
                 </div>
 
                 {/* Seller never verifies Pickup OTP — only reads status + OTP aloud */}
-                {row.pickupAssigned || row.pickupPartner?.name ? (
+                {row.status === "pickup_broadcasting" ? (
+                  <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3 space-y-1">
+                    <p className="flex items-center gap-1.5 text-[10px] sm:text-xs font-black uppercase tracking-widest text-amber-700">
+                      <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                      Searching For Rider…
+                    </p>
+                    <p className="text-xs font-semibold text-slate-600">
+                      Broadcasting to online pickup partners near this hub. You can also assign one directly below.
+                    </p>
+                  </div>
+                ) : row.pickupAssigned || row.pickupPartner?.name ? (
                   <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 space-y-2">
                     <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-indigo-600">
                       Pickup Partner Assigned
@@ -611,6 +661,32 @@ const ProcurementRequests = () => {
                     </p>
                   </div>
                 ) : null}
+
+                {!["picked", "hub_delivered", "received_at_hub", "verified", "closed", "cancelled", "seller_rejected"].includes(row.status) && (
+                  <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+                    <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-500">
+                      {row.pickupAssigned || row.pickupPartner?.name ? "Reassign Rider" : "Manual Rider Assignment"}
+                    </p>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        onChange={(e) => handleManualAssign(row._id, e.target.value)}
+                        defaultValue=""
+                        disabled={savingId === `${row._id}:assign`}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-600 transition-all flex-1 disabled:opacity-50"
+                      >
+                        <option value="" disabled>Select Online Rider...</option>
+                        {onlineRiders.map(rider => (
+                          <option key={rider._id} value={rider._id}>
+                            {rider.partnerName} ({rider.phone})
+                          </option>
+                        ))}
+                      </select>
+                      {savingId === `${row._id}:assign` && (
+                        <span className="text-xs font-semibold text-slate-500 animate-pulse">Assigning...</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {row.timeline?.length > 0 && (
                   <div className="mt-4 rounded-xl bg-slate-50 p-3 border border-slate-100">

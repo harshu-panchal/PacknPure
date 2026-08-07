@@ -94,6 +94,10 @@ const deliverySchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        limit: {
+            type: Number,
+            default: 5000,
+        },
         location: {
             type: {
                 type: String,
@@ -128,6 +132,14 @@ const deliverySchema = new mongoose.Schema(
             default: buildDefaultNotificationPreferences,
         },
         lastLogin: Date,
+        rating: {
+            type: Number,
+            default: 0,
+        },
+        reviewCount: {
+            type: Number,
+            default: 0,
+        },
 
         /** Last GPS fix from POST /delivery/location (for radius matching). */
         lastLocationAt: {

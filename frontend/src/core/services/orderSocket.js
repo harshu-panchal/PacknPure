@@ -161,3 +161,31 @@ export function onPurchaseRequestNew(getToken, handler) {
   s.on("purchase_request:new", handler);
   return () => s.off("purchase_request:new", handler);
 }
+
+export function onPickupBroadcast(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => { };
+  s.on("pickup:broadcast", handler);
+  return () => s.off("pickup:broadcast", handler);
+}
+
+export function onPickupBroadcastWithdrawn(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => { };
+  s.on("pickup:broadcast:withdrawn", handler);
+  return () => s.off("pickup:broadcast:withdrawn", handler);
+}
+
+export function onPickupAssigned(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => { };
+  s.on("pickup:assigned", handler);
+  return () => s.off("pickup:assigned", handler);
+}
+
+export function onPickupAssignmentWithdrawn(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => { };
+  s.on("pickup:assignment:withdrawn", handler);
+  return () => s.off("pickup:assignment:withdrawn", handler);
+}

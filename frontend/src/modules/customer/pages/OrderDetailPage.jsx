@@ -21,6 +21,7 @@ import {
   Navigation2,
   Zap,
   CalendarClock,
+  Star,
 } from "lucide-react";
 import { customerApi } from "../services/customerApi";
 import { toast } from "sonner";
@@ -187,6 +188,33 @@ const OrderDetailPage = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [hoveredRating, setHoveredRating] = useState(0);
+  const [ratingFeedback, setRatingFeedback] = useState("");
+  const [submittingRating, setSubmittingRating] = useState(false);
+
+  const handleRateDelivery = async (e) => {
+    e.preventDefault();
+    if (selectedRating < 1 || selectedRating > 5) {
+      toast.error("Please select a rating from 1 to 5 stars");
+      return;
+    }
+    setSubmittingRating(true);
+    try {
+      const response = await customerApi.rateDeliveryPartner(orderId, {
+        rating: selectedRating,
+        feedback: ratingFeedback
+      });
+      if (response.data?.success) {
+        toast.success("Thank you for rating your delivery partner!");
+        setOrder(response.data.result);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to submit rating");
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
   const [returnDetails, setReturnDetails] = useState(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [requestingReturn, setRequestingReturn] = useState(false);
@@ -728,7 +756,7 @@ const OrderDetailPage = () => {
           </div>
         )}
 
-        {order.deliveryBoy && isActive && (
+        {order.deliveryBoy && (
           <DeliveryPartnerCard
             partner={order.deliveryBoy}
             orderId={orderId}
@@ -737,6 +765,81 @@ const OrderDetailPage = () => {
             distanceText={estimatedArrival.totalDistanceText}
             isActive={isActive}
           />
+        )}
+
+        {status === "delivered" && order.deliveryBoy && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <Star className="text-amber-500 h-5 w-5 fill-amber-500" />
+              <h3 className="text-sm font-bold text-slate-900">Rate Delivery Experience</h3>
+            </div>
+            
+            {order.deliveryRating ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      size={20}
+                      className={cn(
+                        s <= order.deliveryRating
+                          ? "text-amber-500 fill-amber-500"
+                          : "text-slate-200"
+                      )}
+                    />
+                  ))}
+                </div>
+                {order.deliveryFeedback ? (
+                  <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 italic">
+                    "{order.deliveryFeedback}"
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400">No written feedback provided.</p>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={handleRateDelivery} className="space-y-3">
+                <p className="text-xs text-slate-500">How was your delivery partner's behavior and service?</p>
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSelectedRating(s)}
+                      onMouseEnter={() => setHoveredRating(s)}
+                      onMouseLeave={() => setHoveredRating(0)}
+                      className="transition-transform active:scale-90 hover:scale-110"
+                    >
+                      <Star
+                        size={28}
+                        className={cn(
+                          s <= (hoveredRating || selectedRating)
+                            ? "text-amber-500 fill-amber-500"
+                            : "text-slate-200"
+                        )}
+                      />
+                    </button>
+                  ))}
+                </div>
+                
+                <textarea
+                  value={ratingFeedback}
+                  onChange={(e) => setRatingFeedback(e.target.value)}
+                  placeholder="Leave a comment (optional)..."
+                  className="w-full text-xs font-semibold p-3 border border-slate-200 rounded-xl outline-none focus:border-slate-350 focus:ring-1 focus:ring-slate-350"
+                  rows={2}
+                />
+                
+                <button
+                  type="submit"
+                  disabled={submittingRating || selectedRating === 0}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all disabled:opacity-55"
+                >
+                  {submittingRating ? "Submitting..." : "Submit Rating"}
+                </button>
+              </form>
+            )}
+          </div>
         )}
 
         {isActive && (

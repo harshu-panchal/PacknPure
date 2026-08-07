@@ -75,6 +75,7 @@ const serializeRow = (row, assignmentStats = new Map()) => {
     statusRaw: row.status,
     isActive: row.isActive,
     isVerified: row.isVerified,
+    isOnline: row.isOnline,
     assignedPickups: Number(stat.totalAssigned || 0),
     activeAssignedPickups: Number(stat.activeAssigned || 0),
     paymentType: row.paymentType || "per_trip",
@@ -292,6 +293,9 @@ export const verifyPickupPartnerOtp = async (req, res) => {
     partner.otpExpiry = undefined;
     partner.lastLogin = new Date();
     partner.status = partner.status === "inactive" ? "inactive" : "active";
+    // isOnline is a deliberate "ready for pickups" toggle (see updatePickupPartnerProfile) —
+    // logging in must not silently flip it on, or partners who log in once and never
+    // explicitly go offline stay "online" (and keep getting assigned) forever.
     await partner.save();
 
     const token = buildPartnerToken(partner);
@@ -327,6 +331,7 @@ export const getPickupPartnerProfile = async (req, res) => {
       hubId: partner.hubId,
       status: partner.status,
       isActive: partner.isActive,
+      isOnline: partner.isOnline,
       walletBalance: partner.walletBalance || 0,
       baseTripRate: partner.baseTripRate || 0,
       perKmRate: partner.perKmRate || 0,
@@ -342,7 +347,7 @@ export const getPickupPartnerProfile = async (req, res) => {
 export const updatePickupPartnerProfile = async (req, res) => {
   try {
     const partnerId = req.user?.id;
-    const { name, vehicleType, address, location } = req.body || {};
+    const { name, vehicleType, address, location, isOnline } = req.body || {};
 
     const partner = await PickupPartner.findById(partnerId);
     if (!partner) {
@@ -353,6 +358,7 @@ export const updatePickupPartnerProfile = async (req, res) => {
     if (vehicleType !== undefined) partner.vehicleType = String(vehicleType).trim();
     if (address !== undefined) partner.address = String(address).trim();
     if (location !== undefined) partner.location = location;
+    if (isOnline !== undefined) partner.isOnline = Boolean(isOnline);
 
     await partner.save();
 
@@ -363,6 +369,7 @@ export const updatePickupPartnerProfile = async (req, res) => {
       vehicleType: partner.vehicleType,
       hubId: partner.hubId,
       status: partner.status,
+      isOnline: partner.isOnline,
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

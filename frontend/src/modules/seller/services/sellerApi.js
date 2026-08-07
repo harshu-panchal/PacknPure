@@ -73,5 +73,8 @@ export const sellerApi = {
     markPurchaseRequestReady: (id, data) => axiosInstance.post(`/seller/purchase-requests/${id}/ready`, data),
     confirmPurchaseHandover: (id, data) => axiosInstance.post(`/seller/purchase-requests/${id}/handover`, data),
     confirmPurchaseReturn: (id, data = {}) => axiosInstance.post(`/seller/purchase-requests/${id}/confirm-return`, data),
+    getPickupPartners: (params) => axiosInstance.get('/pickup-partner', { params }),
+    assignPickupPartner: (id, pickupPartnerId) =>
+        axiosInstance.put(`/seller/purchase-requests/${id}/assign-pickup`, { pickupPartnerId }),
     getSettings: () => axiosInstance.get('/settings'),
 };

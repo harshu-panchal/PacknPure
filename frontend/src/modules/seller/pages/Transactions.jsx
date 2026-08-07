@@ -27,6 +27,32 @@ import { exportToCSV } from "@/lib/exportUtils";
 import { useSellerEarnings } from "../context/SellerEarningsContext";
 import Pagination from "@shared/components/ui/Pagination";
 
+const getStatusDisplay = (txn) => {
+  const status = (txn.status || '').toLowerCase();
+  const type = (txn.type || '').toLowerCase();
+  if (type === 'supply earning') {
+    if (status === 'settled') return 'IN WALLET';
+  } else if (type === 'withdrawal') {
+    if (status === 'pending' || status === 'processing') return 'PAYMENT PENDING';
+    if (status === 'settled') return 'PAYMENT APPROVED';
+    if (status === 'failed') return 'PAYMENT FAILED';
+  }
+  return (txn.status || '').toUpperCase();
+};
+
+const getBadgeVariant = (txn) => {
+  const status = (txn.status || '').toLowerCase();
+  const type = (txn.type || '').toLowerCase();
+  if (type === 'supply earning') {
+    if (status === 'settled') return 'success';
+  } else if (type === 'withdrawal') {
+    if (status === 'pending' || status === 'processing') return 'warning';
+    if (status === 'settled') return 'success';
+    if (status === 'failed') return 'danger';
+  }
+  return status === 'settled' ? 'success' : status === 'failed' ? 'danger' : 'warning';
+};
+
 const Transactions = () => {
   const { earningsData: data, earningsLoading: loading } = useSellerEarnings();
   const [searchTerm, setSearchTerm] = useState("");
@@ -283,8 +309,8 @@ const Transactions = () => {
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{txn.type ?? "—"}</p>
                     </div>
                   </div>
-                  <Badge variant={txn.status === "Settled" ? "success" : "warning"} className="text-[10px] px-2 py-0.5">
-                    {txn.status}
+                  <Badge variant={getBadgeVariant(txn)} className="text-[10px] px-2 py-0.5">
+                    {getStatusDisplay(txn)}
                   </Badge>
                 </div>
 
@@ -400,20 +426,14 @@ const Transactions = () => {
                       </td>
                       <td className="px-6 py-5">
                         <Badge
-                          variant={
-                            txn.status === "Settled"
-                              ? "success"
-                              : txn.status === "Pending" || txn.status === "Processing"
-                                ? "warning"
-                                : "default"
-                          }
-                          className="text-[10px] sm:text-xs font-black uppercase tracking-widest px-2-5 py-0.5 rounded-lg">
+                          variant={getBadgeVariant(txn)}
+                          className="text-[10px] sm:text-xs font-black uppercase tracking-widest px-2.5 py-0.5 rounded-lg">
                           {txn.status === "Settled" ? (
                             <HiOutlineCheckCircle className="mr-1 h-3 w-3" />
                           ) : (
                             <HiOutlineClock className="mr-1 h-3 w-3" />
                           )}
-                          {txn.status}
+                          {getStatusDisplay(txn)}
                         </Badge>
                       </td>
                       <td className="px-6 py-5 text-right">
@@ -471,8 +491,8 @@ const Transactions = () => {
                 {Number(selectedTxn.amount ?? 0) > 0 ? "+" : ""}₹
                 {Math.abs(Number(selectedTxn.amount ?? 0)).toLocaleString()}
               </h2>
-              <Badge className="mt-4 uppercase font-black text-[10px] sm:text-xs px-3 py-1">
-                {selectedTxn.status ?? "—"}
+              <Badge variant={getBadgeVariant(selectedTxn)} className="mt-4 uppercase font-black text-[10px] sm:text-xs px-3 py-1">
+                {getStatusDisplay(selectedTxn)}
               </Badge>
             </div>
 

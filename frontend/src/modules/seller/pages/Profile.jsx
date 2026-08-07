@@ -32,6 +32,10 @@ function profileToForm(data) {
       lng: null,
       radius: 5,
       address: "",
+      bankName: "",
+      accountHolder: "",
+      accountNumber: "",
+      ifsc: "",
     };
   }
   const coords = data.location?.coordinates;
@@ -44,6 +48,10 @@ function profileToForm(data) {
     lng: coords?.[0] ?? null,
     radius: data.serviceRadius ?? 5,
     address: data.address || "",
+    bankName: data.bankName || "",
+    accountHolder: data.accountHolder || "",
+    accountNumber: data.accountNumber || "",
+    ifsc: data.ifsc || "",
   };
 }
 
@@ -153,6 +161,10 @@ const SellerProfile = () => {
         lng: formData.lng,
         radius: formData.radius,
         address: formData.address,
+        bankName: formData.bankName,
+        accountHolder: formData.accountHolder,
+        accountNumber: formData.accountNumber,
+        ifsc: formData.ifsc,
       });
       toast.success("Profile updated");
       setIsEditing(false);
@@ -409,6 +421,68 @@ const SellerProfile = () => {
               Set up delivery area
             </Button>
           )}
+        </Card>
+
+        {/* Bank Details */}
+        <Card className="border-none p-5 shadow-sm ring-1 ring-slate-100 lg:col-span-2">
+          <h3 className="mb-4 text-sm font-bold text-slate-900">Bank Details for Payout Transfer</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Bank Name">
+              {isEditing ? (
+                <Input
+                  name="bankName"
+                  value={formData.bankName}
+                  onChange={handleChange}
+                  placeholder="e.g. HDFC Bank, ICICI Bank"
+                  className="h-10"
+                />
+              ) : (
+                <ReadOnlyValue value={formData.bankName} placeholder="Not set" />
+              )}
+            </Field>
+
+            <Field label="Account Holder Name">
+              {isEditing ? (
+                <Input
+                  name="accountHolder"
+                  value={formData.accountHolder}
+                  onChange={handleChange}
+                  placeholder="Name as in bank record"
+                  className="h-10"
+                />
+              ) : (
+                <ReadOnlyValue value={formData.accountHolder} placeholder="Not set" />
+              )}
+            </Field>
+
+            <Field label="Account Number">
+              {isEditing ? (
+                <Input
+                  name="accountNumber"
+                  value={formData.accountNumber}
+                  onChange={handleChange}
+                  placeholder="Your bank account number"
+                  className="h-10"
+                />
+              ) : (
+                <ReadOnlyValue value={formData.accountNumber} placeholder="Not set" />
+              )}
+            </Field>
+
+            <Field label="IFSC Code">
+              {isEditing ? (
+                <Input
+                  name="ifsc"
+                  value={formData.ifsc}
+                  onChange={handleChange}
+                  placeholder="11-digit IFSC code"
+                  className="h-10"
+                />
+              ) : (
+                <ReadOnlyValue value={formData.ifsc} placeholder="Not set" />
+              )}
+            </Field>
+          </div>
         </Card>
       </form>
 
