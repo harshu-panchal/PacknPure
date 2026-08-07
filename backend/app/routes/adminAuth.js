@@ -43,7 +43,8 @@ import {
     rejectSeller,
     approveSellerPos,
     getSellerById,
-    getReports
+    getReports,
+    updateRiderCashLimit
 } from "../controller/adminController.js";
 
 
@@ -140,6 +141,12 @@ router.delete(
     verifyToken,
     allowRoles("admin"),
     rejectDeliveryPartner
+);
+router.put(
+    "/delivery-partners/:id/limit",
+    verifyToken,
+    allowRoles("admin"),
+    updateRiderCashLimit
 );
 
 router.get("/active-fleet", verifyToken, allowRoles("admin"), getActiveFleet);

@@ -35,6 +35,32 @@ import {
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const getStatusDisplay = (txn) => {
+    const status = txn.status.toLowerCase();
+    const type = txn.type.toLowerCase();
+    if (type === 'sale') {
+        if (status === 'settled') return 'IN WALLET';
+    } else if (type === 'payout') {
+        if (status === 'pending' || status === 'processing') return 'PAYMENT PENDING';
+        if (status === 'settled') return 'PAYMENT APPROVED';
+        if (status === 'failed') return 'PAYMENT FAILED';
+    }
+    return txn.status.toUpperCase();
+};
+
+const getBadgeVariant = (txn) => {
+    const status = txn.status.toLowerCase();
+    const type = txn.type.toLowerCase();
+    if (type === 'sale') {
+        if (status === 'settled') return 'success';
+    } else if (type === 'payout') {
+        if (status === 'pending' || status === 'processing') return 'warning';
+        if (status === 'settled') return 'success';
+        if (status === 'failed') return 'danger';
+    }
+    return (status === 'settled' || status === 'processed' || status === 'completed') ? 'success' : 'warning';
+};
+
 const SellerTransactions = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
@@ -338,10 +364,10 @@ const SellerTransactions = () => {
                                     </td>
                                     <td className="px-6 py-5 text-center">
                                         <Badge
-                                            variant={txn.status === 'settled' || txn.status === 'processed' || txn.status === 'completed' ? 'success' : 'warning'}
+                                            variant={getBadgeVariant(txn)}
                                             className="text-[8px] font-black px-2 py-0.5 uppercase tracking-widest"
                                         >
-                                            {txn.status}
+                                            {getStatusDisplay(txn)}
                                         </Badge>
                                     </td>
                                     <td className="px-6 py-5 text-right pr-8">
@@ -429,7 +455,7 @@ const SellerTransactions = () => {
                                 <div>
                                     <p className="ds-label">Gateway Status</p>
                                     <div className="mt-1">
-                                        <Badge variant={selectedTxn.status === 'settled' ? 'success' : 'warning'}>{selectedTxn.status.toUpperCase()}</Badge>
+                                        <Badge variant={getBadgeVariant(selectedTxn)}>{getStatusDisplay(selectedTxn)}</Badge>
                                     </div>
                                 </div>
                             </div>

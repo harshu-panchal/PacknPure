@@ -52,7 +52,7 @@ export const syncPrAggregateStatus = (pr, { notes = "", rejectionReason = "", se
   const anyCommitted = lines.some((l) => toInt(l.committedQty) > 0);
 
   if (pending.length > 0) {
-    if (!["pickup_assigned", "picked"].includes(String(pr.status))) {
+    if (!["pickup_broadcasting", "pickup_assigned", "picked"].includes(String(pr.status))) {
       pr.status = "created";
     }
     pr.vendorResponse = {
@@ -76,7 +76,7 @@ export const syncPrAggregateStatus = (pr, { notes = "", rejectionReason = "", se
   if (allRejected) {
     pr.status = "seller_rejected";
     pr.exceptionReason = String(rejectionReason || "Rejected by seller");
-  } else if (!["pickup_assigned", "picked", "hub_delivered"].includes(String(pr.status))) {
+  } else if (!["pickup_broadcasting", "pickup_assigned", "picked", "hub_delivered"].includes(String(pr.status))) {
     pr.status = "seller_confirmed";
     pr.exceptionReason = "";
   }

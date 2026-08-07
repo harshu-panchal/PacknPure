@@ -313,7 +313,7 @@ export const getDeliveryPartnerById = async (req, res) => {
       totalOrders,
       totalEarnings: earningsAggr[0]?.totalEarnings || 0,
       todayEarnings: todayAggr[0]?.todayEarnings || 0,
-      rating: 4.8
+      rating: rider.rating || 0
     };
 
     const activityLogs = await DeliveryActivity.find({ deliveryBoy: id })
@@ -537,7 +537,7 @@ export const getDeliveryWithdrawals = async (req, res) => {
     const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
     const query = { userModel: "Delivery", type: "Withdrawal" };
     const [transactions, total] = await Promise.all([
-      Transaction.find(query).populate("user", "name phone").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.find(query).populate("user", "name phone accountHolder accountNumber ifsc").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Transaction.countDocuments(query),
     ]);
     return handleResponse(res, 200, "Delivery withdrawals fetched", { items: transactions, page, limit, total, totalPages: Math.ceil(total / limit) || 1 });
@@ -554,7 +554,7 @@ export const getSellerWithdrawals = async (req, res) => {
     const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
     const query = { userModel: "Seller", type: "Withdrawal" };
     const [transactions, total] = await Promise.all([
-      Transaction.find(query).populate("user", "name shopName phone").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.find(query).populate("user", "name shopName phone bankName accountHolder accountNumber ifsc").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Transaction.countDocuments(query),
     ]);
     return handleResponse(res, 200, "Seller withdrawals fetched", { items: transactions, page, limit, total, totalPages: Math.ceil(total / limit) || 1 });
@@ -744,6 +744,34 @@ export const settleRiderCash = async (req, res) => {
       data: { transactionId: settlement._id },
     }]);
     return handleResponse(res, 201, "Cash settled successfully", settlement);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   UPDATE RIDER CASH LIMIT (Admin)
+================================ */
+export const updateRiderCashLimit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit } = req.body;
+
+    if (limit === undefined || Number(limit) < 0) {
+      return handleResponse(res, 400, "Valid cash limit value is required");
+    }
+
+    const rider = await Delivery.findById(id);
+    if (!rider) return handleResponse(res, 404, "Delivery rider not found");
+
+    rider.limit = Number(limit);
+    await rider.save();
+
+    return handleResponse(res, 200, "Rider cash limit updated successfully", {
+      id: rider._id,
+      name: rider.name,
+      limit: rider.limit
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -961,7 +989,7 @@ export const getSellerById = async (req, res) => {
       (typeof seller.address === "string" && seller.address.trim())
         ? seller.address.trim()
         : coordsLabel || "Not mapped";
-    const [totalOrders, totalRevenue, recentOrders, productStatsRows, sellerProducts] = await Promise.all([
+    const [totalOrders, totalRevenue, recentOrders, productStatsRows, sellerProducts, transactions] = await Promise.all([
       Order.countDocuments({ seller: id }),
       Order.aggregate([{ $match: { seller: new mongoose.Types.ObjectId(id), status: "delivered" } }, { $group: { _id: null, total: { $sum: "$pricing.total" } } }]),
       Order.find({ seller: id }).sort({ createdAt: -1 }).limit(10).populate("customer", "name phone"),
@@ -984,7 +1012,22 @@ export const getSellerById = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(50)
         .lean(),
+      Transaction.find({ user: id, userModel: "Seller" }).lean(),
     ]);
+
+    const settledBalance = (transactions || [])
+      .filter((t) => t.status === "Settled")
+      .reduce((acc, t) => acc + (t.amount || 0), 0);
+
+    const pendingPayouts = (transactions || [])
+      .filter(
+        (t) =>
+          t.type === "Withdrawal" &&
+          (t.status === "Pending" || t.status === "Processing"),
+      )
+      .reduce((acc, t) => acc + Math.abs(t.amount || 0), 0);
+
+    const walletBalance = Math.max(0, settledBalance - pendingPayouts);
 
     const productAgg = productStatsRows[0] || {};
     const productStats = {
@@ -1030,7 +1073,7 @@ export const getSellerById = async (req, res) => {
     return handleResponse(res, 200, "Seller details fetched", {
       ...seller,
       locationText,
-      walletBalance: Number(seller.walletBalance) || 0,
+      walletBalance: Number(walletBalance) || 0,
       rating: Number(seller.rating) || 0,
       commissionRate: seller.commissionRate ?? "N/A",
       stats,

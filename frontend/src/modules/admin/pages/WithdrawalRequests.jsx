@@ -329,7 +329,7 @@ const WithdrawalRequests = () => {
                                                 variant={req.status === 'Pending' ? 'warning' : req.status === 'Settled' ? 'success' : req.status === 'Processing' ? 'primary' : 'danger'}
                                                 className="text-[9px] font-black px-3 py-1 uppercase tracking-wider"
                                             >
-                                                {req.status}
+                                                {(req.status === 'Pending' || req.status === 'Processing') ? 'PAYMENT PENDING' : req.status === 'Settled' ? 'PAYMENT APPROVED' : req.status === 'Failed' ? 'PAYMENT FAILED' : req.status.toUpperCase()}
                                             </Badge>
                                         </td>
                                         <td className="px-6 py-5 text-right pr-8">
@@ -419,7 +419,7 @@ const WithdrawalRequests = () => {
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">{selectedRequest._id}</p>
                                 <div className="flex items-center gap-2 mt-3">
                                     <Badge variant={selectedRequest.status === 'Pending' ? 'warning' : 'success'}>
-                                        {selectedRequest.status.toUpperCase()}
+                                        {(selectedRequest.status === 'Pending' || selectedRequest.status === 'Processing') ? 'PAYMENT PENDING' : selectedRequest.status === 'Settled' ? 'PAYMENT APPROVED' : selectedRequest.status === 'Failed' ? 'PAYMENT FAILED' : selectedRequest.status.toUpperCase()}
                                     </Badge>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">Requested on {new Date(selectedRequest.createdAt).toLocaleString()}</span>
                                 </div>
@@ -431,6 +431,33 @@ const WithdrawalRequests = () => {
                                 <p className="ds-label mb-2">Request Amount</p>
                                 <h4 className="text-2xl font-black text-slate-900">₹{Math.abs(selectedRequest.amount).toLocaleString()}</h4>
                                 <p className="text-[10px] font-semibold text-slate-400 mt-1">Reference: {selectedRequest.reference}</p>
+                            </Card>
+
+                            <Card className="p-5 border-none bg-indigo-50/60 ring-1 ring-indigo-100 rounded-xl space-y-3">
+                                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5">
+                                    <Building2 className="h-3.5 w-3.5" />
+                                    {activeTab === 'sellers' ? 'Seller Bank Destination' : 'Rider Bank Destination'}
+                                </p>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1 text-xs">
+                                    {activeTab === 'sellers' && (
+                                        <div>
+                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Bank Name</p>
+                                            <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.bankName || "Not Provided"}</p>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Holder</p>
+                                        <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.accountHolder || "Not Provided"}</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Number</p>
+                                        <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.accountNumber || "Not Provided"}</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">IFSC Code</p>
+                                        <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.ifsc || "Not Provided"}</p>
+                                    </div>
+                                </div>
                             </Card>
                         </div>
 

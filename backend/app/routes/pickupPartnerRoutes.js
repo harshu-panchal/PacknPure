@@ -21,11 +21,15 @@ import {
   requestPickupWithdrawal,
   getMyWithdrawals,
 } from "../controller/pickupPartnerController.js";
+import {
+  getAvailablePickupBroadcasts,
+  respondPickupBroadcast,
+} from "../controller/purchaseRequestController.js";
 import upload from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-router.get("/", verifyToken, allowRoles("admin"), getPickupPartners);
+router.get("/", verifyToken, allowRoles("admin", "seller"), getPickupPartners);
 router.post("/", verifyToken, allowRoles("admin"), createPickupPartner);
 router.put("/:id", verifyToken, allowRoles("admin"), updatePickupPartner);
 router.patch("/:id/status", verifyToken, allowRoles("admin"), updatePickupPartnerStatus);
@@ -50,6 +54,18 @@ router.get(
   verifyToken,
   allowRoles("pickup_partner", "admin", "delivery"),
   getMyPickupAssignments,
+);
+router.get(
+  "/my/broadcasts",
+  verifyToken,
+  allowRoles("pickup_partner"),
+  getAvailablePickupBroadcasts,
+);
+router.post(
+  "/my/broadcasts/:requestId/accept",
+  verifyToken,
+  allowRoles("pickup_partner"),
+  respondPickupBroadcast,
 );
 router.post(
   "/my/assignments/:id/reached-seller",

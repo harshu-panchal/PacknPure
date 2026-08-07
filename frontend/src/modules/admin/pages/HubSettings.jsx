@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { GoogleMap, Marker, useJsApiLoader, Circle } from "@react-google-maps/api";
+import { GoogleMap, Marker, useJsApiLoader, Circle, Autocomplete } from "@react-google-maps/api";
 import { adminApi } from "../services/adminApi";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,11 +14,13 @@ import {
   RefreshCw as HiOutlineArrowPath,
   Receipt as HiOutlineReceiptTax,
   ShieldCheck as HiOutlineShieldCheck,
-  Signal as HiOutlineSignal
+  Signal as HiOutlineSignal,
+  Locate as HiOutlineLocate
 } from "lucide-react";
 import Card from "@shared/components/ui/Card";
 import Badge from "@shared/components/ui/Badge";
 import { cn } from "@/lib/utils";
+
 
 const containerStyle = {
   width: "100%",
@@ -51,7 +53,9 @@ const HubSettings = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const mapRef = useRef(null);
+  const autocompleteRef = useRef(null);
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -131,6 +135,78 @@ const HubSettings = () => {
         }
       });
     }
+  };
+
+  const handlePlaceChanged = () => {
+    if (autocompleteRef.current) {
+      const place = autocompleteRef.current.getPlace();
+      if (place.geometry && place.geometry.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setSettings((prev) => ({
+          ...prev,
+          hubLocation: {
+            ...prev.hubLocation,
+            coordinates: [lng, lat],
+          },
+          address: place.formatted_address || prev.address,
+        }));
+        if (mapRef.current) {
+          mapRef.current.panTo({ lat, lng });
+        }
+      }
+    }
+  };
+
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setSettings((prev) => ({
+          ...prev,
+          hubLocation: {
+            ...prev.hubLocation,
+            coordinates: [longitude, latitude],
+          },
+        }));
+
+        if (mapRef.current) {
+          mapRef.current.panTo({ lat: latitude, lng: longitude });
+        }
+
+        // Reverse Geocode
+        if (window.google?.maps) {
+          const geocoder = new window.google.maps.Geocoder();
+          geocoder.geocode({ location: { lat: latitude, lng: longitude } }, (results, status) => {
+            setIsLocating(false);
+            if (status === "OK" && results[0]) {
+              setSettings((prev) => ({
+                ...prev,
+                address: results[0].formatted_address,
+              }));
+              toast.success("Location and address updated");
+            } else {
+              toast.success("Current location retrieved (address lookup failed)");
+            }
+          });
+        } else {
+          setIsLocating(false);
+          toast.success("Current location retrieved");
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        console.error("Geolocation error:", error);
+        toast.error("Failed to get current location: " + error.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handleSave = async () => {
@@ -326,14 +402,52 @@ const HubSettings = () => {
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Public Hub Name / Address</label>
-                    <input
-                      type="text"
-                      value={settings.address}
-                      onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                      placeholder="e.g. Indore Central Logistics Hub"
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        Public Hub Name / Address
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGetCurrentLocation}
+                        disabled={isLocating}
+                        className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase hover:underline disabled:opacity-50 transition-all"
+                      >
+                        {isLocating ? (
+                          <div className="h-3 w-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        ) : (
+                          <HiOutlineLocate className="h-3.5 w-3.5" />
+                        )}
+                        Use Current Location
+                      </button>
+                    </div>
+                    {isLoaded ? (
+                      <Autocomplete
+                        onLoad={(ref) => {
+                          autocompleteRef.current = ref;
+                        }}
+                        onPlaceChanged={handlePlaceChanged}
+                        options={{
+                          componentRestrictions: { country: "IN" },
+                          fields: ["geometry", "formatted_address"],
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={settings.address}
+                          onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          placeholder="Search or enter address manually..."
+                        />
+                      </Autocomplete>
+                    ) : (
+                      <input
+                        type="text"
+                        value={settings.address}
+                        onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        placeholder="e.g. Indore Central Logistics Hub"
+                      />
+                    )}
                   </div>
                   <p className="text-[10px] text-slate-400 font-medium italic">
                     This name will be shown to delivery partners as the pickup point.

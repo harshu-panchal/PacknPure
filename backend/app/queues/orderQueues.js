@@ -49,8 +49,17 @@ export const procurementRetryQueue = isRedisEnabled()
     })
   : createNoopQueue();
 
+export const pickupBroadcastQueue = isRedisEnabled()
+  ? new Bull("pickup-broadcast-timeout", {
+      redis: redisOpts,
+      createClient: createBullRedisClient,
+      settings: queueSettings,
+    })
+  : createNoopQueue();
+
 export const JOB_NAMES = {
   SELLER_TIMEOUT: "seller-timeout",
   DELIVERY_TIMEOUT: "delivery-timeout",
   PROCUREMENT_RETRY: "procurement-retry",
+  PICKUP_BROADCAST_TIMEOUT: "pickup-broadcast-timeout",
 };

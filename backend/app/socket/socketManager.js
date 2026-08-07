@@ -55,6 +55,11 @@ export const initSocket = (io) => {
       socket.join("admin:orders");
       console.log(`[SocketManager] Admin joined room: admin:orders`);
     }
+    if (role === "pickup_partner") {
+      socket.join("pickup:online");
+      socket.join(`pickup:${userId}`);
+      console.log(`[SocketManager] Pickup partner joined rooms: pickup:online, pickup:${userId}`);
+    }
 
     socket.on("join_order", (orderId) => {
       if (!orderId || typeof orderId !== "string") return;

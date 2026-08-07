@@ -7,6 +7,9 @@ export const pickupApi = {
   updateProfile: (data) => axiosInstance.put("/pickup-partner/my/profile", data),
   getAssignments: (params) =>
     axiosInstance.get("/pickup-partner/my/assignments", { params }),
+  getBroadcasts: () => axiosInstance.get("/pickup-partner/my/broadcasts"),
+  acceptBroadcast: (requestId) =>
+    axiosInstance.post(`/pickup-partner/my/broadcasts/${requestId}/accept`),
   markReachedSeller: (id, data) =>
     axiosInstance.post(`/pickup-partner/my/assignments/${id}/reached-seller`, data),
   generatePickupOtp: (id, data) =>

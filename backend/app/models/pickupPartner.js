@@ -51,6 +51,11 @@ const pickupPartnerSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     otp: {
       type: String,
       select: false,

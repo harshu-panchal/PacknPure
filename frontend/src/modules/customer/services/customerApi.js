@@ -86,6 +86,8 @@ export const customerApi = {
   requestReturn: (orderId, data) =>
     axiosInstance.post(`/orders/${orderId}/returns`, data),
   getReturnDetails: (orderId) => getWithDedupe(`/orders/${orderId}/returns`),
+  rateDeliveryPartner: (orderId, data) =>
+    axiosInstance.post(`/orders/${orderId}/rate-delivery`, data),
 
   // Payments
   createPaymentOrder: (data) => axiosInstance.post("/payments/create-order", data),

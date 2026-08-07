@@ -360,6 +360,15 @@ const orderSchema = new mongoose.Schema(
     deliveredAt: {
       type: Date,
     },
+    deliveryRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+    },
+    deliveryFeedback: {
+      type: String,
+      default: "",
+    },
     skippedBy: [
       {
         type: mongoose.Schema.Types.ObjectId,

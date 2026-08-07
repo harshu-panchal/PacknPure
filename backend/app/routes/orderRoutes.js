@@ -17,6 +17,7 @@ import {
   assignReturnDelivery,
   updateReturnStatus,
   getDeliveryFee,
+  rateDeliveryPartner,
 } from "../controller/orderController.js";
 import {
   confirmPickup,
@@ -58,6 +59,11 @@ router.post(
   "/:orderId/masked-call",
   ...customerOnly,
   customerInitiateMaskedCall,
+);
+router.post(
+  "/:orderId/rate-delivery",
+  ...customerOnly,
+  rateDeliveryPartner
 );
 router.get(
   "/:orderId/delivery-timeline",

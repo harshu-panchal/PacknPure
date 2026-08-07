@@ -7,8 +7,15 @@ import Product from "../models/product.js";
 import Order from "../models/order.js";
 import Seller from "../models/seller.js";
 import PickupPartner from "../models/pickupPartner.js";
+import PickupAssignment from "../models/pickupAssignment.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { startHubDeliverySearchAtomic } from "../services/orderWorkflowService.js";
+import {
+  emitPickupBroadcast,
+  emitToPickupPartner,
+  retractPickupBroadcastForRequest,
+} from "../services/orderSocketEmitter.js";
+import { pickupBroadcastQueue, JOB_NAMES } from "../queues/orderQueues.js";
 import Transaction from "../models/transaction.js";
 import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
@@ -43,10 +50,13 @@ import {
 import { markOrderReadyForPacking, persistOrder } from "../services/workflowFacade.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
+const PICKUP_BROADCAST_TIMEOUT_MS = () =>
+  parseInt(process.env.PICKUP_BROADCAST_TIMEOUT_MS || "120000", 10);
 
 const ALLOWED_STATUSES = new Set([
   "created",
   "vendor_confirmed",
+  "pickup_broadcasting",
   "pickup_assigned",
   "picked",
   "hub_delivered",
@@ -60,6 +70,7 @@ const ALLOWED_STATUSES = new Set([
 const PR_DONE_STATUSES = new Set(["verified", "closed", "cancelled"]);
 
 const PR_IN_DELIVERY_STATUSES = new Set([
+  "pickup_broadcasting",
   "pickup_assigned",
   "picked",
   "hub_delivered",
@@ -71,6 +82,7 @@ const prStatusLabel = (status) => {
   const map = {
     created: "Pending vendor",
     vendor_confirmed: "Vendor confirmed",
+    pickup_broadcasting: "Searching for rider",
     pickup_assigned: "Pickup assigned",
     picked: "In transit to hub",
     hub_delivered: "At hub gate",
@@ -113,6 +125,7 @@ const generateRequestId = () =>
 const pickBestPickupPartner = async (hubId = DEFAULT_HUB_ID) => {
   const candidates = await PickupPartner.find({
     hubId: String(hubId || DEFAULT_HUB_ID),
+    isOnline: true,
     isActive: true,
     isVerified: true,
     status: { $in: ["available", "active"] },
@@ -193,11 +206,21 @@ const assignPickupToRequest = async (doc, partner) => {
       title: "New Pickup Task",
       message: `Pickup ${itemSummary} from ${doc.vendorName || "a vendor"}. Request ID: ${doc.requestId}`,
       type: "order",
-      data: { 
-        requestId: doc.requestId, 
+      data: {
+        requestId: doc.requestId,
         purchaseRequestId: doc._id.toString(),
         orderId: doc.orderId?.toString(),
         productSummary: itemSummary
+      },
+    });
+
+    emitToPickupPartner(partner._id, {
+      event: "pickup:assigned",
+      payload: {
+        requestId: doc.requestId,
+        purchaseRequestId: doc._id.toString(),
+        productSummary: itemSummary,
+        at: new Date().toISOString(),
       },
     });
   } catch (error) {
@@ -216,20 +239,241 @@ const findPrLine = (pr, productId, variantId = null) => {
   });
 };
 
-const maybeAssignPickup = async (pr) => {
+const notifyAdminsNoPickupPartners = async (pr) => {
+  try {
+    const { createNotification } = await import("../services/notificationService.js");
+    const Admin = (await import("../models/admin.js")).default;
+    const admins = await Admin.find({}).select("_id").lean();
+    for (const admin of admins) {
+      await createNotification({
+        recipient: admin._id,
+        recipientModel: "Admin",
+        title: "Pickup Assignment Failed",
+        message: `No pickup partners available for PR ${pr.requestId}.`,
+        type: "system",
+      });
+    }
+  } catch (e) {
+    console.error("[notifyAdminsNoPickupPartners] failed:", e.message);
+  }
+};
+
+/**
+ * Broadcast a newly-accepted request to every online pickup partner at the
+ * request's hub (first to accept wins — see acceptPickupBroadcast). Falls back
+ * to the immediate "no partners available" exception when nobody is online.
+ */
+const broadcastPickupForRequest = async (pr) => {
   const hasEligible = (pr.items || []).some(isPickupEligibleLine);
-  if (!hasEligible || pr.pickupPartnerId) return false;
+  if (!hasEligible || pr.pickupPartnerId) return { broadcasting: false, assigned: false };
+
+  const hubId = String(pr.hubId || DEFAULT_HUB_ID);
+  const candidates = await PickupPartner.find({
+    hubId,
+    isOnline: true,
+    isActive: true,
+    isVerified: true,
+    status: { $in: ["available", "active"] },
+  })
+    .select("_id")
+    .lean();
+
+  if (!candidates.length) {
+    pr.status = "exception";
+    pr.exceptionReason = "No pickup partners available";
+    await savePurchaseRequest(pr);
+    await notifyAdminsNoPickupPartners(pr);
+    return { broadcasting: false, assigned: false };
+  }
+
+  const candidateIds = candidates.map((c) => c._id);
+  const now = new Date();
+  const timeoutMs = PICKUP_BROADCAST_TIMEOUT_MS();
+  const expiresAt = new Date(now.getTime() + timeoutMs);
+
+  let vendorName = pr.vendorName || "";
+  if (!vendorName && pr.vendorId) {
+    const vendor = await Seller.findById(pr.vendorId).select("shopName name").lean();
+    vendorName = vendor?.shopName || vendor?.name || "";
+  }
+
+  pr.status = "pickup_broadcasting";
+  pr.pickupBroadcastExpiresAt = expiresAt;
+  pr.exceptionReason = "";
+  await savePurchaseRequest(pr);
+
+  await PickupAssignment.create({
+    purchaseRequestId: pr._id,
+    requestId: pr.requestId,
+    hubId,
+    status: "broadcasting",
+    candidateIds,
+    attempt: 1,
+    expiresAt,
+  });
+
+  emitPickupBroadcast(candidateIds, {
+    requestId: pr.requestId,
+    purchaseRequestId: pr._id.toString(),
+    hubId,
+    vendorName,
+    expiresAt: expiresAt.toISOString(),
+  });
+
+  try {
+    const { createNotificationBatch } = await import("../services/notificationService.js");
+    await createNotificationBatch(
+      candidateIds.map((id) => ({
+        recipient: id,
+        recipientModel: "PickupPartner",
+        title: "New Pickup Request",
+        message: `New pickup available at ${vendorName || "a vendor"}. Request ID: ${pr.requestId}`,
+        type: "order",
+        data: {
+          requestId: pr.requestId,
+          purchaseRequestId: pr._id.toString(),
+          hubId,
+        },
+      })),
+    );
+  } catch (e) {
+    console.warn("[broadcastPickupForRequest] notifications failed:", e.message);
+  }
+
+  try {
+    await pickupBroadcastQueue.add(
+      JOB_NAMES.PICKUP_BROADCAST_TIMEOUT,
+      { requestId: pr.requestId },
+      { delay: timeoutMs, jobId: `pr:${pr.requestId}:pickup-broadcast`, removeOnComplete: true },
+    );
+  } catch (e) {
+    console.warn("[broadcastPickupForRequest] queue add failed:", e.message);
+  }
+
+  return { broadcasting: true, assigned: false };
+};
+
+/** Cancel an in-flight broadcast (manual override / cleared assignment) — withdraws from every candidate. */
+const cancelPickupBroadcast = async (pr, { reason = "cancelled" } = {}) => {
+  try {
+    await pickupBroadcastQueue
+      .getJob(`pr:${pr.requestId}:pickup-broadcast`)
+      .then((job) => job?.remove());
+  } catch (e) {
+    console.warn("[cancelPickupBroadcast] queue remove failed:", e.message);
+  }
+  try {
+    await PickupAssignment.updateMany(
+      { requestId: pr.requestId, status: "broadcasting" },
+      { $set: { status: reason === "cancelled" ? "cancelled" : "superseded" } },
+    );
+  } catch (e) {
+    console.warn("[cancelPickupBroadcast] assignment update failed:", e.message);
+  }
+  await retractPickupBroadcastForRequest(pr.requestId, null);
+};
+
+/** First pickup partner to accept a broadcast wins (atomic). */
+const acceptPickupBroadcast = async (partnerId, requestId) => {
+  const now = new Date();
+  const partner = await PickupPartner.findById(partnerId).select("_id name").lean();
+  if (!partner) {
+    const err = new Error("Pickup partner not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const updated = await PurchaseRequest.findOneAndUpdate(
+    {
+      requestId,
+      status: "pickup_broadcasting",
+      pickupPartnerId: null,
+      pickupBroadcastExpiresAt: { $gt: now },
+    },
+    {
+      $set: {
+        pickupPartnerId: partner._id,
+        pickupPartnerName: String(partner.name || "").trim(),
+        status: "pickup_assigned",
+        pickupAssignedAt: now,
+      },
+    },
+    { new: true },
+  ).populate("items.productId", "name");
+
+  if (!updated) {
+    const pr = await PurchaseRequest.findOne({ requestId }).lean();
+    let msg = "This request is no longer available.";
+    if (!pr) msg = "Request not found";
+    else if (pr.pickupPartnerId) msg = "Another pickup partner already accepted this request.";
+    else if (pr.pickupBroadcastExpiresAt && new Date(pr.pickupBroadcastExpiresAt) <= now) {
+      msg = "This request has expired.";
+    } else if (pr.status !== "pickup_broadcasting") {
+      msg = "This request is no longer open for pickup.";
+    }
+    const err = new Error(msg);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  try {
+    await pickupBroadcastQueue
+      .getJob(`pr:${updated.requestId}:pickup-broadcast`)
+      .then((job) => job?.remove());
+  } catch (e) {
+    console.warn("[acceptPickupBroadcast] queue remove failed:", e.message);
+  }
+
+  await PickupAssignment.updateMany(
+    { requestId: updated.requestId, status: "broadcasting" },
+    { $set: { status: "assigned", winnerPickupPartnerId: partner._id } },
+  );
+
+  await PickupPartner.findByIdAndUpdate(partner._id, {
+    $set: { status: "active", isActive: true },
+  });
+
+  try {
+    const { createNotification } = await import("../services/notificationService.js");
+    if (updated.vendorId) {
+      await createNotification({
+        recipient: updated.vendorId,
+        recipientModel: "Seller",
+        title: "Pickup Partner Assigned",
+        message: `${partner.name || "A pickup partner"} accepted the pickup request for ${updated.requestId}.`,
+        type: "order",
+        data: { requestId: updated.requestId, purchaseRequestId: updated._id.toString() },
+      });
+    }
+  } catch (e) {
+    console.warn("[acceptPickupBroadcast] seller notification failed:", e.message);
+  }
+
+  await retractPickupBroadcastForRequest(updated.requestId, partner._id);
+
+  return updated;
+};
+
+/** Broadcast timeout — nobody accepted in time, fall back to auto-assigning the best online partner. */
+export const processPickupBroadcastTimeoutJob = async ({ requestId }) => {
+  const pr = await PurchaseRequest.findOne({ requestId }).populate("items.productId", "name");
+  if (!pr || pr.status !== "pickup_broadcasting") return;
 
   const bestPartner = await pickBestPickupPartner(pr.hubId);
   if (bestPartner) {
     await assignPickupToRequest(pr, bestPartner);
-    return true;
+  } else {
+    pr.status = "exception";
+    pr.exceptionReason = "No pickup partners available";
+    await savePurchaseRequest(pr);
+    await notifyAdminsNoPickupPartners(pr);
   }
 
-  pr.status = "exception";
-  pr.exceptionReason = "No pickup partners available";
-  await savePurchaseRequest(pr);
-  return false;
+  await PickupAssignment.updateMany(
+    { requestId, status: "broadcasting" },
+    { $set: { status: "timeout" } },
+  );
+  await retractPickupBroadcastForRequest(requestId, bestPartner?._id || null);
 };
 
 const mapPrPhase = (status) => {
@@ -330,6 +574,7 @@ const mapSellerRow = (reqDoc, extras = {}) => {
         }
       : null,
     pickupAssigned: Boolean(reqDoc.pickupPartnerId),
+    pickupBroadcastExpiresAt: reqDoc.pickupBroadcastExpiresAt || null,
     pickupOtp:
       String(reqDoc.status) === "pickup_assigned" &&
       (!reqDoc.pickupOtpExpiresAt || new Date(reqDoc.pickupOtpExpiresAt) > new Date())
@@ -759,9 +1004,41 @@ export const assignPickupPartner = async (req, res) => {
     const doc = await PurchaseRequest.findById(id).populate("items.productId", "name");
     if (!doc) return handleResponse(res, 404, "Purchase request not found");
 
+    // If request is made by seller, verify ownership
+    if (req.user?.role === "seller" && String(doc.vendorId) !== req.user.id) {
+      return handleResponse(res, 403, "Forbidden: You are not authorized to manage this request");
+    }
+
+    const previousPartnerId = doc.pickupPartnerId ? String(doc.pickupPartnerId) : null;
+    const wasBroadcasting = doc.status === "pickup_broadcasting";
+
     if (pickupPartnerId) {
       const partner = await PickupPartner.findById(pickupPartnerId).lean();
       if (!partner) return handleResponse(res, 404, "Pickup partner not found");
+
+      if (wasBroadcasting) {
+        await cancelPickupBroadcast(doc, { reason: "superseded" });
+      }
+      if (previousPartnerId && previousPartnerId !== String(partner._id)) {
+        try {
+          const { createNotification } = await import("../services/notificationService.js");
+          await createNotification({
+            recipient: previousPartnerId,
+            recipientModel: "PickupPartner",
+            title: "Pickup Reassigned",
+            message: `Request ${doc.requestId} was reassigned to another partner by the seller.`,
+            type: "order",
+            data: { requestId: doc.requestId, purchaseRequestId: doc._id.toString() },
+          });
+          emitToPickupPartner(previousPartnerId, {
+            event: "pickup:assignment:withdrawn",
+            payload: { requestId: doc.requestId, at: new Date().toISOString() },
+          });
+        } catch (e) {
+          console.warn("[assignPickupPartner] previous partner notice failed:", e.message);
+        }
+      }
+
       await assignPickupToRequest(doc, partner);
       return handleResponse(res, 200, "Pickup partner assigned", {
         ...doc.toObject(),
@@ -770,6 +1047,9 @@ export const assignPickupPartner = async (req, res) => {
         pickupOtpExpiresAt: null,
       });
     } else {
+      if (wasBroadcasting) {
+        await cancelPickupBroadcast(doc, { reason: "cancelled" });
+      }
       doc.pickupPartnerId = null;
       doc.pickupPartnerName = String(pickupPartnerName || "").trim();
       doc.pickupOtpCode = undefined;
@@ -782,6 +1062,70 @@ export const assignPickupPartner = async (req, res) => {
     }
   } catch (error) {
     return handleResponse(res, 500, error.message);
+  }
+};
+
+export const getAvailablePickupBroadcasts = async (req, res) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) return handleResponse(res, 403, "No linked pickup partner account found");
+
+    const now = new Date();
+    const assignments = await PickupAssignment.find({
+      status: "broadcasting",
+      candidateIds: partnerId,
+      expiresAt: { $gt: now },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!assignments.length) {
+      return handleResponse(res, 200, "No open pickup requests", { items: [] });
+    }
+
+    const requestIds = assignments.map((a) => a.requestId);
+    const prs = await PurchaseRequest.find({
+      requestId: { $in: requestIds },
+      status: "pickup_broadcasting",
+    })
+      .populate("items.productId", "name")
+      .populate("vendorId", "shopName name")
+      .lean();
+    const prByRequestId = new Map(prs.map((p) => [p.requestId, p]));
+
+    const items = assignments
+      .map((a) => {
+        const pr = prByRequestId.get(a.requestId);
+        if (!pr) return null;
+        const detailedItems = mapPrItemsDetailed(pr.items);
+        return {
+          requestId: pr.requestId,
+          purchaseRequestId: pr._id,
+          hubId: pr.hubId,
+          vendorName: pr.vendorId?.shopName || pr.vendorId?.name || pr.vendorName || "",
+          itemSummary: detailedItems[0]?.productName || "Products",
+          itemCount: detailedItems.length,
+          expiresAt: pr.pickupBroadcastExpiresAt,
+        };
+      })
+      .filter(Boolean);
+
+    return handleResponse(res, 200, "Open pickup requests", { items });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const respondPickupBroadcast = async (req, res) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) return handleResponse(res, 403, "No linked pickup partner account found");
+
+    const { requestId } = req.params;
+    const updated = await acceptPickupBroadcast(partnerId, requestId);
+    return handleResponse(res, 200, "Pickup request accepted", mapSellerRow(updated));
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
@@ -1017,7 +1361,7 @@ export const receiveAtHub = async (req, res) => {
     pr.receivedAtHubAt = new Date();
     await savePurchaseRequest(pr);
 
-    // Trace: Create a PENDING transaction immediately upon receipt for financial visibility
+    // Trace: Create a SETTLED transaction immediately upon receipt to credit their wallet
     try {
       let totalValue = normalized.reduce((acc, item) => acc + (item.acceptedQty * item.purchaseUnitCost), 0);
       if (totalValue > 0) {
@@ -1027,14 +1371,14 @@ export const receiveAtHub = async (req, res) => {
           order: pr.orderId || undefined,
           type: "Supply Earning",
           amount: totalValue,
-          status: "Pending", // Visible but not yet withdrawable
+          status: "Settled", // Settled immediately upon hub receipt
           reference: `PR-REC-${pr.requestId}`,
           meta: {
             purchaseRequestId: pr._id,
             receivedAt: new Date(),
           }
         });
-        console.log(`[Trace] Created Pending Supply Earning for Seller ${pr.vendorId}: ₹${totalValue}`);
+        console.log(`[Trace] Created Settled Supply Earning for Seller ${pr.vendorId}: ₹${totalValue}`);
       }
     } catch (txnErr) {
       console.error("[receiveAtHub] Transaction creation failed:", txnErr.message);
@@ -1589,7 +1933,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
       if (isPickupEligibleLine(updatedLine)) {
         try {
-          await maybeAssignPickup(pr);
+          await broadcastPickupForRequest(pr);
         } catch (assignErr) {
           console.warn("[PickupAssign] Line accept failed:", assignErr.message);
         }
@@ -1764,7 +2108,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
     if (responseStatus === "accepted" || responseStatus === "partial") {
       try {
-        await maybeAssignPickup(pr);
+        await broadcastPickupForRequest(pr);
       } catch (assignErr) {
         console.warn("[PickupAssign] Failed after seller response:", assignErr.message);
       }
@@ -1820,29 +2164,8 @@ export const markSellerRequestReady = async (req, res) => {
     let autoAssigned = false;
 
     if (!doc.pickupPartnerId) {
-      const partner = await pickBestPickupPartner(doc.hubId || DEFAULT_HUB_ID);
-      if (partner) {
-        await assignPickupToRequest(doc, partner);
-        autoAssigned = true;
-      } else {
-        doc.status = "exception";
-        doc.exceptionReason = "No pickup partners available";
-        await savePurchaseRequest(doc);
-        try {
-          const { createNotification } = await import("../services/notificationService.js");
-          const Admin = (await import("../models/admin.js")).default;
-          const admins = await Admin.find({}).select("_id").lean();
-          for (const admin of admins) {
-            await createNotification({
-              recipient: admin._id,
-              recipientModel: "Admin",
-              title: "Pickup Assignment Failed",
-              message: `No pickup partners available for PR ${doc.requestId}.`,
-              type: "system",
-            });
-          }
-        } catch (e) { console.error("[markReady] Failed to notify admins:", e); }
-      }
+      const result = await broadcastPickupForRequest(doc);
+      autoAssigned = result.assigned;
     } else {
       await savePurchaseRequest(doc);
     }
@@ -2339,7 +2662,7 @@ export const respondToManualPR = async (req, res) => {
     await savePurchaseRequest(pr);
 
     try {
-      await maybeAssignPickup(pr);
+      await broadcastPickupForRequest(pr);
     } catch (assignErr) {
       console.warn("[respondToManualPR] Pickup assignment failed:", assignErr.message);
     }

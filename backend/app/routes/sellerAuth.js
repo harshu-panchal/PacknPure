@@ -18,6 +18,7 @@ import {
     markSellerRequestReady,
     confirmSellerHandover,
     confirmVendorReturn,
+    assignPickupPartner,
 } from "../controller/purchaseRequestController.js";
 import { verifyToken, allowRoles, isAccountVerified } from "../middleware/authMiddleware.js";
 
@@ -118,6 +119,13 @@ router.post(
     allowRoles("seller"),
     isAccountVerified,
     confirmVendorReturn,
+);
+router.put(
+    "/purchase-requests/:id/assign-pickup",
+    verifyToken,
+    allowRoles("seller"),
+    isAccountVerified,
+    assignPickupPartner,
 );
 
 export default router;
