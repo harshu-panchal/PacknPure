@@ -998,6 +998,19 @@ export const updatePurchaseRequestStatus = async (req, res) => {
   }
 };
 
+// Admin can assign/reassign a rider any time before the parcel is physically
+// picked up. Once "picked" (or later), overwriting pickupPartnerId here would
+// revert doc.status back to "pickup_assigned" and wipe pickup/hub-drop proof —
+// so those stages must go through the return/exception flows instead.
+const PICKUP_REASSIGNABLE_STATUSES = new Set([
+  "created",
+  "vendor_confirmed",
+  "seller_confirmed",
+  "pickup_broadcasting",
+  "pickup_assigned",
+  "exception",
+]);
+
 export const assignPickupPartner = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1009,6 +1022,14 @@ export const assignPickupPartner = async (req, res) => {
     // If request is made by seller, verify ownership
     if (req.user?.role === "seller" && String(doc.vendorId) !== req.user.id) {
       return handleResponse(res, 403, "Forbidden: You are not authorized to manage this request");
+    }
+
+    if (req.user?.role === "admin" && !PICKUP_REASSIGNABLE_STATUSES.has(String(doc.status))) {
+      return handleResponse(
+        res,
+        400,
+        `Cannot assign/reassign a pickup partner once the request is "${doc.status}"`,
+      );
     }
 
     const previousPartnerId = doc.pickupPartnerId ? String(doc.pickupPartnerId) : null;

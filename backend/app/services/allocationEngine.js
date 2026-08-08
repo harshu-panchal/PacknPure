@@ -57,13 +57,14 @@ export const rankSellerAllocations = async ({
 }) => {
   if (!baseProduct || shortageQty <= 0) return [];
 
+  // Candidates must be THE SAME product (by link or exact name) — never just
+  // "same category". A bare categoryId match here previously let an unrelated
+  // in-stock product (e.g. a seller's Beans) get picked as a false "supplier"
+  // for a different shortage (e.g. Tomato) just because they share a category.
   const matchOr = [{ _id: baseProduct._id }, { masterProductId: baseProduct._id }];
   if (String(baseProduct.name || "").trim()) {
     const escapedName = baseProduct.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    matchOr.push({ name: new RegExp(escapedName, "i") });
-  }
-  if (baseProduct.categoryId) {
-    matchOr.push({ categoryId: baseProduct.categoryId });
+    matchOr.push({ name: new RegExp(`^${escapedName}$`, "i") });
   }
 
   let candidates = await Product.find({

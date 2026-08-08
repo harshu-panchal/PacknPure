@@ -127,7 +127,7 @@ const PurchaseRequestsPage = () => {
 
   const openAssign = (row) => {
     setCurrentRow(row);
-    setAssignForm({ pickupPartnerId: pickupPartners[0]?._id || "" });
+    setAssignForm({ pickupPartnerId: row.pickupPartnerId || pickupPartners[0]?._id || "" });
     setAssignOpen(true);
   };
 
@@ -406,7 +406,10 @@ const PurchaseRequestsPage = () => {
           const needsPickup =
             (st === "created" ||
               st === "vendor_confirmed" ||
-              st === "seller_confirmed") &&
+              st === "seller_confirmed" ||
+              st === "pickup_broadcasting" ||
+              st === "pickup_assigned" ||
+              st === "exception") &&
             row.vendorId;
           const needsReceive = ["pickup_assigned", "picked", "hub_delivered"].includes(st);
           const needsFinalVerify = st === "received_at_hub";
@@ -428,7 +431,7 @@ const PurchaseRequestsPage = () => {
                   onClick={() => openAssign(row)}
                   className="inline-flex items-center gap-1 bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-indigo-700"
                 >
-                  <Truck size={13} /> Pickup
+                  <Truck size={13} /> {row.pickupPartnerId ? "Reassign" : "Pickup"}
                 </button>
               )}
               {needsReceive && (
@@ -520,8 +523,14 @@ const PurchaseRequestsPage = () => {
       <SupplyFormModal
         isOpen={assignOpen}
         onClose={() => setAssignOpen(false)}
-        title="Assign pickup partner"
-        submitLabel="Assign"
+        title={
+          currentRow?.rawStatus === "return_requested"
+            ? "Assign return pickup"
+            : currentRow?.pickupPartnerId
+              ? "Reassign pickup partner"
+              : "Assign pickup partner"
+        }
+        submitLabel={currentRow?.pickupPartnerId ? "Reassign" : "Assign"}
         fields={[
           {
             key: "pickupPartnerId",
@@ -531,7 +540,7 @@ const PurchaseRequestsPage = () => {
               { value: "", label: "Select partner…" },
               ...pickupPartners.map((p) => ({
                 value: p._id,
-                label: `${p.partnerName || p.name} · ${p.phone}`,
+                label: `${p.partnerName || p.name} · ${p.phone}${p._id === currentRow?.pickupPartnerId ? " (current)" : ""}`,
               })),
             ],
           },
