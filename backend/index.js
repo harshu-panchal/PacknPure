@@ -10,6 +10,7 @@ import startSlaMonitorJob from "./app/jobs/slaMonitorJob.js";
 import startProcurementMonitorJob from "./app/jobs/procurementMonitorJob.js";
 import startProcurementRetryJob from "./app/jobs/procurementRetryJob.js";
 import startPickupBroadcastTimeoutJob from "./app/jobs/pickupBroadcastTimeoutJob.js";
+import startNotificationDeliveryJob from "./app/jobs/notificationDeliveryJob.js";
 import cors from "cors"
 import { initSocket, getIO } from "./app/socket/socketManager.js"
 import { registerOrderSocketGetter } from "./app/services/orderSocketEmitter.js"
@@ -143,6 +144,7 @@ const startServer = async () => {
     startProcurementMonitorJob();
     startProcurementRetryJob();
     startPickupBroadcastTimeoutJob();
+    startNotificationDeliveryJob();
 
     // Start Server
     server.listen(PORT, "0.0.0.0", () => {

@@ -88,7 +88,7 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
     const fetchOpenPRs = async () => {
       try {
         const res = await sellerApi.getPurchaseRequests({ status: "created" });
-        const list = res?.data?.data || res?.data || [];
+        const list = res?.data?.result?.items || res?.data?.results || [];
         const openPRs = Array.isArray(list) ? list : [];
 
         if (openPRs.length > 0) {

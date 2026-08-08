@@ -203,6 +203,55 @@ async function sendNotificationForOutbox(outboxDoc) {
   };
 }
 
+/**
+ * Deliver one outbox record. Shared by the Bull processor (when Redis is
+ * enabled) and the interval-based fallback poller (notificationDeliveryJob —
+ * used when Redis is disabled, since the Bull queue is then a no-op stub and
+ * nothing would otherwise ever call this).
+ */
+export async function processNotificationOutboxJob(outboxId, { attemptsMade = 0, payload = {} } = {}) {
+  if (!outboxId) throw new Error("Missing outboxId");
+
+  const outbox = await NotificationOutbox.findById(outboxId);
+  if (!outbox) {
+    return { skipped: true, reason: "Outbox missing" };
+  }
+
+  if (outbox.status === "sent" || outbox.status === "dead_letter") {
+    return { skipped: true, reason: `Outbox already ${outbox.status}` };
+  }
+
+  await NotificationOutbox.findByIdAndUpdate(outbox._id, {
+    $set: {
+      status: "processing",
+      lockedAt: new Date(),
+      attempts: Number(outbox.attempts || 0) + 1,
+    },
+  });
+
+  try {
+    return await sendNotificationForOutbox(outbox);
+  } catch (error) {
+    const retryable = isRetryableError(error);
+    const message = error?.message || "Notification send failed";
+    await NotificationOutbox.findByIdAndUpdate(outbox._id, {
+      $set: {
+        status: retryable ? "failed" : "dead_letter",
+        lastError: message,
+        failedAt: new Date(),
+      },
+    });
+
+    const maxAttempts = Number(outbox.maxAttempts || 5);
+    if (!retryable || attemptsMade + 1 >= maxAttempts) {
+      await markDeadLetter(outbox, message, error, payload);
+      return { deadLettered: true, reason: message };
+    }
+
+    throw error;
+  }
+}
+
 export function registerNotificationQueueProcessors() {
   if (globalThis.__NOTIFICATION_QUEUE_PROCESSOR_STARTED__) return;
   globalThis.__NOTIFICATION_QUEUE_PROCESSOR_STARTED__ = true;
@@ -212,48 +261,10 @@ export function registerNotificationQueueProcessors() {
     parseInt(process.env.NOTIFICATION_QUEUE_CONCURRENCY || "10", 10),
     async (job) => {
       const payload = job.data || {};
-      const outboxId = payload.outboxId;
-      if (!outboxId) {
-        throw new Error("Missing outboxId");
-      }
-
-      const outbox = await NotificationOutbox.findById(outboxId);
-      if (!outbox) {
-        return { skipped: true, reason: "Outbox missing" };
-      }
-
-      if (outbox.status === "sent" || outbox.status === "dead_letter") {
-        return { skipped: true, reason: `Outbox already ${outbox.status}` };
-      }
-
-      await NotificationOutbox.findByIdAndUpdate(outbox._id, {
-        $set: {
-          status: "processing",
-          lockedAt: new Date(),
-          attempts: Number(outbox.attempts || 0) + 1,
-        },
+      return processNotificationOutboxJob(payload.outboxId, {
+        attemptsMade: job.attemptsMade,
+        payload,
       });
-
-      try {
-        return await sendNotificationForOutbox(outbox);
-      } catch (error) {
-        const retryable = isRetryableError(error);
-        const message = error?.message || "Notification send failed";
-        await NotificationOutbox.findByIdAndUpdate(outbox._id, {
-          $set: {
-            status: retryable ? "failed" : "dead_letter",
-            lastError: message,
-            failedAt: new Date(),
-          },
-        });
-
-        if (!retryable || job.attemptsMade + 1 >= (job.opts?.attempts || 5)) {
-          await markDeadLetter(outbox, message, error, payload);
-          return { deadLettered: true, reason: message };
-        }
-
-        throw error;
-      }
     },
   );
 

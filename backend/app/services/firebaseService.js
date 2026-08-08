@@ -114,7 +114,7 @@ export const sendFcmMulticast = async (tokens = [], payload = {}) => {
   };
 
   try {
-    const response = await messaging.sendMulticast(message);
+    const response = await messaging.sendEachForMulticast(message);
     if (response.failureCount > 0) {
       console.warn("[FCM] Some notifications failed", response.responses);
     }
