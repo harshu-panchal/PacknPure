@@ -64,5 +64,16 @@ const notificationDeadLetterSchema = new mongoose.Schema(
 
 notificationDeadLetterSchema.index({ createdAt: -1 });
 
+// Auto-prune dead letters after a retention window — the failure detail here
+// is for debugging/audit only; keep longer than the outbox since there's no
+// other record of why a notification failed once this expires.
+const DEADLETTER_RETENTION_SECONDS =
+  Number(process.env.NOTIFICATION_DEADLETTER_RETENTION_DAYS || 90) * 24 * 60 * 60;
+
+notificationDeadLetterSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: DEADLETTER_RETENTION_SECONDS },
+);
+
 export default mongoose.model("NotificationDeadLetter", notificationDeadLetterSchema);
 

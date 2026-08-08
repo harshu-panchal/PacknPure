@@ -3,6 +3,7 @@ import {
   fallbackPurchaseRequest,
   fallbackPurchaseRequestLine,
   updateOnePurchaseRequest,
+  updatePurchaseRequestById,
   findPurchaseRequests,
   findPurchaseRequestById,
 } from "../services/purchaseRequestService.js";
@@ -152,11 +153,15 @@ const processPickupTimeouts = async () => {
     const stalledPRs = await findPurchaseRequests({
       status: "pickup_assigned",
       updatedAt: { $lte: cutoff }, // Proxy for when it was assigned
+      pickupTimeoutAlertedAt: { $exists: false },
     }).select("_id requestId pickupPartnerId").lean();
 
     if (!stalledPRs.length) return;
 
     for (const pr of stalledPRs) {
+      // Mark alerted first so a slow notify (or a PR matching again next tick)
+      // can't re-fire — this poll runs every 2s and nothing here changes status.
+      await updatePurchaseRequestById(pr._id, { $set: { pickupTimeoutAlertedAt: new Date() } });
       await notifyAdmins(
         "Pickup Timeout Alert",
         `PR ${pr.requestId} has been waiting for pickup for over 2 hours.`,
@@ -177,11 +182,13 @@ const processHubReceiveTimeouts = async () => {
     const stalledPRs = await findPurchaseRequests({
       status: "picked",
       "pickupProof.pickedAt": { $lte: cutoff },
+      hubReceiveTimeoutAlertedAt: { $exists: false },
     }).select("_id requestId pickupPartnerId").lean();
 
     if (!stalledPRs.length) return;
 
     for (const pr of stalledPRs) {
+      await updatePurchaseRequestById(pr._id, { $set: { hubReceiveTimeoutAlertedAt: new Date() } });
       await notifyAdmins(
         "Hub Receive Timeout Alert",
         `PR ${pr.requestId} was picked up but hasn't reached the hub for over 3 hours.`,

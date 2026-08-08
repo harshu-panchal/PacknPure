@@ -185,6 +185,7 @@ const assignPickupToRequest = async (doc, partner) => {
   doc.exceptionReason = "";
   doc.status = "pickup_assigned";
   doc.pickupAssignedAt = new Date();
+  doc.pickupTimeoutAlertedAt = undefined;
   await savePurchaseRequest(doc);
   await PickupPartner.findByIdAndUpdate(partner._id, {
     $set: { status: "active", isActive: true },
@@ -397,6 +398,7 @@ const acceptPickupBroadcast = async (partnerId, requestId) => {
         status: "pickup_assigned",
         pickupAssignedAt: now,
       },
+      $unset: { pickupTimeoutAlertedAt: "" },
     },
     { new: true },
   ).populate("items.productId", "name");

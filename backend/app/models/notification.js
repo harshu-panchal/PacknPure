@@ -115,4 +115,13 @@ notificationSchema.index({ recipient: 1, createdAt: -1 });
 notificationSchema.index({ broadcastBatchId: 1, recipient: 1 }, { sparse: true });
 notificationSchema.index({ eventId: 1, recipient: 1, hash: 1 }, { unique: false });
 
+// Auto-delete notifications after the retention window (default 7 days).
+const NOTIFICATION_RETENTION_SECONDS =
+    Number(process.env.NOTIFICATION_RETENTION_DAYS || 7) * 24 * 60 * 60;
+
+notificationSchema.index(
+    { createdAt: 1 },
+    { expireAfterSeconds: NOTIFICATION_RETENTION_SECONDS },
+);
+
 export default mongoose.model("Notification", notificationSchema);

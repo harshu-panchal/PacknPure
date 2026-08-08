@@ -241,6 +241,10 @@ const purchaseRequestSchema = new mongoose.Schema(
     exceptionReason: String,
     eta: Date,
     notes: String,
+    // Set once an admin alert fires for a stalled pickup/hub-receive, so the
+    // 2s procurement monitor poll doesn't re-notify every tick indefinitely.
+    pickupTimeoutAlertedAt: Date,
+    hubReceiveTimeoutAlertedAt: Date,
   },
   { timestamps: true },
 );

@@ -93,5 +93,21 @@ notificationOutboxSchema.index(
   { unique: true },
 );
 
+// Auto-prune terminal (sent/skipped/dead_letter) records so the collection
+// doesn't grow unbounded. Docs still awaiting delivery (queued/processing/failed)
+// are excluded via partialFilterExpression and never expire.
+const OUTBOX_RETENTION_SECONDS =
+  Number(process.env.NOTIFICATION_OUTBOX_RETENTION_DAYS || 30) * 24 * 60 * 60;
+
+notificationOutboxSchema.index(
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: OUTBOX_RETENTION_SECONDS,
+    partialFilterExpression: {
+      status: { $in: ["sent", "skipped", "dead_letter"] },
+    },
+  },
+);
+
 export default mongoose.model("NotificationOutbox", notificationOutboxSchema);
 
