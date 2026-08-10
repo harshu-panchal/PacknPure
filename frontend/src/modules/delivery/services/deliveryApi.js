@@ -47,6 +47,9 @@ export const deliveryApi = {
     axiosInstance.get(
       `/orders/details/${encodeURIComponent(String(orderId))}`,
     ),
+  getActiveTrip: () => axiosInstance.get("/delivery/trips/active"),
+  markTripHubReached: (tripId, body) =>
+    axiosInstance.post(`/delivery/trips/${tripId}/reached-hub`, body),
   getNotifications: notificationsApi.getNotifications,
   markNotificationRead: notificationsApi.markNotificationRead,
   markAllNotificationsRead: notificationsApi.markAllNotificationsRead,

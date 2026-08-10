@@ -107,6 +107,8 @@ export const customerApi = {
   },
   createTicket: (data) => axiosInstance.post("/tickets/create", data),
   getMyTickets: () => getWithDedupe("/tickets/my-tickets"),
+  getTicketById: (id) => axiosInstance.get(`/tickets/${id}`),
+  replyTicket: (id, text) => axiosInstance.post(`/tickets/reply/${id}`, { text }),
 
   // Experience sections (home / header pages)
   getExperienceSections: (params) => getWithDedupe("/experience", params),

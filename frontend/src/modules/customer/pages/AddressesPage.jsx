@@ -21,7 +21,7 @@ import MapPicker from '@/shared/components/MapPicker';
 const AddressesPage = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { refreshAddresses } = useLocation();
+    const { refreshAddresses, refreshLocation } = useLocation();
     const [addresses, setAddresses] = useState([]);
     const [rawAddresses, setRawAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -117,6 +117,52 @@ const AddressesPage = () => {
                 address: data.address || f.address,
                 location: { lat: data.lat, lng: data.lng }
             }));
+        }
+    };
+
+    const handleAddCurrentLocation = async () => {
+        try {
+            toast.loading("Detecting your location...");
+            const loc = await refreshLocation();
+            if (loc) {
+                setAddForm(f => ({
+                    ...f,
+                    address: loc.name || '',
+                    city: loc.city || '',
+                    state: loc.state || '',
+                    pincode: loc.pincode || '',
+                    location: { lat: loc.latitude, lng: loc.longitude }
+                }));
+                toast.dismiss();
+                toast.success("Location populated!");
+            }
+        } catch (err) {
+            toast.dismiss();
+            toast.error("Failed to detect location");
+            console.error(err);
+        }
+    };
+
+    const handleEditCurrentLocation = async () => {
+        try {
+            toast.loading("Detecting your location...");
+            const loc = await refreshLocation();
+            if (loc) {
+                setEditForm(f => ({
+                    ...f,
+                    address: loc.name || '',
+                    city: loc.city || '',
+                    state: loc.state || '',
+                    pincode: loc.pincode || '',
+                    location: { lat: loc.latitude, lng: loc.longitude }
+                }));
+                toast.dismiss();
+                toast.success("Location populated!");
+            }
+        } catch (err) {
+            toast.dismiss();
+            toast.error("Failed to detect location");
+            console.error(err);
         }
     };
 
@@ -402,7 +448,16 @@ const AddressesPage = () => {
                             <Input id="phone" placeholder="+91 98765 43210" value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="address">Address</Label>
+                            <div className="flex justify-between items-center">
+                                <Label htmlFor="address">Address</Label>
+                                <button
+                                    type="button"
+                                    onClick={handleAddCurrentLocation}
+                                    className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1"
+                                >
+                                    <MapPin size={12} /> Use current location
+                                </button>
+                            </div>
                             <Textarea id="address" placeholder="Flat No, Building, Street" value={addForm.address} onChange={e => setAddForm(f => ({ ...f, address: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">
@@ -485,7 +540,16 @@ const AddressesPage = () => {
                             <Input id="edit-phone" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="edit-address">Address</Label>
+                            <div className="flex justify-between items-center">
+                                <Label htmlFor="edit-address">Address</Label>
+                                <button
+                                    type="button"
+                                    onClick={handleEditCurrentLocation}
+                                    className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1"
+                                >
+                                    <MapPin size={12} /> Use current location
+                                </button>
+                            </div>
                             <Textarea id="edit-address" value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">

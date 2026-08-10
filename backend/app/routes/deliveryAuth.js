@@ -25,6 +25,10 @@ import {
   acceptOrder,
   updateOrderStatus,
 } from "../controller/orderController.js";
+import {
+  getActiveTripForRider,
+  markTripHubReached,
+} from "../controller/deliveryTripController.js";
 
 import {
   verifyToken,
@@ -55,6 +59,8 @@ router.put("/profile", ...deliveryOnly, updateDeliveryProfile);
 router.get("/stats", ...deliveryOnly, getDeliveryStats);
 router.get("/earnings", ...deliveryOnly, getDeliveryEarnings);
 router.get("/order-history", ...deliveryOnly, getMyDeliveryOrders);
+router.get("/trips/active", ...deliveryOnly, getActiveTripForRider);
+router.post("/trips/:tripId/reached-hub", ...deliveryOnly, markTripHubReached);
 router.get("/tasks", ...deliveryOps, getAvailableOrders);
 router.post("/pickup", ...deliveryOps, (req, res) => {
   if (!req.body?.orderId) {

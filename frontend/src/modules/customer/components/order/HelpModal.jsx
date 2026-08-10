@@ -2,8 +2,12 @@ import React from 'react';
 import { X, MessageCircle, Phone, ChevronRight, AlertCircle, PackageX, Truck, PlusCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSettings } from '@core/context/SettingsContext';
+import { handlePhoneClick } from '@shared/utils/phoneUtils';
 
 const HelpModal = ({ isOpen, onClose }) => {
+    const { settings } = useSettings();
+    const supportPhone = settings?.supportPhone || '';
     const issues = [
         { icon: PackageX, label: 'Items missing or incorrect', sub: 'Get a refund or replacement' },
         { icon: AlertCircle, label: 'Item quality issue', sub: 'Report damaged or expired items' },
@@ -65,9 +69,13 @@ const HelpModal = ({ isOpen, onClose }) => {
                                     <Link to="/chat" className="py-3.5 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors">
                                         <MessageCircle size={18} /> Chat Us
                                     </Link>
-                                    <button className="py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">
+                                    <a
+                                        href={supportPhone ? `tel:${supportPhone}` : 'tel:+919876543210'}
+                                        onClick={(e) => handlePhoneClick(e, supportPhone || '+919876543210')}
+                                        className="py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
+                                    >
                                         <Phone size={18} /> Call Us
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
                         </motion.div>

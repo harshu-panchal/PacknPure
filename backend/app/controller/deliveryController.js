@@ -14,6 +14,7 @@ import {
   recordDeliveryAudit,
   maybeRecordGpsSnapshot,
 } from "../services/deliveryAuditService.js";
+import { advanceTripOnOrderDelivered } from "../services/deliveryTripService.js";
 
 const LOC_MIN_INTERVAL_MS = () =>
   parseInt(process.env.LOCATION_MIN_INTERVAL_MS || "3000", 10);
@@ -765,6 +766,16 @@ export const validateDeliveryOtp = async (req, res) => {
         order.otpValidationLocation = validationLocation;
         const updatedOrder = await order.save();
 
+        // Batch delivery trip: mark this stop done and surface the next
+        // nearest-first stop so the rider's dashboard stops showing it as
+        // outstanding and unlocks whatever comes next.
+        let nextStop = null;
+        try {
+            nextStop = await advanceTripOnOrderDelivered(updatedOrder);
+        } catch (tripErr) {
+            console.error('[validateDeliveryOtp] Trip advance failed:', tripErr.message);
+        }
+
         // Hub Reserved (HR) deduction for this order's product/variant lines
         try {
             const { finalizeHubInventoryOnDelivery } = await import(
@@ -856,7 +867,8 @@ export const validateDeliveryOtp = async (req, res) => {
             data: {
                 orderId: order.orderId,
                 deliveredAt: now.toISOString()
-            }
+            },
+            nextStop,
         });
     } catch (error) {
         console.error('Error in validateDeliveryOtp controller:', error);

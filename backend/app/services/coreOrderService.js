@@ -95,35 +95,48 @@ export const executeCoreOrderFulfillment = async ({
 
     // 4. Resolve raw items against database
     if (Array.isArray(orderItems) && orderItems.length > 0) {
-      const normalizedItems = [];
-      for (const item of orderItems) {
-        let candidate = item?.product?._id || item?.productId?._id || item?.product || item?.productId || item?._id || item?.id;
-        if (candidate && typeof candidate === "object" && candidate._id) candidate = candidate._id;
-        let resolvedProductId = candidate && mongoose.Types.ObjectId.isValid(String(candidate)) ? String(candidate) : null;
+      // 4a. Resolve each item's product id, running any needed fallback
+      // (sku/slug/name) lookups in parallel instead of one-at-a-time.
+      const resolvedIds = await Promise.all(
+        orderItems.map(async (item) => {
+          let candidate = item?.product?._id || item?.productId?._id || item?.product || item?.productId || item?._id || item?.id;
+          if (candidate && typeof candidate === "object" && candidate._id) candidate = candidate._id;
+          let resolvedProductId = candidate && mongoose.Types.ObjectId.isValid(String(candidate)) ? String(candidate) : null;
 
-        if (!resolvedProductId) {
-          const fallbackQuery = [];
-          if (item?.sku && typeof item.sku === "string") fallbackQuery.push({ sku: item.sku.trim() });
-          if (item?.slug && typeof item.slug === "string") fallbackQuery.push({ slug: item.slug.trim().toLowerCase() });
-          if (item?.name && typeof item.name === "string") fallbackQuery.push({ name: item.name.trim() });
-          
-          if (fallbackQuery.length) {
-            let pQuery = Product.findOne({ $or: fallbackQuery }).select("_id").lean();
-            if (session) pQuery = pQuery.session(session);
-            const found = await pQuery;
-            if (found?._id) resolvedProductId = String(found._id);
+          if (!resolvedProductId) {
+            const fallbackQuery = [];
+            if (item?.sku && typeof item.sku === "string") fallbackQuery.push({ sku: item.sku.trim() });
+            if (item?.slug && typeof item.slug === "string") fallbackQuery.push({ slug: item.slug.trim().toLowerCase() });
+            if (item?.name && typeof item.name === "string") fallbackQuery.push({ name: item.name.trim() });
+
+            if (fallbackQuery.length) {
+              let pQuery = Product.findOne({ $or: fallbackQuery }).select("_id").lean();
+              if (session) pQuery = pQuery.session(session);
+              const found = await pQuery;
+              if (found?._id) resolvedProductId = String(found._id);
+            }
           }
-        }
 
-        if (!resolvedProductId) {
-          throw new Error(`Invalid product reference in checkout item: ${item?.name || "Unknown item"}`);
-        }
+          if (!resolvedProductId) {
+            throw new Error(`Invalid product reference in checkout item: ${item?.name || "Unknown item"}`);
+          }
+          return resolvedProductId;
+        })
+      );
 
-        let pdQuery = Product.findById(resolvedProductId)
-          .select("_id purchasePrice salePrice price gstRate gstEnabled variants unit mainImage name")
-          .lean();
-        if (session) pdQuery = pdQuery.session(session);
-        const productData = await pdQuery;
+      // 4b. Batch-fetch all products in a single query instead of one
+      // findById per cart line.
+      const uniqueIds = [...new Set(resolvedIds)];
+      let productsQuery = Product.find({ _id: { $in: uniqueIds } })
+        .select("_id purchasePrice salePrice price gstRate gstEnabled variants unit mainImage name")
+        .lean();
+      if (session) productsQuery = productsQuery.session(session);
+      const products = await productsQuery;
+      const productsById = new Map(products.map((p) => [String(p._id), p]));
+
+      const normalizedItems = orderItems.map((item, idx) => {
+        const resolvedProductId = resolvedIds[idx];
+        const productData = productsById.get(resolvedProductId);
 
         if (!productData) {
           throw new Error(`Product not found: ${item?.name || resolvedProductId}`);
@@ -132,7 +145,7 @@ export const executeCoreOrderFulfillment = async ({
         const variantId = item.variantId || null;
         const variant = variantId ? findOrderVariant(productData, variantId) : null;
 
-        normalizedItems.push({
+        return {
           ...item,
           product: String(productData._id),
           name: item.name || productData.name,
@@ -143,8 +156,8 @@ export const executeCoreOrderFulfillment = async ({
           image: item.image || productData.mainImage,
           variantId: variantId || undefined,
           variantSlot: item.variantSlot || formatOrderVariantSlot(variant, productData),
-        });
-      }
+        };
+      });
       orderItems = normalizedItems;
     }
 

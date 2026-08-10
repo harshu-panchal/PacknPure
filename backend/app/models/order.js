@@ -336,6 +336,14 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Delivery",
     },
+    // Set when this order is part of a batched multi-stop delivery run
+    // (see DeliveryTrip). deliveryBoy above is still the source of truth for
+    // "who's delivering this" — tripId only adds nearest-first sequencing.
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryTrip",
+      default: null,
+    },
     cancelledBy: {
       type: String,
       enum: ["customer", "seller", "admin", "system"],
@@ -531,6 +539,8 @@ orderSchema.index({ workflowStatus: 1, deliverySearchExpiresAt: 1 });
 orderSchema.index({ deliveryBoy: 1, workflowStatus: 1 });
 // Seller fallback routing: efficient lookup for timeout scanner
 orderSchema.index({ status: 1, offerExpiresAt: 1 });
+// Batch delivery trips: find ready, unassigned orders in a hub + slot
+orderSchema.index({ hubId: 1, selectedDate: 1, selectedSlot: 1, deliveryBoy: 1 });
 
 // BUGFIX: Pre-save hook to validate customer reference integrity
 orderSchema.pre('save', function(next) {

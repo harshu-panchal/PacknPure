@@ -16,7 +16,7 @@ export const createTicket = async (req, res) => {
             priority,
             messages: [
                 {
-                    sender: req.user.name || "User",
+                    sender: req.authAccount?.name || req.user?.name || "User",
                     senderId: userId,
                     senderType: "User",
                     text: description,
@@ -74,7 +74,7 @@ export const replyToTicket = async (req, res) => {
         if (!ticket) return handleResponse(res, 404, "Ticket not found");
 
         const newMessage = {
-            sender: isAdmin ? "Admin" : (req.user.name || "User"),
+            sender: isAdmin ? "Admin" : (req.authAccount?.name || req.user?.name || "User"),
             senderId: req.user.id,
             senderType: isAdmin ? "Admin" : "User",
             text,
@@ -103,6 +103,25 @@ export const updateTicketStatus = async (req, res) => {
         if (!ticket) return handleResponse(res, 404, "Ticket not found");
 
         return handleResponse(res, 200, `Ticket status updated to ${status}`, ticket);
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+// Admin/User: Get ticket by ID
+export const getTicketById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const ticket = await Ticket.findById(id).populate("userId", "name email");
+        if (!ticket) return handleResponse(res, 404, "Ticket not found");
+
+        // Ensure user owns the ticket or is an admin
+        const ticketUserId = ticket.userId?._id || ticket.userId;
+        if (ticketUserId.toString() !== req.user.id && req.user.role !== "admin") {
+            return handleResponse(res, 403, "Access denied");
+        }
+
+        return handleResponse(res, 200, "Ticket fetched successfully", ticket);
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }

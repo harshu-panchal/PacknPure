@@ -1,5 +1,5 @@
 import { distanceMeters } from "./geoUtils.js";
-import Setting from "../models/setting.js";
+import { getSettings } from "../services/settingsService.js";
 
 /**
  * Calculates delivery fee based on distance between hub and customer.
@@ -8,7 +8,7 @@ import Setting from "../models/setting.js";
  */
 export async function calculateDeliveryFee(customerCoords) {
   try {
-    const settings = await Setting.findOne().lean();
+    const settings = await getSettings();
     
     // Default values if settings not found
     const hubCoords = settings?.hubLocation?.coordinates || [75.8975, 22.7533]; // [lng, lat]

@@ -31,6 +31,7 @@ import {
   getCurrentPositionWithCache,
 } from "../utils/deliveryLastLocation";
 import { resolveOrderItemVariantLabel } from "@/shared/utils/orderItemDisplay";
+import { handlePhoneClick } from "@/shared/utils/phoneUtils";
 import {
   getOrderDeliverySnapshot,
   getDeliverySubline,
@@ -559,6 +560,14 @@ const OrderDetails = () => {
   };
 
   const handleOtpValidationSuccess = (data) => {
+    const nextStop = data?.result?.nextStop;
+    if (nextStop?.orderId) {
+      toast.success(`Delivery confirmed! Next stop: order #${nextStop.orderId}`);
+      setTimeout(() => {
+        navigate(`/delivery/order-details/${encodeURIComponent(nextStop.orderId)}`);
+      }, 1500);
+      return;
+    }
     toast.success("Delivery confirmed!");
     setTimeout(() => {
       navigate("/delivery/dashboard");
@@ -785,7 +794,7 @@ const OrderDetails = () => {
                     variant="outline"
                     size="icon"
                     className="h-9 w-9"
-                    onClick={() => (window.location.href = `tel:${order.seller.phone}`)}
+                    onClick={(e) => handlePhoneClick(e, order.seller.phone)}
                   >
                     <Phone size={18} />
                   </Button>

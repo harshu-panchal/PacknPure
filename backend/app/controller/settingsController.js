@@ -46,9 +46,11 @@ const ALLOWED_KEYS = [
   "deliveryTimeout",
   "pickupOtpTimeout",
   "deliveryOtpExpiry",
+  "deliveryOtpProximityThreshold",
   "slaHours",
   "procurementFailureAction",
-  "enableMultiSellerAllocation"
+  "enableMultiSellerAllocation",
+  "enableReturns"
 ];
 
 /** Joi schema for validating settings update payload */
@@ -97,9 +99,11 @@ const updateSettingsSchema = Joi.object({
   deliveryTimeout: Joi.number().min(1),
   pickupOtpTimeout: Joi.number().min(1),
   deliveryOtpExpiry: Joi.number().min(1),
+  deliveryOtpProximityThreshold: Joi.number().min(0),
   slaHours: Joi.number().min(1),
   procurementFailureAction: Joi.string().valid("auto_cancel", "put_on_hold"),
   enableMultiSellerAllocation: Joi.boolean(),
+  enableReturns: Joi.boolean(),
 }).unknown(false);
 
 /**
@@ -116,7 +120,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry slaHours procurementFailureAction enableMultiSellerAllocation createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns createdAt",
       )
       .lean();
 

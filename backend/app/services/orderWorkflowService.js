@@ -6,7 +6,7 @@ import Notification from "../models/notification.js";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import { createNotification } from "./notificationService.js";
 import Seller from "../models/seller.js";
-import { getDeliveryTimeoutMs, getDeliveryOtpExpiryMs } from "./settingsService.js";
+import { getDeliveryTimeoutMs, getDeliveryOtpExpiryMs, getSettings } from "./settingsService.js";
 import {
   findAndTransitionOrder,
   transitionOrder,
@@ -36,6 +36,7 @@ import {
 import { distanceMeters } from "../utils/geoUtils.js";
 import { applyDeliveredSettlement } from "./orderSettlement.js";
 import { requireCanonicalOrderId } from "../utils/orderLookup.js";
+import { advanceTripOnOrderDelivered } from "./deliveryTripService.js";
 
 const DELIVERY_SEARCH_MAX_ATTEMPTS = () =>
   parseInt(process.env.DELIVERY_SEARCH_MAX_ATTEMPTS || "3", 10);
@@ -176,19 +177,19 @@ export async function scheduleSellerTimeoutJob(orderId) {
       console.warn("[scheduleSellerTimeoutJob] add failed", orderId, err.message);
     });
   const timeoutMs = BULL_ADD_TIMEOUT_MS();
-  try {
-    await Promise.race([
-      addPromise,
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`seller-timeout queue add exceeded ${timeoutMs}ms`)),
-          timeoutMs,
-        ),
+  // Fire-and-forget: don't block the checkout response on Bull/Redis. The
+  // job add still completes (or is logged as failed) in the background.
+  Promise.race([
+    addPromise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`seller-timeout queue add exceeded ${timeoutMs}ms`)),
+        timeoutMs,
       ),
-    ]);
-  } catch (e) {
+    ),
+  ]).catch((e) => {
     console.warn("[scheduleSellerTimeoutJob]", orderId, e.message);
-  }
+  });
 }
 
 export async function removeSellerTimeoutJob(orderId) {
@@ -235,22 +236,22 @@ export async function scheduleDeliveryTimeoutJob(orderId, attempt = 1) {
       );
     });
   const timeoutMs = BULL_ADD_TIMEOUT_MS();
-  try {
-    await Promise.race([
-      addPromise,
-      new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(
-              new Error(`delivery-timeout queue add exceeded ${timeoutMs}ms`),
-            ),
-          timeoutMs,
-        ),
+  // Fire-and-forget: don't block the checkout response on Bull/Redis. The
+  // job add still completes (or is logged as failed) in the background.
+  Promise.race([
+    addPromise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(`delivery-timeout queue add exceeded ${timeoutMs}ms`),
+          ),
+        timeoutMs,
       ),
-    ]);
-  } catch (e) {
+    ),
+  ]).catch((e) => {
     console.warn("[scheduleDeliveryTimeoutJob]", orderId, e.message);
-  }
+  });
 }
 
 export async function removeDeliveryTimeoutJob(orderId, attempt = 1) {
@@ -326,8 +327,7 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
     expiresAt: updated.deliverySearchExpiresAt,
   });
 
-  const Setting = (await import("../models/setting.js")).default;
-  const settings = await Setting.findOne().lean();
+  const settings = await getSettings();
 
   emitOrderStatusUpdate(
     updated.orderId,
@@ -467,8 +467,7 @@ export async function startHubDeliverySearchAtomic(orderId, { session = null } =
   if (session) await assignmentDoc.save({ session });
   else await assignmentDoc.save();
 
-  const Setting = (await import("../models/setting.js")).default;
-  const settings = await Setting.findOne().lean();
+  const settings = await getSettings();
 
   emitOrderStatusUpdate(
     order.orderId,
@@ -1288,5 +1287,9 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   await applyDeliveredSettlement(updated, orderId);
 
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.DELIVERED }, updated.customer);
-  return updated;
+
+  // Batch delivery trip: advance to the next stop (if this order was part of one).
+  const nextStop = await advanceTripOnOrderDelivered(updated);
+
+  return { ...updated.toObject(), nextStop };
 }

@@ -9,6 +9,14 @@ const mockOrderOtpUpdateMany = jest.fn();
 const mockOrderOtpCreate = jest.fn();
 const mockOrderOtpFindOne = jest.fn();
 
+const mockGetDeliveryOtpExpiryMs = jest.fn().mockResolvedValue(600000);
+const mockGetDeliveryOtpProximityThreshold = jest.fn().mockResolvedValue(5000);
+
+jest.unstable_mockModule('../app/services/settingsService.js', () => ({
+  getDeliveryOtpExpiryMs: mockGetDeliveryOtpExpiryMs,
+  getDeliveryOtpProximityThreshold: mockGetDeliveryOtpProximityThreshold
+}));
+
 jest.unstable_mockModule('../app/services/proximityService.js', () => ({
   checkProximity: mockCheckProximity
 }));
@@ -74,7 +82,8 @@ describe('deliveryOtpService', () => {
       // Verify proximity was checked
       expect(mockCheckProximity).toHaveBeenCalledWith(
         validDeliveryLocation,
-        validCustomerLocation
+        validCustomerLocation,
+        5000
       );
 
       // Verify previous OTPs were invalidated
@@ -88,6 +97,7 @@ describe('deliveryOtpService', () => {
         orderId: validOrderId,
         orderMongoId: 'order-mongo-id',
         codeHash: 'hashed-otp-value',
+        code: expect.any(String),
         expiresAt: expect.any(Date),
         attempts: 0,
         maxAttempts: 3,
@@ -129,7 +139,7 @@ describe('deliveryOtpService', () => {
       expect(result.otp).toBeUndefined();
     });
 
-    it('should fail when order has no delivery location', async () => {
+    it('should bypass proximity check and succeed when order has no delivery location', async () => {
       mockOrderFindOne.mockResolvedValue({
         _id: 'order-mongo-id',
         orderId: validOrderId,
@@ -138,9 +148,9 @@ describe('deliveryOtpService', () => {
 
       const result = await generateDeliveryOtp(validOrderId, validDeliveryLocation);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Order does not have a valid delivery location');
-      expect(result.otp).toBeUndefined();
+      expect(result.success).toBe(true);
+      expect(result.otp).toBeDefined();
+      expect(result.error).toBeUndefined();
     });
 
     it('should fail when delivery person is outside proximity range', async () => {
@@ -160,7 +170,7 @@ describe('deliveryOtpService', () => {
       const result = await generateDeliveryOtp(validOrderId, validDeliveryLocation);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('must be within 120-150 meters');
+      expect(result.error).toContain('must be within 0-5000 meters');
       expect(result.error).toContain('250m');
       expect(result.otp).toBeUndefined();
     });

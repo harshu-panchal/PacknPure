@@ -2,6 +2,7 @@ import React from 'react';
 import { Facebook, Twitter, Instagram, Youtube, Mail, MapPin, Phone } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
+import { handlePhoneClick, handleEmailClick } from '@shared/utils/contactUtils';
 import { brandColor, brandFooterGradient, BRAND_COLOR_DARK, brandLogoOnColor } from '../../constants/brandTheme';
 import AppStoreBadges from '../shared/AppStoreBadges';
 
@@ -173,18 +174,34 @@ const Footer = () => {
                                     <Phone size={20} />
                                 </div>
                                 <Phone className="shrink-0 md:hidden" size={16} />
-                                <span className="text-sm font-medium text-white md:text-base">
-                                    {settings?.supportPhone || '—'}
-                                </span>
+                                {settings?.supportPhone ? (
+                                    <a
+                                        href={`tel:${settings.supportPhone}`}
+                                        onClick={(e) => handlePhoneClick(e, settings.supportPhone)}
+                                        className="text-sm font-medium text-white hover:underline md:text-base"
+                                    >
+                                        {settings.supportPhone}
+                                    </a>
+                                ) : (
+                                    <span className="text-sm font-medium text-white md:text-base">—</span>
+                                )}
                             </li>
                             <li className="group flex items-center gap-3 md:gap-4">
                                 <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white md:flex">
                                     <Mail size={20} />
                                 </div>
                                 <Mail className="shrink-0 md:hidden" size={16} />
-                                <span className="text-sm font-medium text-white md:text-base">
-                                    {settings?.supportEmail || '—'}
-                                </span>
+                                {settings?.supportEmail ? (
+                                    <a
+                                        href={`mailto:${settings.supportEmail}`}
+                                        onClick={(e) => handleEmailClick(e, settings.supportEmail)}
+                                        className="text-sm font-medium text-white hover:underline md:text-base"
+                                    >
+                                        {settings.supportEmail}
+                                    </a>
+                                ) : (
+                                    <span className="text-sm font-medium text-white md:text-base">—</span>
+                                )}
                             </li>
                         </ul>
                     </div>

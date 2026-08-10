@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useSettings } from "@core/context/SettingsContext";
 import InvoiceModal from "../components/order/InvoiceModal";
 import HelpModal from "../components/order/HelpModal";
 import LiveTrackingMap from "../components/order/LiveTrackingMap";
@@ -184,6 +185,7 @@ function OrderDetailHeader({ order, statusLabel, statusPill }) {
 
 const OrderDetailPage = () => {
   const { orderId } = useParams();
+  const { settings } = useSettings();
   const [showInvoice, setShowInvoice] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [order, setOrder] = useState(null);
@@ -546,6 +548,7 @@ const OrderDetailPage = () => {
   }
 
   const canRequestReturn = () => {
+    if (settings?.enableReturns === false) return false;
     if (!order) return false;
     if (getLegacyStatusFromOrder(order) !== "delivered") return false;
     if (
@@ -1015,6 +1018,14 @@ const OrderDetailPage = () => {
                   : formatInr(order.pricing?.deliveryFee)}
               </span>
             </div>
+            {Number(order.pricing?.platformFee) > 0 && (
+              <div className="flex justify-between text-slate-600">
+                <span>Platform fee</span>
+                <span className="font-semibold text-slate-900">
+                  {formatInr(order.pricing?.platformFee)}
+                </span>
+              </div>
+            )}
             {Number(order.pricing?.gst) > 0 && (
               <div className="flex justify-between text-slate-600">
                 <span>GST</span>
@@ -1025,6 +1036,12 @@ const OrderDetailPage = () => {
               <div className="flex justify-between text-slate-600">
                 <span>Tip</span>
                 <span className="font-semibold text-slate-900">{formatInr(order.pricing?.tip)}</span>
+              </div>
+            )}
+            {Number(order.pricing?.discount) > 0 && (
+              <div className="flex justify-between text-emerald-600">
+                <span>Discount</span>
+                <span className="font-semibold">-{formatInr(order.pricing?.discount)}</span>
               </div>
             )}
             <div className="flex items-center justify-between border-t border-slate-100 pt-3">

@@ -26,11 +26,12 @@ const WishlistProductRow = ({ product }) => {
   const { openProduct } = useProductDetail();
 
   const productId = product.id || product._id;
+  const targetVariantId = product.selectedVariantId || product.variants?.[0]?._id || product.variants?.[0]?.id || "";
   const cartItem = cart.find(
     (item) =>
       String(item.productId || item.id || item._id) === String(productId) &&
       String(item.variantId || item.selectedVariantId || '') ===
-        String(product.selectedVariantId || ''),
+        String(targetVariantId),
   );
   const quantity = cartItem?.quantity || 0;
 
@@ -59,7 +60,7 @@ const WishlistProductRow = ({ product }) => {
       return;
     }
     const singleVariant = variantCount === 1 ? product.variants[0] : null;
-    const variantId = singleVariant?._id || singleVariant?.id;
+    const variantId = singleVariant?._id || singleVariant?.id || targetVariantId;
     addToCart({
       ...product,
       ...(variantId
@@ -165,9 +166,9 @@ const WishlistProductRow = ({ product }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (quantity <= 1) {
-                      removeFromCart(productId, product.selectedVariantId);
+                      removeFromCart(productId, targetVariantId);
                     } else {
-                      updateQuantity(productId, -1, product.selectedVariantId);
+                      updateQuantity(productId, -1, targetVariantId);
                     }
                   }}
                   className="p-1.5"
@@ -182,7 +183,7 @@ const WishlistProductRow = ({ product }) => {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    updateQuantity(productId, 1, product.selectedVariantId);
+                    updateQuantity(productId, 1, targetVariantId);
                   }}
                   className="p-1.5"
                   style={{ color: ACCENT }}

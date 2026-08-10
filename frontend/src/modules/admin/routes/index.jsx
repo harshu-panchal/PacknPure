@@ -104,6 +104,7 @@ const OffersManagement = React.lazy(
   () => import("../pages/OffersManagement"),
 );
 const AdminSettings = React.lazy(() => import("../pages/AdminSettings"));
+const ReturnControl = React.lazy(() => import("../pages/ReturnControl"));
 
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const HubSettings = React.lazy(() => import("../pages/HubSettings"));
@@ -298,6 +299,12 @@ const navItems = [
     color: "red",
   },
   {
+    label: "Return Control",
+    path: "/admin/return-control",
+    icon: RotateCcw,
+    color: "rose",
+  },
+  {
     label: "Hub Settings",
     path: "/admin/hub-settings",
     icon: MapPin,
@@ -368,6 +375,7 @@ const AdminRoutes = () => {
         <Route path="/orders/:status" element={<OrdersList />} />
         <Route path="/orders/view/:orderId" element={<OrderDetail />} />
         <Route path="/billing" element={<BillingCharges />} />
+        <Route path="/return-control" element={<ReturnControl />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/hub-settings" element={<HubSettings />} />

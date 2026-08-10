@@ -25,7 +25,10 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
       pricing.itemTotal ??
       items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || item.qty || 0), 0);
     const tax = pricing.gst ?? pricing.tax ?? 0;
-    const grandTotal = pricing.total ?? pricing.grandTotal ?? subtotal + tax;
+    const deliveryFee = pricing.deliveryFee ?? 0;
+    const platformFee = pricing.platformFee ?? 0;
+    const discount = pricing.discount ?? 0;
+    const grandTotal = pricing.total ?? pricing.grandTotal ?? (subtotal + tax + deliveryFee + platformFee - discount);
 
     const handlePrint = () => {
         window.print();
@@ -107,10 +110,30 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
                                         <span>Subtotal</span>
                                         <span>{formatInr(subtotal)}</span>
                                     </div>
-                                    <div className="flex justify-between text-sm text-slate-500">
-                                        <span>Tax</span>
-                                        <span>{formatInr(tax)}</span>
-                                    </div>
+                                    {Number(deliveryFee) > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>Delivery Fee</span>
+                                            <span>{formatInr(deliveryFee)}</span>
+                                        </div>
+                                    )}
+                                    {Number(platformFee) > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>Platform Fee</span>
+                                            <span>{formatInr(platformFee)}</span>
+                                        </div>
+                                    )}
+                                    {Number(tax) > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>Tax</span>
+                                            <span>{formatInr(tax)}</span>
+                                        </div>
+                                    )}
+                                    {Number(discount) > 0 && (
+                                        <div className="flex justify-between text-sm text-emerald-600">
+                                            <span>Discount</span>
+                                            <span>-{formatInr(discount)}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between text-base font-black text-slate-800 pt-2 border-t border-slate-100">
                                         <span>Total Paid</span>
                                         <span>{formatInr(grandTotal)}</span>

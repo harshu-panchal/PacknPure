@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { motion, useAnimation, useMotionValue, useTransform } from 'framer-motion';
 import { ChevronRight, Check, ChevronsRight } from 'lucide-react';
 import { cn } from "@/lib/utils";
@@ -13,8 +13,29 @@ const SlideToPay = ({
     const [isCompleted, setIsCompleted] = useState(false);
     const controls = useAnimation();
     const x = useMotionValue(0);
+    const containerRef = useRef(null);
     const [containerWidth, setContainerWidth] = useState(0);
     const [sliderWidth, setSliderWidth] = useState(56); // Width of the sliding circle
+
+    // Measure width only on mount/resize instead of on every render (avoids
+    // a layout reflow + setState loop that was firing on every parent re-render)
+    useLayoutEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+
+        const updateWidth = (width) => {
+            setContainerWidth((prev) => (prev === width ? prev : width));
+        };
+
+        updateWidth(el.offsetWidth);
+
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(([entry]) => {
+            updateWidth(entry.contentRect.width);
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     // Maximum drag distance
     const maxDrag = Math.max(0, containerWidth - sliderWidth - 8); // 8px padding
@@ -70,7 +91,7 @@ const SlideToPay = ({
                     ? "bg-slate-200 shadow-none border-slate-300 opacity-60 grayscale cursor-not-allowed" 
                     : "bg-[#E23744]"
             )}
-            ref={(el) => el && setContainerWidth(el.offsetWidth)}
+            ref={containerRef}
         >
             {/* Progress Fill */}
             {!disabled && (
@@ -176,4 +197,4 @@ const SlideToPay = ({
     );
 };
 
-export default SlideToPay;
+export default React.memo(SlideToPay);

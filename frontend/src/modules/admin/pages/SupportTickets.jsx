@@ -38,14 +38,21 @@ const SupportTickets = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageSize]);
 
-    const fetchTickets = async (requestedPage = 1) => {
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchTickets(page, true);
+        }, 4000);
+        return () => clearInterval(interval);
+    }, [page, pageSize, selectedTicket]);
+
+    const fetchTickets = async (requestedPage = 1, silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const res = await adminApi.getTickets({ page: requestedPage, limit: pageSize });
             if (res.data.success) {
                 const payload = res.data.result || {};
                 const data = Array.isArray(payload.items) ? payload.items : (res.data.results || []);
-                setTickets(data.map(t => ({
+                const mappedData = data.map(t => ({
                     ...t,
                     id: t._id,
                     ticketCode: t._id.slice(-6).toUpperCase(),
@@ -56,15 +63,27 @@ const SupportTickets = () => {
                         id: m._id || m.id || `msg-${t._id}-${i}`,
                         time: new Date(m.createdAt || Date.now()).toLocaleTimeString()
                     }))
-                })));
+                }));
+                setTickets(mappedData);
                 setTotal(typeof payload.total === 'number' ? payload.total : data.length);
                 setPage(typeof payload.page === 'number' ? payload.page : requestedPage);
+                
+                // Silent update of selected ticket if it's currently open
+                if (selectedTicket) {
+                    const freshSelected = mappedData.find(t => t.id === selectedTicket.id);
+                    if (freshSelected) {
+                        // Check if messages count or ticket status has changed before setting state
+                        if (freshSelected.messages.length !== selectedTicket.messages.length || freshSelected.status !== selectedTicket.status) {
+                            setSelectedTicket(freshSelected);
+                        }
+                    }
+                }
             }
         } catch (error) {
             console.error("Fetch Tickets Error:", error);
-            showToast("Failed to load tickets", "error");
+            if (!silent) showToast("Failed to load tickets", "error");
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 

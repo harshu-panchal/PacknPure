@@ -96,6 +96,11 @@ export const getPickupOtpTimeoutMs = async () =>
 export const getDeliveryOtpExpiryMs = async () =>
   (await getDeliveryOtpExpiryMinutes()) * 60 * 1000;
 
+export const getDeliveryOtpProximityThreshold = async () => {
+  const settings = await getSettings();
+  return Math.max(0, Number(settings?.deliveryOtpProximityThreshold ?? 5000));
+};
+
 export const getReturnConfirmationTimeoutMs = async () =>
   (await getReturnConfirmationTimeoutMinutes()) * 60 * 1000;
 

@@ -152,6 +152,10 @@ const settingSchema = new mongoose.Schema(
             type: Number,
             default: 5, // minutes
         },
+        deliveryOtpProximityThreshold: {
+            type: Number,
+            default: 5000, // meters
+        },
         slaHours: {
             type: Number,
             default: 3,
@@ -176,6 +180,10 @@ const settingSchema = new mongoose.Schema(
         enableMultiSellerAllocation: {
             type: Boolean,
             default: false,
+        },
+        enableReturns: {
+            type: Boolean,
+            default: true,
         },
         // How long to wait (minutes) after the first PR rejection before firing the grouped retry batch.
         // Gives time for all concurrent rejections in the same wave to settle before re-running allocation.

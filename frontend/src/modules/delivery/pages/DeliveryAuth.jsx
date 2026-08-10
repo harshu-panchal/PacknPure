@@ -254,7 +254,7 @@ const DeliveryAuth = () => {
         if (!signupVehicleNumber.trim()) { toast.error("Please enter a Vehicle Number"); return; }
         if (!signupDLNumber.trim()) { toast.error("Please enter a Driving License Number"); return; }
         if (!PATTERNS.aadhar.test(signupAadharNumber)) { toast.error("Please enter a valid 12-digit Aadhar Number"); return; }
-        if (!PATTERNS.pan.test(signupPanNumber)) { toast.error("Please enter a valid PAN Number"); return; }
+        if (signupPanNumber.trim() && !PATTERNS.pan.test(signupPanNumber)) { toast.error("Please enter a valid PAN Number"); return; }
         if (!signupAccountHolder.trim()) { toast.error("Please enter Account Holder Name"); return; }
         if (!PATTERNS.account.test(signupAccountNumber)) { toast.error("Please enter a valid Bank Account Number"); return; }
         if (!PATTERNS.ifsc.test(signupIfsc)) { toast.error("Please enter a valid IFSC Code"); return; }
@@ -656,7 +656,7 @@ const DeliveryAuth = () => {
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">PAN Card Number</label>
+                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">PAN Card Number (Optional)</label>
                             <input
                               type="text"
                               value={signupPanNumber}
@@ -709,7 +709,7 @@ const DeliveryAuth = () => {
                                   toast.error("Please enter a valid 12-digit Aadhar Number");
                                   return;
                                 }
-                                if (!PATTERNS.pan.test(signupPanNumber)) {
+                                if (signupPanNumber.trim() && !PATTERNS.pan.test(signupPanNumber)) {
                                   toast.error("Please enter a valid PAN Number");
                                   return;
                                 }
@@ -745,7 +745,7 @@ const DeliveryAuth = () => {
                           <div className="space-y-3">
                             {[
                               { label: "Aadhar Card (Front/Back)", state: aadharFile, setter: setAadharFile, id: "aadhar" },
-                              { label: "PAN Card", state: panFile, setter: setPanFile, id: "pan" },
+                              { label: "PAN Card (Optional)", state: panFile, setter: setPanFile, id: "pan" },
                               { label: "Driving License", state: dlFile, setter: setDlFile, id: "dl" },
                             ].map((doc) => (
                               <div key={doc.id} className="relative">
@@ -917,7 +917,7 @@ const DeliveryAuth = () => {
                             </button>
                             <button
                               onClick={handleSendOtp}
-                              disabled={loading || dlVerified !== true || panVerified !== true || aadharVerified !== true}
+                              disabled={loading || dlVerified !== true || (signupPanNumber.trim() ? panVerified !== true : false) || aadharVerified !== true}
                               className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {loading ? (

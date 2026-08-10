@@ -30,7 +30,6 @@ const Header = ({ showMobile = true, showDesktop = true }) => {
                         deliveryLabel={STATIC_DELIVERY_LABEL}
                         outlet={STATIC_OUTLET}
                         onLocationClick={() => {
-                            refreshLocation();
                             setIsLocationOpen(true);
                         }}
                     />
@@ -47,7 +46,6 @@ const Header = ({ showMobile = true, showDesktop = true }) => {
                                 data-lenis-prevent
                                 data-lenis-prevent-touch
                                 onClick={() => {
-                                    refreshLocation();
                                     setIsLocationOpen(true);
                                 }}
                                 className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform border-0 bg-transparent p-0 text-left"

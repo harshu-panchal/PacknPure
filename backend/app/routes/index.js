@@ -30,6 +30,7 @@ import posRoute from "./posRoutes.js";
 import deliveryModeRoute from "./deliveryModeRoutes.js";
 import barcodeRoute from "./barcodeRoutes.js";
 import stockAuditRoute from "./stockAuditRoutes.js";
+import deliveryTripRoute from "./deliveryTripRoutes.js";
 
 import express from "express";
 
@@ -52,6 +53,7 @@ const setupRoutes = (app) => {
     router.use("/admin/hub-inventory", hubInventoryRoute);
     router.use("/admin/purchase-requests", purchaseRequestRoute);
     router.use("/admin/pickup-partners", pickupPartnerRoute);
+    router.use("/admin/delivery-trips", deliveryTripRoute);
     router.use("/pickup-partner", pickupPartnerRoute);
     router.use("/admin/reports", reportRoute);
     router.use("/pickup", pickupRoute);

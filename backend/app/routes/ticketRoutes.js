@@ -4,7 +4,8 @@ import {
     getMyTickets,
     getAllTickets,
     replyToTicket,
-    updateTicketStatus
+    updateTicketStatus,
+    getTicketById
 } from "../controller/ticketController.js";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 
@@ -13,6 +14,7 @@ const router = express.Router();
 // Mixed/Shared routes (Need login)
 router.post("/create", verifyToken, createTicket);
 router.get("/my-tickets", verifyToken, getMyTickets);
+router.get("/:id", verifyToken, getTicketById);
 router.post("/reply/:id", verifyToken, replyToTicket);
 
 // Admin only routes

@@ -9,6 +9,8 @@ import {
   XCircle,
   IndianRupee,
   AlertCircle,
+  Route,
+  Store,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,6 +20,7 @@ import Card from "@/shared/components/ui/Card";
 
 import { useAuth } from "@/core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
+import { getCurrentPositionWithCache } from "../utils/deliveryLastLocation";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -26,6 +29,8 @@ const Dashboard = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [availableOrders, setAvailableOrders] = useState([]);
   const [activeDeliveries, setActiveDeliveries] = useState([]);
+  const [activeTrip, setActiveTrip] = useState(null);
+  const [reachingHub, setReachingHub] = useState(false);
   const [earnings, setEarnings] = useState({
     today: 0,
     deliveries: 0,
@@ -79,6 +84,48 @@ const Dashboard = () => {
     }
   };
 
+  const fetchActiveTrip = async () => {
+    try {
+      const response = await deliveryApi.getActiveTrip();
+      if (response.data?.success) {
+        setActiveTrip(response.data.result?.trip || null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch active trip:", error);
+    }
+  };
+
+  // One tap at the hub collects every stop in the trip together — each order
+  // moves straight to "out for delivery" and its customer is notified, same
+  // as the per-order flow but done once for the whole batch.
+  const handleReachedHub = () => {
+    if (!activeTrip?._id || reachingHub) return;
+    setReachingHub(true);
+    getCurrentPositionWithCache(
+      async ({ lat, lng }) => {
+        try {
+          const res = await deliveryApi.markTripHubReached(activeTrip._id, { lat, lng });
+          const { trip, partial } = res.data?.result || {};
+          if (trip) setActiveTrip(trip);
+          if (partial) {
+            toast.error("Some orders couldn't be collected — tap Reached Hub again to retry them");
+          } else {
+            toast.success("All orders collected — start with stop 1");
+          }
+        } catch (error) {
+          toast.error(error?.response?.data?.message || "Failed to mark hub as reached");
+        } finally {
+          setReachingHub(false);
+        }
+      },
+      () => {
+        toast.error("Location unavailable. Enable GPS/location permission and try again.");
+        setReachingHub(false);
+      },
+      { maxCacheAgeMs: 60 * 60 * 1000 },
+    );
+  };
+
   const fetchNotifications = async () => {
     try {
       const response = await deliveryApi.getNotifications();
@@ -96,12 +143,14 @@ const Dashboard = () => {
     if (user?.isVerified) {
       fetchAvailableOrders();
       fetchActiveDeliveries();
+      fetchActiveTrip();
     }
     const interval = setInterval(() => {
       fetchNotifications();
       if (user?.isVerified) {
         fetchAvailableOrders();
         fetchActiveDeliveries();
+        fetchActiveTrip();
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -296,6 +345,127 @@ const Dashboard = () => {
             </div>
           </div>
         </Card>
+
+        {/* Current Trip — batched same-slot orders, nearest-first stops */}
+        <AnimatePresence>
+          {activeTrip && (() => {
+            const hubReached = !!activeTrip.hubReachedAt;
+            return (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl p-5 border-2 border-indigo-200 dark:border-indigo-900/50 shadow-md"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-xl">
+                  <Route size={18} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                    Current Trip — {activeTrip.stops?.length || 0} stops
+                  </h3>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {hubReached
+                      ? "Delivering nearest-first."
+                      : "Collect everything from the hub in one go, then deliver nearest-first."}
+                  </p>
+                </div>
+              </div>
+
+              {!hubReached && (
+                <button
+                  type="button"
+                  onClick={handleReachedHub}
+                  disabled={reachingHub}
+                  className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-wider py-3.5 hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+                >
+                  {reachingHub ? (
+                    <>
+                      <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Marking Collected…
+                    </>
+                  ) : (
+                    <>
+                      <Store size={14} />
+                      Reached Hub — Collect All {activeTrip.stops?.length || 0} Orders
+                    </>
+                  )}
+                </button>
+              )}
+
+              <div className="space-y-2">
+                {(activeTrip.stops || [])
+                  .slice()
+                  .sort((a, b) => a.sequence - b.sequence)
+                  .map((stop) => {
+                    const isDone = stop.status === "delivered";
+                    // Nearest-first is only a suggestion once the hub is collected —
+                    // any remaining stop is tappable, the rider picks the order.
+                    const isSuggested = stop.sequence === activeTrip.currentStopSequence && !isDone;
+                    const isSelectable = hubReached && !isDone;
+                    const orderCode = stop.order?.orderId || stop.orderCode;
+                    return (
+                      <button
+                        key={orderCode}
+                        type="button"
+                        disabled={!isSelectable}
+                        onClick={() =>
+                          isSelectable &&
+                          navigate(`/delivery/order-details/${encodeURIComponent(orderCode)}`)
+                        }
+                        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                          isDone
+                            ? "bg-emerald-50 dark:bg-emerald-900/10 opacity-70"
+                            : isSuggested
+                              ? "bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-800 cursor-pointer"
+                              : isSelectable
+                                ? "bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/40"
+                                : "bg-gray-50 dark:bg-gray-900/30 opacity-60"
+                        }`}
+                      >
+                        <span
+                          className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-black ${
+                            isDone
+                              ? "bg-emerald-500 text-white"
+                              : isSuggested
+                                ? "bg-indigo-600 text-white"
+                                : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                          }`}
+                        >
+                          {isDone ? <CheckCircle size={13} /> : stop.sequence}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold text-gray-900 dark:text-white truncate">
+                            #{orderCode} — {stop.order?.customer?.name || "Customer"}
+                          </span>
+                          <span className="block text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                            {stop.order?.address?.address || stop.order?.address?.city || ""}
+                          </span>
+                        </span>
+                        {isDone ? (
+                          <span className="shrink-0 text-[10px] font-black text-emerald-600 uppercase">
+                            Delivered
+                          </span>
+                        ) : isSuggested ? (
+                          <span className="shrink-0 text-[10px] font-black text-indigo-600 uppercase">
+                            Nearest • Go
+                          </span>
+                        ) : (
+                          isSelectable && (
+                            <span className="shrink-0 text-[10px] font-black text-gray-400 uppercase">
+                              Go
+                            </span>
+                          )
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+            </motion.div>
+            );
+          })()}
+        </AnimatePresence>
 
         {/* Active Deliveries Banner */}
         <AnimatePresence>

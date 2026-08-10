@@ -104,8 +104,11 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
               mainImage: it.productId?.mainImage || it.mainImage || "",
               variantId: it.variantId || null,
               requestedQty: it.requestedQty || it.shortageQty || 1,
-              unitCost: it.vendorUnitCost || it.finalSupplyPrice || 0,
-              totalCost: it.totalProcurementCost || (it.vendorUnitCost || 0) * (it.requestedQty || 1),
+              unitCost: it.unitCost || it.vendorUnitCost || it.finalSupplyPrice || 0,
+              totalCost:
+                it.totalCost ||
+                it.totalProcurementCost ||
+                (it.unitCost || it.vendorUnitCost || 0) * (it.requestedQty || 1),
             }));
             const mappedPayload = {
               orderId: firstPR.orderId?.orderId || firstPR.orderId || "",

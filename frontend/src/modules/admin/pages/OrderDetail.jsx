@@ -280,10 +280,24 @@ const OrderDetail = () => {
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Fee</span>
                                 <span className="text-sm font-bold text-emerald-600">₹{order.pricing?.deliveryFee || 0}</span>
                             </div>
-                            <div className="flex items-center justify-between w-full max-w-[240px]">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tax (GST)</span>
-                                <span className="text-sm font-bold text-slate-600">₹{order.pricing?.gst || 0}</span>
-                            </div>
+                            {Number(order.pricing?.platformFee) > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Platform Fee</span>
+                                    <span className="text-sm font-bold text-slate-600">₹{order.pricing?.platformFee}</span>
+                                </div>
+                            )}
+                            {Number(order.pricing?.gst) > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tax (GST)</span>
+                                    <span className="text-sm font-bold text-slate-600">₹{order.pricing?.gst || 0}</span>
+                                </div>
+                            )}
+                            {Number(order.pricing?.discount) > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Discount</span>
+                                    <span className="text-sm font-bold text-emerald-600">-₹{order.pricing?.discount || 0}</span>
+                                </div>
+                            )}
                             <div className="h-px w-full max-w-[240px] bg-slate-200 my-2" />
                             <div className="flex items-center justify-between w-full max-w-[240px]">
                                 <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Total Payable</span>

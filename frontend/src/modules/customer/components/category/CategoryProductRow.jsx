@@ -18,11 +18,12 @@ const CategoryProductRow = ({ product }) => {
   const { showToast } = useToast();
   const { openProduct } = useProductDetail();
   const productId = product.id || product._id;
+  const targetVariantId = product.selectedVariantId || product.variants?.[0]?._id || product.variants?.[0]?.id || "";
   const cartItem = cart.find(
     (item) =>
       String(item.productId || item.id || item._id) === String(productId) &&
       String(item.variantId || item.selectedVariantId || "") ===
-        String(product.selectedVariantId || ""),
+        String(targetVariantId),
   );
   const quantity = cartItem?.quantity || 0;
   const wishlisted = isInWishlist(productId);
@@ -54,7 +55,10 @@ const CategoryProductRow = ({ product }) => {
       handleOpenDetail();
       return;
     }
-    addToCart(product);
+    addToCart({
+      ...product,
+      selectedVariantId: targetVariantId,
+    });
     showToast(`${product.name} added to cart`, 'success');
   };
 
@@ -184,9 +188,9 @@ const CategoryProductRow = ({ product }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (quantity <= 1)
-                      removeFromCart(productId, product.selectedVariantId);
+                      removeFromCart(productId, targetVariantId);
                     else
-                      updateQuantity(productId, -1, product.selectedVariantId);
+                      updateQuantity(productId, -1, targetVariantId);
                   }}
                   className="p-1.5"
                   style={{ color: BLINKIT_RED }}
@@ -200,9 +204,9 @@ const CategoryProductRow = ({ product }) => {
                   onChange={(e) => {
                     const val = e.target.value === '' ? '' : parseInt(e.target.value, 10);
                     if (val === '') {
-                      updateQuantity(productId, 0 - quantity, product.selectedVariantId || undefined);
+                      updateQuantity(productId, 0 - quantity, targetVariantId || undefined);
                     } else if (!isNaN(val)) {
-                      updateQuantity(productId, val - quantity, product.selectedVariantId || undefined);
+                      updateQuantity(productId, val - quantity, targetVariantId || undefined);
                     }
                   }}
                   className="w-8 bg-transparent text-center text-[13px] font-bold border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
@@ -212,7 +216,7 @@ const CategoryProductRow = ({ product }) => {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    updateQuantity(productId, 1, product.selectedVariantId);
+                    updateQuantity(productId, 1, targetVariantId);
                   }}
                   className="p-1.5"
                   style={{ color: BLINKIT_RED }}

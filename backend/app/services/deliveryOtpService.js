@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import Order from '../models/order.js';
 import OrderOtp from '../models/orderOtp.js';
 import { checkProximity } from './proximityService.js';
-import { getDeliveryOtpExpiryMs } from './settingsService.js';
+import { getDeliveryOtpExpiryMs, getDeliveryOtpProximityThreshold } from './settingsService.js';
 
 /**
  * Generate OTP for delivery completion (proximity-validated)
@@ -57,9 +57,9 @@ export async function generateDeliveryOtp(orderId, deliveryLocation) {
 
       // Validate proximity
       try {
-        const proximityCheck = checkProximity(deliveryLocation, customerLocation);
+        const threshold = await getDeliveryOtpProximityThreshold();
+        const proximityCheck = checkProximity(deliveryLocation, customerLocation, threshold);
         if (!proximityCheck.inRange) {
-          const threshold = parseInt(process.env.PROXIMITY_THRESHOLD_METERS || "5000", 10);
           return {
             success: false,
             error: `Delivery person must be within 0-${threshold} meters of delivery location. Current distance: ${Math.round(proximityCheck.distance)}m`

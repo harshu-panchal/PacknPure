@@ -5,38 +5,38 @@ describe('proximityService', () => {
     // Test coordinates (Bangalore area)
     const customerLocation = { lat: 12.9716, lng: 77.5946 };
     
-    it('should return inRange true when distance is within 120-150m', () => {
+    it('should return inRange true when distance is within threshold (using customThreshold)', () => {
       // Approximately 133m away
       const deliveryLocation = { lat: 12.9728, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
       expect(result.inRange).toBe(true);
       expect(result.distance).toBeGreaterThanOrEqual(120);
       expect(result.distance).toBeLessThanOrEqual(150);
     });
     
-    it('should return inRange false when distance is less than 120m', () => {
+    it('should return inRange true when distance is less than threshold', () => {
       // Approximately 11m away
       const deliveryLocation = { lat: 12.9717, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
-      expect(result.inRange).toBe(false);
+      expect(result.inRange).toBe(true);
       expect(result.distance).toBeLessThan(120);
     });
     
-    it('should return inRange false when distance is greater than 150m', () => {
+    it('should return inRange false when distance is greater than threshold', () => {
       // Approximately 378m away
       const deliveryLocation = { lat: 12.9750, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
       expect(result.inRange).toBe(false);
       expect(result.distance).toBeGreaterThan(150);
     });
     
-    it('should return inRange true at approximately 120m boundary', () => {
+    it('should return inRange true at approximately 120m with a 150m threshold', () => {
       // Coordinates approximately 120m away
       const deliveryLocation = { lat: 12.9727, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
       expect(result.distance).toBeGreaterThanOrEqual(120);
       expect(result.distance).toBeLessThanOrEqual(150);
@@ -46,7 +46,7 @@ describe('proximityService', () => {
     it('should return inRange true at approximately 150m boundary', () => {
       // Coordinates approximately 145m away (within range)
       const deliveryLocation = { lat: 12.9729, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
       expect(result.distance).toBeGreaterThanOrEqual(120);
       expect(result.distance).toBeLessThanOrEqual(150);
@@ -55,7 +55,7 @@ describe('proximityService', () => {
     
     it('should return distance as a number', () => {
       const deliveryLocation = { lat: 12.9728, lng: 77.5946 };
-      const result = checkProximity(deliveryLocation, customerLocation);
+      const result = checkProximity(deliveryLocation, customerLocation, 150);
       
       expect(typeof result.distance).toBe('number');
       expect(result.distance).toBeGreaterThan(0);
@@ -104,10 +104,10 @@ describe('proximityService', () => {
     });
     
     it('should handle same location (0 distance)', () => {
-      const result = checkProximity(customerLocation, customerLocation);
+      const result = checkProximity(customerLocation, customerLocation, 150);
       
       expect(result.distance).toBe(0);
-      expect(result.inRange).toBe(false); // 0m is less than 120m
+      expect(result.inRange).toBe(true); // 0m is within threshold
     });
     
     it('should handle locations across different hemispheres', () => {

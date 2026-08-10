@@ -49,6 +49,7 @@ const HubSettings = () => {
     procurementFailureAction: "auto_cancel",
     enableMultiSellerAllocation: false,
     address: "Indore Main Hub, Industrial Area",
+    deliveryOtpProximityThreshold: 5000,
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -85,6 +86,7 @@ const HubSettings = () => {
           procurementFailureAction: data.result.procurementFailureAction || "auto_cancel",
           enableMultiSellerAllocation: data.result.enableMultiSellerAllocation ?? false,
           address: data.result.address || "Indore Main Hub, Industrial Area",
+          deliveryOtpProximityThreshold: data.result.deliveryOtpProximityThreshold ?? 5000,
         });
       }
     } catch (error) {
@@ -478,6 +480,28 @@ const HubSettings = () => {
                   <p className="text-[10px] text-slate-400 font-medium italic">
                     Radius beyond which service is unavailable.
                   </p>
+                  
+                  <div className="h-px bg-slate-100 my-4" />
+                  
+                  <div className="space-y-2">
+                     <div className="flex items-center justify-between">
+                       <span className="text-xs font-bold text-slate-500">Delivery OTP Proximity Limit</span>
+                       <span className="text-sm font-black text-primary">{settings.deliveryOtpProximityThreshold ?? 5000} m</span>
+                     </div>
+                     <input
+                      type="number"
+                      min="50"
+                      max="100000"
+                      step="50"
+                      value={settings.deliveryOtpProximityThreshold ?? 5000}
+                      onChange={(e) => setSettings({ ...settings, deliveryOtpProximityThreshold: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      placeholder="e.g. 5000"
+                    />
+                    <p className="text-[10px] text-slate-400 font-medium italic">
+                      Maximum distance (in meters) the rider can be from the customer's delivery location to generate the OTP.
+                    </p>
+                  </div>
                 </div>
              </Card>
 

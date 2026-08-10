@@ -128,14 +128,15 @@ const CheckoutPage = () => {
   const [coupons, setCoupons] = useState([]);
   const [autoPromos, setAutoPromos] = useState([]); // Stores automatic promos for background evaluation
   const postOrderNavigateRef = useRef(null);
+  const hasCustomLocation = currentLocation?.name && currentLocation.name !== "Please select your location";
   const [currentAddress, setCurrentAddress] = useState({
-    type: "Home",
+    type: hasCustomLocation ? "Current Location" : "Home",
     name: user?.name || "",
-    address: "",
+    address: hasCustomLocation ? currentLocation.name : "",
     landmark: "",
-    city: "",
+    city: hasCustomLocation ? [currentLocation.city, currentLocation.state, currentLocation.pincode].filter(Boolean).join(", ") : "",
     phone: user?.phone || "",
-    location: null,
+    location: hasCustomLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null,
   });
   const [deliveryFee, setDeliveryFee] = useState(20); // actual fee shown (0 when free)
   const [rawDeliveryFee, setRawDeliveryFee] = useState(20); // distance-based fee before threshold
@@ -183,21 +184,34 @@ const CheckoutPage = () => {
     }
   }, [currentAddress.location, currentLocation]);
 
-  // Sync currentAddress with the first saved address when they load
+  // Sync currentAddress with active currentLocation or first saved address when they load
   useEffect(() => {
-    if (locationSavedAddresses.length > 0 && !currentAddress.address) {
-      const addr = locationSavedAddresses[0];
-      setCurrentAddress({
-        type: addr.label || "Home",
-        name: user?.name || addr.name || "Customer",
-        address: addr.address || "",
-        landmark: addr.landmark || "",
-        city: addr.city || "",
-        phone: user?.phone || addr.phone || "",
-        location: addr.location || null,
-      });
+    if (!currentAddress.address) {
+      const hasCustomLoc = currentLocation?.name && currentLocation.name !== "Please select your location";
+      if (hasCustomLoc) {
+        setCurrentAddress({
+          type: "Current Location",
+          name: user?.name || "Customer",
+          address: currentLocation.name,
+          landmark: "",
+          city: [currentLocation.city, currentLocation.state, currentLocation.pincode].filter(Boolean).join(", "),
+          phone: user?.phone || "",
+          location: { lat: currentLocation.latitude, lng: currentLocation.longitude },
+        });
+      } else if (locationSavedAddresses.length > 0) {
+        const addr = locationSavedAddresses[0];
+        setCurrentAddress({
+          type: addr.label || "Home",
+          name: user?.name || addr.name || "Customer",
+          address: addr.address || "",
+          landmark: addr.landmark || "",
+          city: addr.city || "",
+          phone: user?.phone || addr.phone || "",
+          location: addr.location || null,
+        });
+      }
     }
-  }, [locationSavedAddresses, user]);
+  }, [locationSavedAddresses, currentLocation, user]);
 
   // Auto-refresh real GPS on mount for accurate distance calculation
   // Works silently if permission already granted; user can also tap the refresh button
@@ -454,28 +468,35 @@ const CheckoutPage = () => {
         return; // Don't run automatic logic if a manual coupon is active
       }
 
-      // Evaluate best automatic coupon
+      // Evaluate best automatic coupon (validated in parallel instead of
+      // one-at-a-time, so the page isn't re-rendered N times in a row)
       if (autoPromos.length > 0) {
         let bestPromo = null;
         let maxDiscount = -1;
-        for (const promo of autoPromos) {
-          if (!promo.code) continue;
-          try {
-            const validationRes = await customerApi.validatePromotion({
-              code: promo.code,
-              cartTotal,
-              items: cart,
-              customerId: user?._id,
-            });
-            if (validationRes.data.success) {
-              const discount = validationRes.data.result.discountAmount || 0;
-              if (discount > maxDiscount) {
-                maxDiscount = discount;
-                bestPromo = { ...promo, ...validationRes.data.result };
+
+        const results = await Promise.all(
+          autoPromos.filter((promo) => promo.code).map(async (promo) => {
+            try {
+              const validationRes = await customerApi.validatePromotion({
+                code: promo.code,
+                cartTotal,
+                items: cart,
+                customerId: user?._id,
+              });
+              if (validationRes.data.success) {
+                return { promo, discount: validationRes.data.result.discountAmount || 0, result: validationRes.data.result };
               }
+            } catch (e) {
+              // Ignore validation errors for silent auto-apply
             }
-          } catch (e) {
-            // Ignore validation errors for silent auto-apply
+            return null;
+          })
+        );
+
+        for (const entry of results) {
+          if (entry && entry.discount > maxDiscount) {
+            maxDiscount = entry.discount;
+            bestPromo = { ...entry.promo, ...entry.result };
           }
         }
 
@@ -1463,11 +1484,37 @@ const CheckoutPage = () => {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label
-                  htmlFor="edit-address"
-                  className="text-xs font-semibold text-slate-700">
-                  Address
-                </Label>
+                <div className="flex justify-between items-center">
+                  <Label
+                    htmlFor="edit-address"
+                    className="text-xs font-semibold text-slate-700">
+                    Address
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        showToast("Detecting your exact location...", "info");
+                        const loc = await refreshLocation();
+                        if (loc) {
+                          setEditAddressForm((prev) => ({
+                            ...prev,
+                            address: loc.name,
+                            landmark: "",
+                            city: [loc.city, loc.state, loc.pincode].filter(Boolean).join(", "),
+                            location: { lat: loc.latitude, lng: loc.longitude }
+                          }));
+                          showToast("Location updated successfully", "success");
+                        }
+                      } catch (err) {
+                        showToast(err.message || "Failed to fetch GPS location", "error");
+                      }
+                    }}
+                    className="text-xs font-semibold text-[#E23744] hover:underline flex items-center gap-1"
+                  >
+                    <MapPin size={12} /> Use current location
+                  </button>
+                </div>
                 <div className="relative">
                   <Input
                     id="edit-address"

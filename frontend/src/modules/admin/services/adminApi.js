@@ -113,6 +113,11 @@ export const adminApi = {
     getOrderDetails: (orderId) => axiosInstance.get(`/orders/details/${orderId}`),
     updateOrderStatus: (orderId, data) => axiosInstance.put(`/orders/status/${orderId}`, data),
 
+    // Batch delivery trips (same-slot orders, one rider, nearest-first stops)
+    getEligibleTripOrders: (params) =>
+        axiosInstance.get('/admin/delivery-trips/eligible-orders', { params }),
+    createDeliveryTrip: (data) => axiosInstance.post('/admin/delivery-trips', data),
+
     // Support Tickets
     getTickets: (params) => axiosInstance.get('/tickets/admin/all', { params }),
     updateTicketStatus: (id, status) => axiosInstance.patch(`/tickets/admin/status/${id}`, { status }),

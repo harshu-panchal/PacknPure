@@ -239,7 +239,10 @@ const DeliveryLayout = () => {
 
     if (user?.isOnline) {
       fetchOrders(); // Initial fetch when going online
-      const interval = setInterval(fetchOrders, 5000);
+      // Real-time pushes arrive via onDeliveryBroadcast below; this is just a
+      // fallback in case a socket event is missed, so it doesn't need to be
+      // aggressive (was 5s, hammering the endpoint on every poll tick).
+      const interval = setInterval(fetchOrders, 20000);
       return () => clearInterval(interval);
     }
   }, [user?.isOnline, activeOrder, applyAvailableOrdersList, suppressIncomingModal]);
@@ -267,17 +270,12 @@ const DeliveryLayout = () => {
       },
     );
 
-    const iv = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => send(pos.coords.latitude, pos.coords.longitude),
-        () => {},
-        { enableHighAccuracy: false, maximumAge: 30000, timeout: 20000 },
-      );
-    }, 20000);
+    // Note: watchPosition already fires on movement (maximumAge 15s caps
+    // staleness), so a second getCurrentPosition poll here was redundant and
+    // doubled location-write requests to the server.
 
     return () => {
       navigator.geolocation.clearWatch(watchId);
-      clearInterval(iv);
     };
   }, [user?.isOnline]);
 

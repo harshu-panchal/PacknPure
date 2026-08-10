@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MessageCircle, Phone, Mail, ChevronDown, ChevronUp, FileText, ChevronLeft, PlusCircle, X, Send } from 'lucide-react';
 import { useToast } from '@shared/components/ui/Toast';
+import { handlePhoneClick, handleEmailClick } from '@shared/utils/contactUtils';
 import { useSettings } from '@core/context/SettingsContext';
 import { customerApi } from '../services/customerApi';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,9 @@ const SupportPage = () => {
     const { showToast } = useToast();
     const { settings } = useSettings();
     const supportEmail = settings?.supportEmail || '';
+    const supportPhone = settings?.supportPhone || '';
     const supportEmailShort = supportEmail ? (supportEmail.length > 12 ? supportEmail.slice(0, 12) + '...' : supportEmail) : 'support@...';
+    
     const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
     const [ticketLoading, setTicketLoading] = useState(false);
     const [ticketData, setTicketData] = useState({
@@ -26,6 +29,25 @@ const SupportPage = () => {
         priority: 'medium'
     });
     const [faqs, setFaqs] = useState([]);
+    
+    // Tab and ticket states
+    const [activeTab, setActiveTab] = useState('help');
+    const [myTickets, setMyTickets] = useState([]);
+    const [ticketsLoading, setTicketsLoading] = useState(false);
+
+    const fetchMyTickets = async () => {
+        try {
+            setTicketsLoading(true);
+            const res = await customerApi.getMyTickets();
+            if (res.data.success) {
+                setMyTickets(res.data.result || []);
+            }
+        } catch (error) {
+            console.error('Error fetching tickets:', error);
+        } finally {
+            setTicketsLoading(false);
+        }
+    };
 
     useEffect(() => {
         const fetchFaqs = async () => {
@@ -62,6 +84,12 @@ const SupportPage = () => {
         fetchFaqs();
     }, []);
 
+    useEffect(() => {
+        if (activeTab === 'tickets') {
+            fetchMyTickets();
+        }
+    }, [activeTab]);
+
     const handleTicketSubmit = async (e) => {
         e.preventDefault();
         try {
@@ -74,6 +102,8 @@ const SupportPage = () => {
                 showToast("Ticket raised successfully", "success");
                 setIsTicketModalOpen(false);
                 setTicketData({ subject: '', description: '', priority: 'medium' });
+                setActiveTab('tickets');
+                fetchMyTickets();
             }
         } catch (error) {
             showToast(error.response?.data?.message || "Failed to create ticket", "error");
@@ -100,51 +130,153 @@ const SupportPage = () => {
                         </div>
                     </div>
                 </div>
-                {/* Contact Channels */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <ContactCard icon={MessageCircle} label="Chat Us" sub="Instant Support" to="/chat" />
-                    <ContactCard
-                        icon={PlusCircle}
-                        label="Raise Ticket"
-                        sub="Formal Request"
-                        onClick={() => setIsTicketModalOpen(true)}
-                    />
-                    <ContactCard icon={Phone} label="Call Us" sub="+91 98765..." />
-                    <ContactCard icon={Mail} label="Email Us" sub={supportEmailShort} />
+
+                {/* Tabs */}
+                <div className="flex border-b border-slate-200">
+                    <button
+                        onClick={() => setActiveTab('help')}
+                        className={cn(
+                            "flex-1 py-3 text-center text-sm font-bold border-b-2 transition-all",
+                            activeTab === 'help'
+                                ? "border-[#E23744] text-[#E23744]"
+                                : "border-transparent text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        Help Center
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('tickets')}
+                        className={cn(
+                            "flex-1 py-3 text-center text-sm font-bold border-b-2 transition-all",
+                            activeTab === 'tickets'
+                                ? "border-[#E23744] text-[#E23744]"
+                                : "border-transparent text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        My Tickets
+                    </button>
                 </div>
 
-                {/* FAQ Section */}
-                <div>
-                    <h2 className="text-base font-semibold text-slate-800 mb-3 px-1">Frequently Asked Questions</h2>
-                    <div className="space-y-3">
-                        {faqs.length > 0 ? (
-                            faqs.map((faq) => (
-                                <FAQItem
-                                    key={faq._id}
-                                    question={faq.question}
-                                    answer={faq.answer}
-                                />
+                {activeTab === 'help' ? (
+                    <>
+                        {/* Contact Channels */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <ContactCard icon={MessageCircle} label="Chat Us" sub="Instant Support" to="/chat" />
+                            <ContactCard
+                                icon={PlusCircle}
+                                label="Raise Ticket"
+                                sub="Formal Request"
+                                onClick={() => setIsTicketModalOpen(true)}
+                            />
+                            <ContactCard
+                                icon={Phone}
+                                label="Call Us"
+                                sub={supportPhone || '+91 98765 43210'}
+                                to={supportPhone ? `tel:${supportPhone}` : 'tel:+919876543210'}
+                            />
+                            <ContactCard
+                                icon={Mail}
+                                label="Email Us"
+                                sub={supportEmailShort}
+                                to={supportEmail ? `mailto:${supportEmail}` : 'mailto:support@packandpure.com'}
+                            />
+                        </div>
+
+                        {/* FAQ Section */}
+                        <div>
+                            <h2 className="text-base font-semibold text-slate-800 mb-3 px-1">Frequently Asked Questions</h2>
+                            <div className="space-y-3">
+                                {faqs.length > 0 ? (
+                                    faqs.map((faq) => (
+                                        <FAQItem
+                                            key={faq._id}
+                                            question={faq.question}
+                                            answer={faq.answer}
+                                        />
+                                    ))
+                                ) : (
+                                    <div className="bg-white rounded-2xl shadow-[0_4px_10px_rgb(0,0,0,0.02)] border border-slate-100 px-5 py-4 text-sm text-slate-400 text-center">
+                                        No FAQs available right now.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Legal Links */}
+                        <div className="bg-white rounded-xl p-4 border border-slate-200">
+                            <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3">Legal</h3>
+                            <div className="space-y-3">
+                                <Link to="/terms" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
+                                    <FileText size={18} /> Terms & Conditions
+                                </Link>
+                                <Link to="/privacy" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
+                                    <FileText size={18} /> Privacy Policy
+                                </Link>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="space-y-4">
+                        {ticketsLoading ? (
+                            <div className="flex justify-center items-center py-12">
+                                <div className="animate-spin rounded-full h-8 w-8 border-2 border-t-[#E23744] border-slate-200" />
+                            </div>
+                        ) : myTickets.length > 0 ? (
+                            myTickets.map((ticket) => (
+                                <div key={ticket._id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_4px_10px_rgb(0,0,0,0.02)] space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full",
+                                                ticket.priority === 'high' ? "bg-rose-50 text-rose-600" : ticket.priority === 'medium' ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-600"
+                                            )}>
+                                                {ticket.priority}
+                                            </span>
+                                            <span className={cn(
+                                                "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full",
+                                                ticket.status === 'open' ? "bg-blue-50 text-blue-600" : ticket.status === 'processing' ? "bg-purple-50 text-purple-600" : "bg-emerald-50 text-emerald-600"
+                                            )}>
+                                                {ticket.status}
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 font-bold">
+                                            {new Date(ticket.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-extrabold text-slate-800 text-sm leading-snug">{ticket.subject}</h3>
+                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">{ticket.description}</p>
+                                    </div>
+                                    <div className="pt-3 flex items-center justify-between border-t border-slate-50">
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                            {ticket.messages?.length || 1} Message(s)
+                                        </span>
+                                        <Link 
+                                            to={`/chat?ticketId=${ticket._id}`}
+                                            className="text-xs text-[#E23744] hover:text-[#C41E35] font-black uppercase tracking-wider flex items-center gap-1"
+                                        >
+                                            View Discussion &rarr;
+                                        </Link>
+                                    </div>
+                                </div>
                             ))
                         ) : (
-                            <div className="bg-white rounded-2xl shadow-[0_4px_10px_rgb(0,0,0,0.02)] border border-slate-100 px-5 py-4 text-sm text-slate-400 text-center">
-                                No FAQs available right now.
+                            <div className="bg-white rounded-2xl shadow-[0_4px_10px_rgb(0,0,0,0.02)] border border-slate-100 px-5 py-8 text-sm text-slate-400 text-center flex flex-col items-center gap-3">
+                                <FileText size={40} className="text-slate-200" />
+                                <div>
+                                    <p className="font-bold text-slate-600">No tickets raised yet</p>
+                                    <p className="text-xs text-slate-400 mt-1">If you have any issues, raise a ticket to get support.</p>
+                                </div>
+                                <Button 
+                                    onClick={() => setIsTicketModalOpen(true)}
+                                    className="bg-[#E23744] hover:bg-[#C41E35] text-white font-bold text-xs py-2 px-4 rounded-xl mt-2 animate-none"
+                                >
+                                    Raise Ticket Now
+                                </Button>
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* Legal Links */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200">
-                    <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3">Legal</h3>
-                    <div className="space-y-3">
-                        <Link to="/terms" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
-                            <FileText size={18} /> Terms & Conditions
-                        </Link>
-                        <Link to="/privacy" className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium">
-                            <FileText size={18} /> Privacy Policy
-                        </Link>
-                    </div>
-                </div>
+                )}
             </main>
 
             {/* Ticket Creation Modal */}
@@ -248,11 +380,9 @@ const SupportPage = () => {
 };
 
 const ContactCard = ({ icon: Icon, label, sub, to, onClick }) => {
-    const CardContent = (
-        <div
-            onClick={onClick}
-            className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer group h-full"
-        >
+    const cardClassName = "bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer group h-full";
+    const content = (
+        <>
             <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 group-hover:text-slate-800 transition-colors">
                 <Icon size={20} />
             </div>
@@ -260,10 +390,39 @@ const ContactCard = ({ icon: Icon, label, sub, to, onClick }) => {
                 <h3 className="font-semibold text-slate-800 text-sm whitespace-nowrap">{label}</h3>
                 <p className="text-[10px] text-slate-500 font-medium">{sub}</p>
             </div>
-        </div>
+        </>
     );
 
-    return to ? <Link to={to} className="block h-full">{CardContent}</Link> : CardContent;
+    // Real <a href="tel:/mailto:"> — dispatching a synthetic click on a
+    // detached anchor is unreliable inside some mobile WebViews.
+    if (to && (to.startsWith('tel:') || to.startsWith('mailto:'))) {
+        const handleCardClick = (e) => {
+            if (to.startsWith('tel:')) {
+                handlePhoneClick(e, to.substring(4));
+            } else if (to.startsWith('mailto:')) {
+                handleEmailClick(e, to.substring(7));
+            }
+        };
+        return (
+            <a href={to} onClick={handleCardClick} className={cardClassName}>
+                {content}
+            </a>
+        );
+    }
+
+    if (to) {
+        return (
+            <Link to={to} className={cardClassName}>
+                {content}
+            </Link>
+        );
+    }
+
+    return (
+        <button type="button" onClick={onClick} className={cardClassName}>
+            {content}
+        </button>
+    );
 };
 
 const FAQItem = ({ question, answer }) => {

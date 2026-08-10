@@ -19,7 +19,7 @@ const signupSchema = Joi.object({
     vehicleNumber: Joi.string().trim().uppercase().required(),
     drivingLicenseNumber: Joi.string().trim().uppercase().required(),
     aadharNumber: Joi.string().pattern(/^\d{12}$/).required(),
-    panNumber: Joi.string().trim().uppercase().pattern(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/).required(),
+    panNumber: Joi.string().trim().uppercase().pattern(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/).optional().allow(""),
     accountHolder: Joi.string().trim().min(2).required(),
     accountNumber: Joi.string().pattern(/^\d{9,18}$/).required(),
     ifsc: Joi.string().trim().uppercase().pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).required(),

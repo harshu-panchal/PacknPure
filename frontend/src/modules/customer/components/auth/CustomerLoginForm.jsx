@@ -3,6 +3,7 @@ import { ShieldAlert, Mail, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
+import { handlePhoneClick, handleEmailClick } from '@shared/utils/contactUtils';
 import { useSettings } from '@core/context/SettingsContext';
 import { customerApi } from '../../services/customerApi';
 import { brandColor, brandColorDark } from '../../constants/brandTheme';
@@ -332,6 +333,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
                         </p>
                         <a
                             href={`mailto:${suspendedInfo.supportEmail}`}
+                            onClick={(e) => handleEmailClick(e, suspendedInfo.supportEmail)}
                             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white hover:opacity-95"
                             style={{ backgroundColor: primary }}
                         >
@@ -343,6 +345,7 @@ const CustomerLoginForm = ({ variant = 'page', onSuccess, onClose }) => {
                                 Or call:{' '}
                                 <a
                                     href={`tel:${suspendedInfo.supportPhone}`}
+                                    onClick={(e) => handlePhoneClick(e, suspendedInfo.supportPhone)}
                                     className="font-semibold"
                                     style={{ color: primary }}
                                 >

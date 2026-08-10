@@ -11,7 +11,7 @@ import { distanceMeters } from '../utils/geoUtils.js';
  * @returns {Object} { inRange: boolean, distance: number }
  * @throws {Error} If coordinates are invalid
  */
-export function checkProximity(deliveryLocation, customerLocation) {
+export function checkProximity(deliveryLocation, customerLocation, customThreshold) {
   // Validate input parameters
   if (!deliveryLocation || typeof deliveryLocation !== 'object') {
     throw new Error('deliveryLocation must be an object');
@@ -59,7 +59,7 @@ export function checkProximity(deliveryLocation, customerLocation) {
   );
   
   // Check if distance is within proximity range (configurable via env, default 5000m for dev)
-  const threshold = parseInt(process.env.PROXIMITY_THRESHOLD_METERS || "5000", 10);
+  const threshold = customThreshold !== undefined ? customThreshold : parseInt(process.env.PROXIMITY_THRESHOLD_METERS || "5000", 10);
   const inRange = distance >= 0 && distance <= threshold;
   
   return {

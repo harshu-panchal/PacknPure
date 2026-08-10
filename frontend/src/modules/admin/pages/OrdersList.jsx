@@ -23,7 +23,8 @@ import {
     ShoppingBag,
     Clock,
     CheckCircle2,
-    XCircle
+    XCircle,
+    Route
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -48,6 +49,20 @@ const OrdersList = () => {
     const [assignOrder, setAssignOrder] = useState(null);
     const [deliveryPartners, setDeliveryPartners] = useState([]);
     const [selectedRiderId, setSelectedRiderId] = useState("");
+
+    // Batch delivery trip (same-slot orders -> one rider, nearest-first stops)
+    const [batchOpen, setBatchOpen] = useState(false);
+    const [batchSlots, setBatchSlots] = useState([]);
+    const [batchHubId, setBatchHubId] = useState("MAIN_HUB");
+    const [batchDate, setBatchDate] = useState(() => new Date().toISOString().slice(0, 10));
+    const [batchSlotValue, setBatchSlotValue] = useState("");
+    const [batchOrders, setBatchOrders] = useState([]);
+    const [selectedBatchOrderIds, setSelectedBatchOrderIds] = useState(new Set());
+    const [batchLoading, setBatchLoading] = useState(false);
+    const [batchRiderId, setBatchRiderId] = useState("");
+
+    // Show only slot-booking orders, separated out from express orders
+    const [slotOnly, setSlotOnly] = useState(false);
 
     const fetchOrders = async (requestedPage = 1) => {
         setIsLoading(true);
@@ -85,6 +100,13 @@ const OrdersList = () => {
                         deliveryBoyId: o.deliveryBoy?._id || o.deliveryBoy || null,
                         date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
                         payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
+                        // Slot booking (vs express) — drives the "Slot" badge/filter/grouping below
+                        deliveryMode: o.deliveryMode || 'EXPRESS',
+                        hubId: o.hubId || 'MAIN_HUB',
+                        selectedDate: o.selectedDate || null,
+                        selectedSlot: o.selectedSlot || null,
+                        slotDisplayText: o.deliverySnapshot?.slotDisplayText || null,
+                        tripId: o.tripId || null,
                     };
                 });
                 setOrders(formatted);
@@ -156,10 +178,16 @@ const OrdersList = () => {
                 order.seller.toLowerCase().includes(searchTerm.toLowerCase());
 
             const matchesStatus = adminRouteMatchesOrder(status, order);
+            const matchesSlot = !slotOnly || order.deliveryMode === 'SLOT';
 
-            return matchesSearch && matchesStatus;
+            return matchesSearch && matchesStatus && matchesSlot;
         });
-    }, [safeOrders, searchTerm, status]);
+    }, [safeOrders, searchTerm, status, slotOnly]);
+
+    const slotOrderCount = useMemo(
+        () => safeOrders.filter((o) => o.deliveryMode === 'SLOT').length,
+        [safeOrders],
+    );
 
     const getStatusStyles = (status) => {
         switch (status.toLowerCase()) {
@@ -217,6 +245,106 @@ const OrdersList = () => {
         }
     };
 
+    const loadSlotsAndPartners = async () => {
+        try {
+            const [slotsRes, partnersRes] = await Promise.all([
+                adminApi.getDeliverySlots(),
+                adminApi.getDeliveryPartners({ verified: "true", limit: 200 }),
+            ]);
+            const slotItems = slotsRes.data?.result || slotsRes.data?.results || [];
+            setBatchSlots(Array.isArray(slotItems) ? slotItems : []);
+
+            const partnerPayload = partnersRes.data?.result || partnersRes.data?.results || {};
+            const partnerItems = Array.isArray(partnerPayload.items)
+                ? partnerPayload.items
+                : (Array.isArray(partnerPayload) ? partnerPayload : []);
+            setDeliveryPartners(partnerItems);
+            if (partnerItems[0]?._id) setBatchRiderId(partnerItems[0]._id);
+        } catch (e) {
+            showToast("Failed to load slots/riders", "error");
+        }
+    };
+
+    const openBatchModal = async () => {
+        setBatchOpen(true);
+        setBatchOrders([]);
+        setSelectedBatchOrderIds(new Set());
+        await loadSlotsAndPartners();
+    };
+
+    const loadEligibleOrders = async (overrides = {}) => {
+        const hubId = overrides.hubId ?? batchHubId;
+        const selectedDate = overrides.selectedDate ?? batchDate;
+        const selectedSlot = overrides.selectedSlot ?? batchSlotValue;
+        if (!selectedDate || !selectedSlot) {
+            showToast("Pick a date and slot first", "error");
+            return;
+        }
+        setBatchLoading(true);
+        try {
+            const res = await adminApi.getEligibleTripOrders({ hubId, selectedDate, selectedSlot });
+            const items = res.data?.result?.items || [];
+            setBatchOrders(items);
+            // All ready orders pre-selected by default; admin can uncheck individual ones.
+            setSelectedBatchOrderIds(new Set(items.map((o) => o._id)));
+        } catch (e) {
+            showToast(e?.response?.data?.message || "Failed to load eligible orders", "error");
+            setBatchOrders([]);
+        } finally {
+            setBatchLoading(false);
+        }
+    };
+
+    // Click the "Slot" badge on an order row: open the batch modal pre-filled
+    // with that order's hub/date/slot and immediately load every order sharing it.
+    const openSlotGroupForOrder = async (e, order) => {
+        e.stopPropagation();
+        const hubId = order.hubId || "MAIN_HUB";
+        setBatchOpen(true);
+        setBatchHubId(hubId);
+        if (order.selectedDate) setBatchDate(order.selectedDate);
+        setBatchSlotValue(order.selectedSlot || "");
+        setBatchOrders([]);
+        setSelectedBatchOrderIds(new Set());
+        await loadSlotsAndPartners();
+        if (order.selectedDate && order.selectedSlot) {
+            await loadEligibleOrders({
+                hubId,
+                selectedDate: order.selectedDate,
+                selectedSlot: order.selectedSlot,
+            });
+        }
+    };
+
+    const toggleBatchOrder = (orderId) => {
+        setSelectedBatchOrderIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(orderId)) next.delete(orderId);
+            else next.add(orderId);
+            return next;
+        });
+    };
+
+    const submitBatchAssign = async () => {
+        const orderIds = Array.from(selectedBatchOrderIds);
+        if (orderIds.length < 2) {
+            showToast("Select at least 2 orders to batch together", "error");
+            return;
+        }
+        if (!batchRiderId) {
+            showToast("Select a delivery partner", "error");
+            return;
+        }
+        try {
+            await adminApi.createDeliveryTrip({ orderIds, deliveryBoyId: batchRiderId });
+            showToast(`Trip created — ${orderIds.length} orders assigned, nearest-first`, "success");
+            setBatchOpen(false);
+            await fetchOrders(page);
+        } catch (e) {
+            showToast(e?.response?.data?.message || "Failed to create delivery trip", "error");
+        }
+    };
+
     const pageTitle = status === 'all' ? 'All Orders' : status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
     return (
@@ -234,6 +362,13 @@ const OrdersList = () => {
                     <p className="ds-description mt-1">View and manage all orders.</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={openBatchModal}
+                        className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm"
+                    >
+                        <Route className="h-4 w-4" />
+                        BATCH ASSIGN (SLOT)
+                    </button>
                     <button
                         onClick={handleExport}
                         className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
@@ -285,6 +420,19 @@ const OrdersList = () => {
                         />
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setSlotOnly((v) => !v)}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+                                slotOnly
+                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            )}
+                            title="Show only slot-booking orders"
+                        >
+                            <Route className="h-4 w-4" />
+                            Slot Bookings ({slotOrderCount})
+                        </button>
                         <div className="relative group">
                             <select
                                 value={status}
@@ -329,7 +477,14 @@ const OrdersList = () => {
                                     </td>
                                 </tr>
                             ) : filteredOrders.length > 0 ? filteredOrders.map((order) => (
-                                <tr key={order.id} className="group hover:bg-slate-50/30 transition-all cursor-pointer" onClick={() => navigate(`/admin/orders/view/${order.id}`)}>
+                                <tr
+                                    key={order.id}
+                                    className={cn(
+                                        "group hover:bg-slate-50/30 transition-all cursor-pointer",
+                                        order.deliveryMode === 'SLOT' && "bg-indigo-50/40 border-l-4 border-indigo-400 hover:bg-indigo-50/60"
+                                    )}
+                                    onClick={() => navigate(`/admin/orders/view/${order.id}`)}
+                                >
                                     <td className="px-4 py-5">
                                         <div className="flex items-center gap-4">
                                             <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all text-slate-400 group-hover:text-fuchsia-500 font-bold text-xs">
@@ -340,12 +495,22 @@ const OrdersList = () => {
                                                     #{order.id}
                                                     <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all text-slate-400" />
                                                 </h4>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                     <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400 py-0.5">
                                                         {order.items} {order.items > 1 ? 'Items' : 'Item'}
                                                     </Badge>
                                                     <span className="text-[10px] font-bold text-slate-300">•</span>
                                                     <span className="text-[10px] font-bold text-slate-400">{order.date}</span>
+                                                    {order.deliveryMode === 'SLOT' && (
+                                                        <button
+                                                            onClick={(e) => openSlotGroupForOrder(e, order)}
+                                                            title={`Slot booking${order.slotDisplayText ? ` — ${order.slotDisplayText}` : ''} — click to view every order in this same slot`}
+                                                            className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg hover:bg-indigo-200 transition-colors"
+                                                        >
+                                                            <Route className="h-3 w-3" />
+                                                            Slot{order.tripId ? ' • Assigned' : ''}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -496,6 +661,128 @@ const OrdersList = () => {
                             className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Assign
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={batchOpen}
+                onClose={() => setBatchOpen(false)}
+                title="Batch assign — same-slot orders to one rider"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <p className="text-xs text-slate-500">
+                        Pick a hub, date, and slot — every ready, unassigned order in that
+                        slot is pre-selected. One rider collects all of them from the hub
+                        and delivers in nearest-first order automatically.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">Hub</label>
+                            <input
+                                type="text"
+                                value={batchHubId}
+                                onChange={(e) => setBatchHubId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">Date</label>
+                            <input
+                                type="date"
+                                value={batchDate}
+                                onChange={(e) => setBatchDate(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">Slot</label>
+                            <select
+                                value={batchSlotValue}
+                                onChange={(e) => setBatchSlotValue(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                            >
+                                <option value="">Select slot…</option>
+                                {batchSlots.map((s) => {
+                                    const value = `${s.startTime}-${s.endTime}`;
+                                    return (
+                                        <option key={s._id || value} value={value}>
+                                            {s.displayText || `${s.startTime} - ${s.endTime}`}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={loadEligibleOrders}
+                        disabled={batchLoading}
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-50"
+                    >
+                        {batchLoading ? "Loading…" : "Load ready orders"}
+                    </button>
+
+                    {batchOrders.length > 0 && (
+                        <div className="max-h-64 overflow-y-auto rounded-xl ring-1 ring-slate-200 divide-y divide-slate-100">
+                            {batchOrders.map((o) => (
+                                <label
+                                    key={o._id}
+                                    className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedBatchOrderIds.has(o._id)}
+                                        onChange={() => toggleBatchOrder(o._id)}
+                                        className="h-4 w-4 rounded"
+                                    />
+                                    <span className="font-bold text-slate-800">#{o.orderId}</span>
+                                    <span className="text-slate-500 truncate">
+                                        {o.customer?.name || "Customer"} — {o.address?.address || o.address?.city || ""}
+                                    </span>
+                                    <span className="ml-auto font-bold text-emerald-600">
+                                        ₹{Number(o.totalAmount || 0).toLocaleString("en-IN")}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+
+                    {batchOrders.length > 0 && (
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">
+                                Delivery partner ({selectedBatchOrderIds.size} order{selectedBatchOrderIds.size === 1 ? "" : "s"} selected)
+                            </label>
+                            <select
+                                value={batchRiderId}
+                                onChange={(e) => setBatchRiderId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                            >
+                                {deliveryPartners.map((d) => (
+                                    <option key={d._id} value={d._id}>
+                                        {d.name || d.fullName || d.phone || d._id}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            onClick={() => setBatchOpen(false)}
+                            className="px-4 py-2 rounded-xl bg-white ring-1 ring-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={submitBatchAssign}
+                            disabled={selectedBatchOrderIds.size < 2 || !batchRiderId}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Assign {selectedBatchOrderIds.size} order{selectedBatchOrderIds.size === 1 ? "" : "s"} to rider
                         </button>
                     </div>
                 </div>
