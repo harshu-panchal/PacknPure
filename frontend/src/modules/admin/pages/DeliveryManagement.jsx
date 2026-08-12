@@ -84,6 +84,7 @@ const DeliveryManagement = () => {
     expressMinTime: 30,
     expressMaxTime: 60,
     expressTitle: "Express Delivery",
+    expressCharge: 0,
     slotTitle: "Slot Delivery",
     availableDays: DAYS.reduce((acc, d) => ({ ...acc, [d.key]: true }), {}),
   });
@@ -112,6 +113,7 @@ const DeliveryManagement = () => {
           expressMinTime: s.expressMinTime ?? 30,
           expressMaxTime: s.expressMaxTime ?? 60,
           expressTitle: s.expressTitle || "Express Delivery",
+          expressCharge: s.expressCharge ?? 0,
           slotTitle: s.slotTitle || "Slot Delivery",
           availableDays: DAYS.reduce(
             (acc, d) => ({ ...acc, [d.key]: s.availableDays?.[d.key] !== false }),
@@ -147,6 +149,7 @@ const DeliveryManagement = () => {
         expressMinTime: Number(settings.expressMinTime),
         expressMaxTime: Number(settings.expressMaxTime),
         expressTitle: settings.expressTitle,
+        expressCharge: Number(settings.expressCharge || 0),
         slotTitle: settings.slotTitle,
         availableDays: settings.availableDays,
       });
@@ -367,6 +370,20 @@ const DeliveryManagement = () => {
                   className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Express Delivery Charge (₹)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={settings.expressCharge}
+                onChange={(e) => setSettings((prev) => ({ ...prev, expressCharge: e.target.value }))}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
+              />
             </div>
 
             <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-4 py-3 font-medium">

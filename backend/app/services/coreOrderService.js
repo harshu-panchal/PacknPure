@@ -24,6 +24,8 @@ import ProcurementSession from "../models/procurementSession.js";
 import { ensureProcurementSession } from "./procurementSessionService.js";
 import { executeRollbackEvent } from "./transactionEngine.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "./orderSocketEmitter.js";
+import User from "../models/customer.js";
+import DeliverySettings from "../models/deliverySettings.js";
 import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
 import { 
   findOrderVariant, 
@@ -55,6 +57,30 @@ export const executeCoreOrderFulfillment = async ({
   promotionId,
   session = null
 }) => {
+    // Validate slot expiration if deliveryMode is SLOT
+    if (deliveryMode === "SLOT") {
+      if (!selectedDate || !selectedSlot) {
+        throw new Error("Please select a date and slot for scheduled delivery");
+      }
+      
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const slotRegex = /^\d{2}:\d{2}-\d{2}:\d{2}$/;
+      if (!dateRegex.test(selectedDate) || !slotRegex.test(selectedSlot)) {
+        throw new Error("Select appropriate slot");
+      }
+
+      const [year, month, day] = selectedDate.split("-").map(Number);
+      const [startTimeStr] = selectedSlot.split("-");
+      const [startHour, startMin] = startTimeStr.split(":").map(Number);
+
+      const now = new Date();
+      const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
+
+      if (now.getTime() > slotStart.getTime()) {
+        throw new Error("The selected slot has already expired. Please select a valid slot.");
+      }
+    }
+
     // 1. Generate unique Order ID
     const orderId = `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -84,13 +110,25 @@ export const executeCoreOrderFulfillment = async ({
       });
     }
 
-    // 3. Normalize address.location
+    // 3. Normalize address.location and address.type
     let normalizedAddress = { ...address };
     if (address?.location) {
       const { lat, lng } = address.location;
       if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-        normalizedAddress = { ...address, location: undefined };
+        normalizedAddress.location = undefined;
       }
+    }
+    if (normalizedAddress.type) {
+      const typeStr = String(normalizedAddress.type).trim().toLowerCase();
+      if (typeStr === "home") {
+        normalizedAddress.type = "Home";
+      } else if (typeStr === "work") {
+        normalizedAddress.type = "Work";
+      } else {
+        normalizedAddress.type = "Other";
+      }
+    } else {
+      normalizedAddress.type = "Home";
     }
 
     // 4. Resolve raw items against database
@@ -179,6 +217,13 @@ export const executeCoreOrderFulfillment = async ({
         validatedPricing.deliveryFee = 0;
       }
 
+      let expressCharge = 0;
+      if (deliveryMode === "EXPRESS") {
+        const delSettings = await DeliverySettings.getSingleton();
+        expressCharge = delSettings.expressCharge || 0;
+      }
+      validatedPricing.expressCharge = expressCharge;
+
       let totalItemGst = 0;
       let trueSubtotal = 0;
       
@@ -221,6 +266,7 @@ export const executeCoreOrderFulfillment = async ({
         + validatedPricing.gst
         - (validatedPricing.discount || 0)
         + validatedPricing.deliveryFee 
+        + (validatedPricing.expressCharge || 0)
         + validatedPricing.platformFee
         + (validatedPricing.tip || 0)).toFixed(2));
     }
@@ -364,14 +410,14 @@ export const executeCoreOrderFulfillment = async ({
       procurementSession.items.length === 0 ||
       !procurementSession.items.some((i) => Number(i.requiredQty || 0) > 0);
     if (
-      resolvedMode === "EXPRESS" &&
+      (resolvedMode === "EXPRESS" || resolvedMode === "SLOT") &&
       hubFullyFulfilled &&
       procurementSessionIdle &&
       String(newOrder.status || "").toLowerCase() === "pending"
     ) {
       setOrderLegacyStatus(newOrder, "confirmed", {
         actor: { role: "system" },
-        reason: "express_hub_stock_auto_confirm",
+        reason: "hub_stock_auto_confirm",
       });
     }
 

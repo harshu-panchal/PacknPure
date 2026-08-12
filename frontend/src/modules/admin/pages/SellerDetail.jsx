@@ -310,7 +310,15 @@ const SellerDetail = () => {
                                                         {Number(product.stock) || 0}
                                                     </td>
                                                     <td className="px-4 py-4 text-center font-bold text-slate-800">
-                                                        {money(product.purchasePrice)}
+                                                        {money(
+                                                             product.purchasePrice ||
+                                                             product.supplyPrice ||
+                                                             product.price ||
+                                                             product.variants?.[0]?.purchasePrice ||
+                                                             product.variants?.[0]?.supplyPrice ||
+                                                             product.variants?.[0]?.price ||
+                                                             0
+                                                         )}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
                                                         <Badge

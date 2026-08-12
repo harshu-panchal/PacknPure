@@ -141,20 +141,18 @@ export const rankSellerAllocations = async ({
     const vendorStock = sellerAvailableForMasterVariant(vendor, variantId, baseProduct);
     let allocatedQty = 0;
 
-    if (enableMultiSellerAllocation) {
-      if (remainingShortage > 0) {
+    if (vendorStock > 0 && remainingShortage > 0) {
+      if (enableMultiSellerAllocation) {
         allocatedQty = Math.min(vendorStock, remainingShortage);
         remainingShortage -= allocatedQty;
-      }
-    } else if (!primaryFilled && remainingShortage > 0) {
-      allocatedQty = Math.min(vendorStock, remainingShortage);
-      if (allocatedQty > 0) {
-        remainingShortage -= allocatedQty;
-        // Only lock to a single vendor when the full shortage is covered.
-        // Partial fill from vendor A must allow vendor B for the remainder so
-        // procurement matches aggregate seller availability shown to customers.
-        if (remainingShortage <= 0) {
-          primaryFilled = true;
+      } else if (!primaryFilled) {
+        allocatedQty = Math.min(vendorStock, remainingShortage);
+        if (allocatedQty > 0) {
+          remainingShortage -= allocatedQty;
+          // Only lock to a single vendor when the full shortage is covered.
+          if (remainingShortage <= 0) {
+            primaryFilled = true;
+          }
         }
       }
     }
@@ -169,6 +167,19 @@ export const rankSellerAllocations = async ({
       gstRate: Number(vendor.gstRate) || 0,
       allocatedQty,
     });
+  }
+
+  // Phase 2: If remainingShortage > 0 and candidate sellers exist, allocate remainingShortage
+  // to candidate sellers (starting from top-ranked vendor) so procurement request is generated
+  // and sent to candidate seller for on-demand fulfillment.
+  if (remainingShortage > 0 && allocations.length > 0) {
+    for (const alloc of allocations) {
+      if (!alloc.vendorId) continue;
+      if (remainingShortage <= 0) break;
+      const topUp = remainingShortage;
+      alloc.allocatedQty = (alloc.allocatedQty || 0) + topUp;
+      remainingShortage -= topUp;
+    }
   }
 
   return allocations;

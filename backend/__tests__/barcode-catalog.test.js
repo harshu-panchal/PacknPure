@@ -58,4 +58,27 @@ describe("barcodeCatalogService (management)", () => {
     expect(rows[1].hasBarcode).toBe(false);
     expect(rows[2].barcodeValue).toBe("PNP-SLR-00000001");
   });
+
+  test("flattenProductsToStickerRows includes rate and pricing fields", () => {
+    const rows = flattenProductsToStickerRows([
+      {
+        _id: "p1",
+        name: "Wooden Spoon",
+        ownerType: "admin",
+        variants: [
+          {
+            _id: "v1",
+            name: "Pack of 100 pcs",
+            price: 60,
+            salePrice: 55,
+            barcodeValue: "PNP-ADM-00000031",
+          },
+        ],
+      },
+    ]);
+
+    expect(rows[0].rate).toBe(55);
+    expect(rows[0].price).toBe(60);
+    expect(rows[0].salePrice).toBe(55);
+  });
 });

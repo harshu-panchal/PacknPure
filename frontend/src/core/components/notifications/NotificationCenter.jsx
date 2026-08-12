@@ -294,27 +294,27 @@ const NotificationCenter = ({
           </div>
         </div>
       ) : (
-        <Card className="p-6 bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500 text-white border-none shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <Card className="p-4 sm:p-6 bg-gradient-to-br from-rose-500 via-rose-600 to-orange-500 text-white border-none shadow-xl rounded-2xl sm:rounded-3xl">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-white/80 font-bold">
+              <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.35em] text-white/80 font-bold">
                 Notification Center
               </p>
-              <h1 className="text-2xl sm:text-3xl font-black mt-2">{title}</h1>
-              <p className="text-white/85 mt-2 max-w-2xl">{description}</p>
+              <h1 className="text-xl sm:text-3xl font-black mt-1 sm:mt-2">{title}</h1>
+              <p className="text-xs sm:text-sm text-white/85 mt-1 sm:mt-2 max-w-2xl">{description}</p>
             </div>
-            <div className="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm shrink-0 self-start">
-              <div className="text-xs uppercase tracking-wider text-white/70 font-semibold">
+            <div className="rounded-xl sm:rounded-2xl bg-white/15 px-3 py-2.5 sm:px-4 sm:py-3 backdrop-blur-sm shrink-0 self-start sm:self-auto">
+              <div className="text-[10px] sm:text-xs uppercase tracking-wider text-white/70 font-semibold">
                 Unread
               </div>
-              <div className="text-3xl font-black leading-none mt-1">{unreadCount}</div>
+              <div className="text-2xl sm:text-3xl font-black leading-none mt-1">{unreadCount}</div>
             </div>
           </div>
           {unreadCount > 0 ? (
-            <div className="mt-5">
+            <div className="mt-4 sm:mt-5">
               <Button
                 onClick={markAllRead}
-                className="bg-white text-rose-600 hover:bg-rose-50 font-bold"
+                className="bg-white text-rose-600 hover:bg-rose-50 font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm"
               >
                 <CheckCheck size={16} className="mr-2" />
                 Mark all as read

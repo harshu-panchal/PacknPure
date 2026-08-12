@@ -1737,6 +1737,7 @@ export const verifyInward = async (req, res) => {
           verified &&
           parentOrder.workflowVersion >= 2 &&
           parentOrder.hubFlowEnabled &&
+          parentOrder.deliveryMode === "EXPRESS" &&
           isOrderInventoryReadyForDelivery(parentOrder)
         ) {
           try {

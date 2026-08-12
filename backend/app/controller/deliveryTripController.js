@@ -59,7 +59,7 @@ export const getEligibleOrdersForTrip = async (req, res) => {
       tripId: null,
       status: { $nin: ["cancelled", "delivered"] },
     })
-      .select("orderId address totalAmount items workflowStatus createdAt")
+      .select("orderId address pricing items workflowStatus createdAt")
       .populate("customer", "name phone")
       .sort({ createdAt: 1 })
       .lean();
@@ -209,7 +209,7 @@ export const getActiveTripForRider = async (req, res) => {
     const trip = await DeliveryTrip.findOne({ deliveryBoy: deliveryBoyId, status: "active" })
       .populate({
         path: "stops.order",
-        select: "orderId address customer totalAmount items",
+        select: "orderId address customer pricing items",
         populate: { path: "customer", select: "name phone" },
       })
       .lean();

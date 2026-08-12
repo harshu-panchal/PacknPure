@@ -25,7 +25,7 @@ const PrivacyPage = () => {
             {/* Header */}
             <div className="bg-white sticky top-0 z-30 px-4 py-3 flex items-center gap-1 shadow-sm">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
                     className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors"
                 >
                     <ChevronLeft size={24} className="text-slate-600" />
@@ -34,28 +34,82 @@ const PrivacyPage = () => {
             </div>
 
             <div className="p-5 max-w-3xl mx-auto space-y-6">
-                <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center text-[#E23744]">
+                <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+                        <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center text-[#E23744] shrink-0">
                             <Shield size={24} />
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-800">Privacy Policy</h2>
-                            <p className="text-xs text-slate-500 font-medium">Last updated: Oct 2025</p>
+                            <p className="text-xs text-slate-500 font-medium">Last updated: August 2026</p>
                         </div>
                     </div>
 
-                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
+                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed space-y-6">
                         {isLoading ? (
                             <div className="animate-pulse space-y-3">
                                 <div className="h-4 bg-slate-200 rounded w-3/4"></div>
                                 <div className="h-4 bg-slate-200 rounded w-1/2"></div>
                                 <div className="h-4 bg-slate-200 rounded w-5/6"></div>
                             </div>
-                        ) : pageContent ? (
+                        ) : pageContent?.content ? (
                             <div dangerouslySetInnerHTML={{ __html: pageContent.content }} />
                         ) : (
-                            <p>Privacy policy content is not available yet.</p>
+                            <div className="space-y-6 text-sm text-slate-700">
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">1. Information We Collect</h3>
+                                    <p>
+                                        At {appName}, we collect essential information required to fulfill your orders securely:
+                                    </p>
+                                    <ul className="list-disc pl-5 space-y-1 text-slate-600">
+                                        <li>Personal identification data (Name, Phone number, Email address).</li>
+                                        <li>Delivery details (Shipping address, geocoded GPS location for delivery matching).</li>
+                                        <li>Transaction records and payment status tokens.</li>
+                                    </ul>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">2. How We Use Your Information</h3>
+                                    <p>
+                                        Your information is used strictly to process orders, assign delivery logistics partners, verify account authenticity via OTP, and provide customer support services.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">3. Data Sharing & Third Parties</h3>
+                                    <p>
+                                        We do not sell or rent your personal data to third parties. We share information only with authorized logistics partners and payment gateways to process and deliver your orders.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">4. Data Security</h3>
+                                    <p>
+                                        We employ industry-standard encryption protocols (HTTPS/TLS) and secure database access controls to safeguard your personal data from unauthorized access or disclosure.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">5. Your Privacy Rights</h3>
+                                    <p>
+                                        You have the right to access, update, or request the deletion of your personal account data at any time via Profile Settings or by reaching out to our support team.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">6. Policy Updates</h3>
+                                    <p>
+                                        We may periodically update this Privacy Policy to reflect changes in our practices or regulatory standards. Continued use of {appName} signifies acceptance of any updated terms.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">7. Data Privacy Contact</h3>
+                                    <p>
+                                        If you have questions regarding data protection, email our Data Privacy Officer at {settings?.supportEmail || 'privacy@packnpure.com'}.
+                                    </p>
+                                </section>
+                            </div>
                         )}
                     </div>
                 </div>

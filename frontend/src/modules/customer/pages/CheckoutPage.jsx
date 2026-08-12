@@ -115,9 +115,29 @@ const CheckoutPage = () => {
   const checkoutDeliverySubline = getDeliverySubline(checkoutDeliveryPreview);
   const isCheckoutSlot = checkoutDeliveryPreview.deliveryMode === "SLOT";
 
+  const isSlotExpired = useMemo(() => {
+    if (!isCheckoutSlot) return false;
+    const selectedDate = deliverySelection?.selectedDate;
+    const selectedSlot = deliverySelection?.selectedSlot;
+    if (!selectedDate || !selectedSlot) return false;
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const slotRegex = /^\d{2}:\d{2}-\d{2}:\d{2}$/;
+    if (!dateRegex.test(selectedDate) || !slotRegex.test(selectedSlot)) return false;
+
+    const [year, month, day] = selectedDate.split("-").map(Number);
+    const [startTimeStr] = selectedSlot.split("-");
+    const [startHour, startMin] = startTimeStr.split(":").map(Number);
+
+    const now = new Date();
+    const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
+
+    return now.getTime() > slotStart.getTime();
+  }, [isCheckoutSlot, deliverySelection]);
+
   // State management
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");
-  const [selectedPayment, setSelectedPayment] = useState("cash");
+  const [selectedPayment, setSelectedPayment] = useState("online");
   const [couponsExpanded, setCouponsExpanded] = useState(false);
   const [paymentExpanded, setPaymentExpanded] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -247,16 +267,16 @@ const CheckoutPage = () => {
   const allPaymentMethods = useMemo(
     () => [
       {
-        id: "cash",
-        label: "Cash on Delivery",
-        icon: Banknote,
-        sublabel: "Pay after delivery",
-      },
-      {
         id: "online",
         label: "Pay Online (UPI/Card)",
         icon: Smartphone,
         sublabel: "Secure online payment",
+      },
+      {
+        id: "cash",
+        label: "Cash on Delivery",
+        icon: Banknote,
+        sublabel: "Pay after delivery",
       },
       {
         id: "wallet",
@@ -289,8 +309,15 @@ const CheckoutPage = () => {
     ? selectedCoupon.discountAmount || selectedCoupon.discount || 0
     : 0;
 
+  const expressDeliveryCharge = useMemo(() => {
+    if (deliverySelection?.mode === "EXPRESS") {
+      return Number(deliveryModeOptions?.expressCharge || 0);
+    }
+    return 0;
+  }, [deliverySelection, deliveryModeOptions]);
+
   const totalAmount =
-    cartTotal - discountAmount + deliveryFee + platformFee;
+    cartTotal - discountAmount + deliveryFee + expressDeliveryCharge + platformFee;
 
   const selectedPaymentLabel =
     paymentMethods.find((m) => m.id === selectedPayment)?.label ?? "Cash on Delivery";
@@ -533,6 +560,7 @@ const CheckoutPage = () => {
         }
         : {
           ...currentAddress,
+          type: currentAddress.type === "Current Location" ? "Other" : currentAddress.type,
           location: currentAddress.location || undefined,
         };
 
@@ -560,6 +588,7 @@ const CheckoutPage = () => {
           subtotal: cartTotal,
           deliveryFee,
           platformFee,
+          expressCharge: expressDeliveryCharge,
           gst: 0,
           tip: 0,
           discount: selectedCoupon ? (selectedCoupon.discountAmount || selectedCoupon.discount || 0) : 0,
@@ -724,8 +753,14 @@ const CheckoutPage = () => {
       navigate('/login', { state: { from: { pathname: '/checkout' } } });
       return;
     }
+
+    if (isSlotExpired) {
+      showToast("The selected slot has already expired. Please select a valid slot.", "error");
+      return;
+    }
+
     executePlaceOrder();
-  }, [isAuthenticated, navigate, executePlaceOrder, savedRecipient, currentAddress, showToast]);
+  }, [isAuthenticated, navigate, executePlaceOrder, savedRecipient, currentAddress, showToast, isSlotExpired]);
 
 
 
@@ -856,6 +891,18 @@ const CheckoutPage = () => {
                 </div>
               </div>
             </section>
+
+            {isSlotExpired && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex gap-3 text-amber-800">
+                <AlertCircle size={20} className="shrink-0 text-amber-600 animate-pulse" />
+                <div className="text-xs">
+                  <p className="font-bold">The selected slot has expired</p>
+                  <p className="mt-1 text-slate-600">
+                    The slot you selected in your cart has already started or ended. Please go back to the cart page to select a valid slot.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <section className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex justify-between items-center mb-3">
@@ -1203,6 +1250,12 @@ const CheckoutPage = () => {
                   <span>Platform fee</span>
                   <span className="font-semibold text-slate-900">₹{platformFee}</span>
                 </div>
+                {expressDeliveryCharge > 0 && (
+                  <div className="flex justify-between text-[#E23744] font-medium bg-[#E23744]/5 border border-[#E23744]/10 rounded-xl px-3 py-1 text-xs">
+                    <span>Express Delivery Charge</span>
+                    <span>+₹{expressDeliveryCharge}</span>
+                  </div>
+                )}
                 {selectedCoupon && (
                   <div className="flex justify-between text-brand-600">
                     <span className="flex items-center gap-1">

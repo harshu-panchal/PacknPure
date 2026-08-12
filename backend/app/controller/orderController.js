@@ -145,7 +145,7 @@ export const getMyOrders = async (req, res) => {
     const customerId = req.user.id;
     const orders = await Order.find({ customer: customerId })
       .select(
-        "orderId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate deliverySnapshot createdAt",
+        "orderId customer seller items address payment pricing totalAmount payableAmount grandTotal total amount status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate deliverySnapshot createdAt",
       )
       .sort({ createdAt: -1 })
       .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)
@@ -692,7 +692,8 @@ export const updateOrderStatus = async (req, res) => {
       order.workflowVersion >= 2 &&
       role === "admin" &&
       status === "confirmed" &&
-      order.hubFlowEnabled
+      order.hubFlowEnabled &&
+      order.deliveryMode === "EXPRESS"
     ) {
       try {
         const updated = await startHubDeliverySearchAtomic(canonicalOrderId);

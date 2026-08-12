@@ -32,6 +32,7 @@ import {
     HiOutlineArrowLeft,
     HiOutlinePrinter,
     HiOutlineArrowDownTray,
+    HiEllipsisVertical,
 } from 'react-icons/hi2';
 import Modal from '@shared/components/ui/Modal';
 import Pagination from '@shared/components/ui/Pagination';
@@ -120,9 +121,103 @@ const ProductManagement = () => {
     const [viewingSellerSupply, setViewingSellerSupply] = useState(null);
     const [isSellerSupplyModalOpen, setIsSellerSupplyModalOpen] = useState(false);
     const [selectedSupplySupplier, setSelectedSupplySupplier] = useState(null);
+    const [openActionMenuId, setOpenActionMenuId] = useState(null);
+
+    useEffect(() => {
+        const handleClickOutside = () => {
+            if (openActionMenuId !== null) {
+                setOpenActionMenuId(null);
+            }
+        };
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [openActionMenuId]);
 
     const [imageFiles, setImageFiles] = useState([]);
     const [previews, setPreviews] = useState([]);
+
+    const [quickCatModal, setQuickCatModal] = useState({ isOpen: false, type: 'category' });
+    const [quickCatForm, setQuickCatForm] = useState({ name: '', description: '', imageFile: null, preview: null });
+    const [isQuickCatSaving, setIsQuickCatSaving] = useState(false);
+
+    const openQuickCategoryModal = (type) => {
+        if (type === 'subcategory' && !formData.categoryId) {
+            toast.error('Please select a parent category first');
+            return;
+        }
+        setQuickCatForm({ name: '', description: '', imageFile: null, preview: null });
+        setQuickCatModal({ isOpen: true, type });
+    };
+
+    const handleQuickCatImageChange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setQuickCatForm((prev) => ({ ...prev, imageFile: file, preview: reader.result }));
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleQuickCatSave = async () => {
+        if (!quickCatForm.name.trim()) {
+            toast.error(`${quickCatModal.type === 'category' ? 'Parent category' : 'Subcategory'} name is required`);
+            return;
+        }
+        setIsQuickCatSaving(true);
+        try {
+            const data = new FormData();
+            data.append('type', quickCatModal.type);
+            data.append('name', quickCatForm.name.trim());
+            data.append('description', quickCatForm.description.trim());
+            data.append('status', 'active');
+            data.append('order', '0');
+            if (quickCatModal.type === 'subcategory') {
+                data.append('parentId', formData.categoryId);
+            } else {
+                data.append('parentId', '');
+            }
+            if (quickCatForm.imageFile) {
+                data.append('image', quickCatForm.imageFile);
+            }
+
+            const res = await adminApi.createCategory(data);
+            const created = res.data?.result || res.data?.results;
+            const newId = created?._id || created?.id;
+
+            toast.success(
+                quickCatModal.type === 'category'
+                    ? 'Parent category created & selected!'
+                    : 'Subcategory created & selected!',
+            );
+
+            const catRes = await adminApi.getCategoryTree();
+            if (catRes.data?.success) {
+                const fetchedTree = catRes.data.results || catRes.data.result || [];
+                setCategories(fetchedTree);
+
+                if (quickCatModal.type === 'category') {
+                    setFormData((prev) => ({
+                        ...prev,
+                        categoryId: newId || prev.categoryId,
+                        subcategoryId: '',
+                    }));
+                } else {
+                    setFormData((prev) => ({
+                        ...prev,
+                        subcategoryId: newId || prev.subcategoryId,
+                    }));
+                }
+            }
+
+            setQuickCatModal({ isOpen: false, type: 'category' });
+        } catch (err) {
+            console.error('Quick Category Creation Error:', err);
+            toast.error(err.response?.data?.message || `Failed to create ${quickCatModal.type}`);
+        } finally {
+            setIsQuickCatSaving(false);
+        }
+    };
 
     const buildProductReturnState = useCallback(
         () => ({
@@ -967,23 +1062,23 @@ const ProductManagement = () => {
 
             {/* Product Table */}
             <Card className="border-none shadow-xl ring-1 ring-slate-100 overflow-hidden rounded-xl">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto min-h-[380px]">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Product</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Seller</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Variant</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Category</th>
-                                <th className="px-6 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Product</th>
+                                <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Seller</th>
+                                <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Variant</th>
+                                <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Category</th>
+                                <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
                                     {activeTab === 'master' ? 'Customer price' : 'Supply price'}
                                 </th>
-                                <th className="px-6 py-3 text-center text-[10px] font-black text-emerald-600 uppercase tracking-widest">
+                                <th className="px-4 py-3 text-center text-[10px] font-black text-emerald-600 uppercase tracking-widest">
                                     {activeTab === 'master' ? 'Hub margin' : 'Margin'}
                                 </th>
-                                <th className="px-6 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Stock</th>
-                                <th className="px-6 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-right text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                                <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Stock</th>
+                                <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_8px_rgba(0,0,0,0.04)] z-20">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
@@ -1370,68 +1465,134 @@ const ProductManagement = () => {
                                     </td>
 
                                     {/* Status Column */}
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-4 py-4 text-center">
                                         <StatusBadge item={p} />
                                     </td>
-
+                                    
                                     {/* Actions Column */}
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end space-x-1.5">
-                                            {activeTab === 'seller' && (
-                                                <button
-                                                    onClick={() => openPurchaseRequestModal(p)}
-                                                    className="px-2 py-1.5 text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all ring-1 ring-indigo-100 text-[9px] font-black uppercase tracking-wider"
-                                                    title="Send purchase request to vendor"
+                                    <td className="px-4 py-4 text-center relative sticky right-0 bg-white group-hover:bg-slate-50/95 shadow-[-4px_0_8px_rgba(0,0,0,0.04)] z-10">
+                                        <div className="relative inline-block text-left">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenActionMenuId((prev) => (prev === p._id ? null : p._id));
+                                                }}
+                                                className={cn(
+                                                    "p-2 rounded-lg transition-all text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200/80 shadow-sm bg-white",
+                                                    openActionMenuId === p._id && "bg-slate-100 text-slate-900 border-slate-300 ring-2 ring-slate-400/20"
+                                                )}
+                                                title="Actions"
+                                            >
+                                                <HiEllipsisVertical className="h-5 w-5" />
+                                            </button>
+
+                                            {openActionMenuId === p._id && (
+                                                <div
+                                                    className="absolute right-0 top-full mt-1 z-50 w-52 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 text-left text-xs font-semibold text-slate-700 animate-in fade-in zoom-in-95 duration-100"
+                                                    onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    PR
-                                                </button>
+                                                    {activeTab === 'seller' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenActionMenuId(null);
+                                                                openPurchaseRequestModal(p);
+                                                            }}
+                                                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-indigo-700 hover:bg-indigo-50/70 transition-colors"
+                                                        >
+                                                            <HiOutlineClipboardDocumentList className="h-4 w-4 text-indigo-600" />
+                                                            <span>Purchase Request (PR)</span>
+                                                        </button>
+                                                    )}
+
+                                                    {sellerNeedsGoLive(p) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenActionMenuId(null);
+                                                                openGoLiveModal(p);
+                                                            }}
+                                                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-emerald-700 bg-emerald-50/60 hover:bg-emerald-100/70 font-bold transition-colors"
+                                                        >
+                                                            <HiOutlineCheckCircle className="h-4 w-4 text-emerald-600" />
+                                                            <span>Go Live</span>
+                                                        </button>
+                                                    )}
+
+                                                    {sellerNeedsPricingReview(p) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenActionMenuId(null);
+                                                                openGoLiveModal(p);
+                                                            }}
+                                                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-amber-700 bg-amber-50/60 hover:bg-amber-100/70 font-bold transition-colors"
+                                                        >
+                                                            <HiOutlineTag className="h-4 w-4 text-amber-600" />
+                                                            <span>Update Price</span>
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenActionMenuId(null);
+                                                            openModal(p);
+                                                        }}
+                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+                                                    >
+                                                        <HiOutlinePencilSquare className="h-4 w-4 text-slate-500" />
+                                                        <span>Full Edit</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenActionMenuId(null);
+                                                            handleDownloadBarcodes(p);
+                                                        }}
+                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+                                                    >
+                                                        <HiOutlineArrowDownTray className="h-4 w-4 text-slate-500" />
+                                                        <span>Download Barcodes</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenActionMenuId(null);
+                                                            handlePrintBarcodes(p);
+                                                        }}
+                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+                                                    >
+                                                        <HiOutlinePrinter className="h-4 w-4 text-slate-500" />
+                                                        <span>Print Barcodes</span>
+                                                    </button>
+
+                                                    <div className="my-1 border-t border-slate-100" />
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenActionMenuId(null);
+                                                            setItemToDelete(p);
+                                                            setIsDeleteModalOpen(true);
+                                                        }}
+                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-rose-50 text-rose-600 transition-colors"
+                                                    >
+                                                        <HiOutlineTrash className="h-4 w-4 text-rose-500" />
+                                                        <span>Delete Product</span>
+                                                    </button>
+                                                </div>
                                             )}
-                                            <button
-                                                onClick={() => openModal(p)}
-                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
-                                                title="Full Edit"
-                                            >
-                                                <HiOutlinePencilSquare className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDownloadBarcodes(p)}
-                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
-                                                title="Download Barcode PDF"
-                                            >
-                                                <HiOutlineArrowDownTray className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => handlePrintBarcodes(p)}
-                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
-                                                title="Print Barcode"
-                                            >
-                                                <HiOutlinePrinter className="h-3.5 w-3.5" />
-                                            </button>
-                                            {sellerNeedsGoLive(p) && (
-                                                <button
-                                                    onClick={() => openGoLiveModal(p)}
-                                                    className="px-2 py-1.5 bg-emerald-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-sm"
-                                                    title="Review and publish to live catalog"
-                                                >
-                                                    Go Live
-                                                </button>
-                                            )}
-                                            {sellerNeedsPricingReview(p) && (
-                                                <button
-                                                    onClick={() => openGoLiveModal(p)}
-                                                    className="px-2 py-1.5 bg-amber-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-sm"
-                                                    title="Seller changed supply price — update customer catalog pricing"
-                                                >
-                                                    Update Price
-                                                </button>
-                                            )}
-                                            <button
-                                                onClick={() => (setItemToDelete(p), setIsDeleteModalOpen(true))}
-                                                className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-all text-gray-400 shadow-sm ring-1 ring-gray-100"
-                                                title="Delete"
-                                            >
-                                                <HiOutlineTrash className="h-3.5 w-3.5" />
-                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1671,7 +1832,7 @@ const ProductManagement = () => {
             {/* Super Detailed Modal */}
             <AnimatePresence>
                 {isProductModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-hidden">
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-hidden">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -1926,10 +2087,10 @@ const ProductManagement = () => {
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => goToAdminCategorySection('category')}
+                                                                onClick={() => openQuickCategoryModal('category')}
                                                                 className="inline-flex items-center gap-1 text-[9px] font-black text-primary uppercase tracking-tight hover:underline"
                                                             >
-                                                                <HiOutlineArrowTopRightOnSquare className="w-3 h-3" />
+                                                                <HiOutlinePlus className="w-3 h-3" />
                                                                 Create category
                                                             </button>
                                                         </div>
@@ -1961,10 +2122,10 @@ const ProductManagement = () => {
                                                             <button
                                                                 type="button"
                                                                 disabled={!formData.categoryId}
-                                                                onClick={() => goToAdminCategorySection('subcategory')}
+                                                                onClick={() => openQuickCategoryModal('subcategory')}
                                                                 className="inline-flex items-center gap-1 text-[9px] font-black text-primary uppercase tracking-tight hover:underline disabled:opacity-30 disabled:no-underline"
                                                             >
-                                                                <HiOutlineArrowTopRightOnSquare className="w-3 h-3" />
+                                                                <HiOutlinePlus className="w-3 h-3" />
                                                                 Create subcategory
                                                             </button>
                                                         </div>
@@ -2863,7 +3024,9 @@ const ProductManagement = () => {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
                                 <p className="text-[9px] font-bold text-blue-600 uppercase">Supply price</p>
-                                <p className="text-lg font-black text-blue-800">₹{goLivePreview.sellerProduct?.supplyPrice}</p>
+                                <p className="text-lg font-black text-blue-800">
+                                    ₹{goLivePreview.sellerProduct?.supplyPrice ?? goLivePreview.sellerProduct?.variants?.[0]?.purchasePrice ?? goLivePreview.sellerProduct?.variants?.[0]?.supplyPrice ?? 0}
+                                </p>
                             </div>
                             <div className="p-3 bg-violet-50 rounded-xl border border-violet-100">
                                 <p className="text-[9px] font-bold text-violet-600 uppercase">Seller stock</p>
@@ -3003,7 +3166,8 @@ const ProductManagement = () => {
                             </p>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {variantSellPrices.map((row, idx) => {
-                                    const rootSupply = Number(goLivePreview.sellerProduct?.purchasePrice ?? goLivePreview.sellerProduct?.supplyPrice) || 0;
+                                    const firstVarSupply = goLivePreview.sellerProduct?.variants?.[0]?.purchasePrice ?? goLivePreview.sellerProduct?.variants?.[0]?.supplyPrice;
+                                    const rootSupply = Number(goLivePreview.sellerProduct?.supplyPrice ?? firstVarSupply ?? goLivePreview.sellerProduct?.purchasePrice) || 0;
                                     const rootGstRate = Number(goLivePreview.sellerProduct?.gstRate) || 0;
                                     const rootGstEnabled = Boolean(goLivePreview.sellerProduct?.gstEnabled);
                                     const sellerVariant = goLivePreview.sellerProduct?.variants?.[idx];
@@ -3141,6 +3305,118 @@ const ProductManagement = () => {
                     </div>
                 ) : null}
             </Modal>
+
+            {/* Quick Inline Category / Subcategory Creation Modal */}
+            <AnimatePresence>
+                {quickCatModal.isOpen && (
+                    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+                            onClick={() => !isQuickCatSaving && setQuickCatModal({ isOpen: false, type: 'category' })}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            className="w-full max-w-lg relative z-10 bg-white rounded-2xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <h3 className="text-base font-bold text-slate-900">
+                                    {quickCatModal.type === 'category' ? 'Create New Parent Category' : 'Create New Subcategory'}
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => !isQuickCatSaving && setQuickCatModal({ isOpen: false, type: 'category' })}
+                                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+                                >
+                                    <HiOutlineXMark className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 py-1">
+                                {quickCatModal.type === 'subcategory' && (
+                                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-indigo-900">
+                                        <span className="font-semibold text-slate-500">Parent Category:</span>
+                                        <span className="font-bold text-indigo-700">
+                                            {categories.find((c) => c._id === formData.categoryId)?.name || 'Selected Category'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="space-y-1.5 flex flex-col">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                                        {quickCatModal.type === 'category' ? 'Category Name' : 'Subcategory Name'} <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={quickCatForm.name}
+                                        onChange={(e) => setQuickCatForm({ ...quickCatForm, name: e.target.value })}
+                                        placeholder={quickCatModal.type === 'category' ? 'e.g. Groceries, Beverages, Spices' : 'e.g. Rice & Atta, Fresh Juices'}
+                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/20"
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5 flex flex-col">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Description (Optional)</label>
+                                    <textarea
+                                        value={quickCatForm.description}
+                                        onChange={(e) => setQuickCatForm({ ...quickCatForm, description: e.target.value })}
+                                        placeholder="Short description for this category..."
+                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs font-semibold outline-none resize-none min-h-[70px]"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5 flex flex-col">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Category Image (Optional)</label>
+                                    <div className="flex items-center gap-3">
+                                        {quickCatForm.preview ? (
+                                            <img src={quickCatForm.preview} alt="Preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" />
+                                        ) : (
+                                            <div className="h-12 w-12 rounded-xl bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                                                <HiOutlinePhoto className="h-5 w-5" />
+                                            </div>
+                                        )}
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleQuickCatImageChange}
+                                            className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white hover:file:bg-slate-800"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setQuickCatModal({ isOpen: false, type: 'category' })}
+                                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                                        disabled={isQuickCatSaving}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleQuickCatSave}
+                                        disabled={isQuickCatSaving}
+                                        className="bg-primary text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {isQuickCatSaving
+                                            ? 'Saving & Selecting...'
+                                            : quickCatModal.type === 'category'
+                                            ? 'Create & Select Category'
+                                            : 'Create & Select Subcategory'}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

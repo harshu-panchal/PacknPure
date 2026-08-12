@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { calculateAndValidatePricing, validatePricingConsistency } from "../services/pricingCalculationService.js";
 import { executeCoreOrderFulfillment } from "../services/coreOrderService.js";
 import { buildDeliverySnapshot } from "../services/deliverySnapshotService.js";
+import DeliverySettings from "../models/deliverySettings.js";
 dotenv.config();
 
 // Initialize Razorpay (reuse keys from env)
@@ -53,10 +54,39 @@ export const createRazorpayOrder = async (req, res) => {
             userId,
         });
 
+        // Add express charge if EXPRESS mode is selected
+        let expressCharge = 0;
+        const resolvedMode = checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
+        if (resolvedMode === "EXPRESS") {
+            const delSettings = await DeliverySettings.getSingleton();
+            expressCharge = delSettings.expressCharge || 0;
+        }
+
+        pricing.expressCharge = expressCharge;
+        pricing.total = Number((pricing.total + expressCharge).toFixed(2));
+
         const amount = Math.round(pricing.total * 100); // paise
 
         // Freeze delivery promise at payment-intent time (immutable for this checkout)
-        const resolvedMode = checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
+        if (resolvedMode === "SLOT") {
+            const { selectedDate, selectedSlot } = checkout;
+            if (!selectedDate || !selectedSlot) {
+                return handleResponse(res, 400, "Please select a date and slot for scheduled delivery");
+            }
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate) || !/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(selectedSlot)) {
+                return handleResponse(res, 400, "Select appropriate slot");
+            }
+            const [year, month, day] = selectedDate.split("-").map(Number);
+            const [startTimeStr] = selectedSlot.split("-");
+            const [startHour, startMin] = startTimeStr.split(":").map(Number);
+            
+            const now = new Date();
+            const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
+            if (now.getTime() > slotStart.getTime()) {
+                return handleResponse(res, 400, "The selected slot has already expired. Please select a valid slot.");
+            }
+        }
+
         const deliverySnapshot = await buildDeliverySnapshot({
             deliveryMode: resolvedMode,
             selectedSlot: checkout.selectedSlot || null,

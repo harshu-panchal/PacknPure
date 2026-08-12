@@ -14,6 +14,26 @@ function catalogStock(item) {
   return Number(item?.catalogStock ?? item?.availableQtySeller ?? item?.stock ?? 0) || 0;
 }
 
+function resolveSupplyPriceLabel(item) {
+  const variants = Array.isArray(item?.variants) ? item.variants : [];
+  let amounts = [];
+  if (variants.length > 0) {
+    amounts = variants
+      .map((v) => Number(v?.purchasePrice ?? v?.supplyPrice ?? v?.price ?? 0))
+      .filter((n) => n > 0);
+  }
+  if (!amounts.length) {
+    const rootPrice = Number(item?.purchasePrice ?? item?.supplyPrice ?? item?.price ?? 0);
+    if (rootPrice > 0) amounts = [rootPrice];
+  }
+  if (!amounts.length) return '₹0';
+  const min = Math.min(...amounts);
+  const max = Math.max(...amounts);
+  const fmt = (n) => Number(n).toLocaleString('en-IN');
+  if (min === max) return `₹${fmt(min)}`;
+  return `₹${fmt(min)} – ₹${fmt(max)}`;
+}
+
 function statusVariant(status) {
   if (status === 'active') return 'success';
   if (status === 'pending_approval') return 'warning';
@@ -160,7 +180,7 @@ export default function SellerProductsExpandPanel({ sellerId, sellerName, onClos
                       ) : null}
                     </td>
                     <td className="px-4 py-3 text-center font-bold text-slate-800">
-                      ₹{Number(p.purchasePrice || p.price || 0).toLocaleString('en-IN')}
+                      {resolveSupplyPriceLabel(p)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span

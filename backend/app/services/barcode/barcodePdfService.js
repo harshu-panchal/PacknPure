@@ -57,8 +57,10 @@ export async function buildBarcodeLabelsPdf(labels = []) {
   for (let i = 0; i < labels.length; i += 1) {
     const label = labels[i];
     const productName = String(label.productName || "Product").slice(0, 60);
-    const variantName = String(label.variantName || "Variant").slice(0, 60);
+    const variantName = String(label.variantName || "Variant").slice(0, 40);
     const barcodeValue = String(label.barcodeValue || "").trim();
+    const rateVal = label.rate ?? label.salePrice ?? label.price;
+    const rateText = rateVal ? `Rate: Rs. ${rateVal}` : "";
 
     if (!barcodeValue) continue;
 
@@ -91,6 +93,17 @@ export async function buildBarcodeLabelsPdf(labels = []) {
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
+
+    if (rateText) {
+      const rateWidth = fontBold.widthOfTextAtSize(rateText, 10);
+      page.drawText(rateText, {
+        x: pageWidth - marginX - rateWidth,
+        y: cursorY - 28,
+        size: 10,
+        font: fontBold,
+        color: rgb(0.1, 0.5, 0.2),
+      });
+    }
 
     const barcodeY = cursorY - 28 - 8 - drawHeight;
     page.drawImage(pngImage, {

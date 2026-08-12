@@ -54,6 +54,55 @@ const Auth = () => {
         confirmPassword: '',
     });
 
+    const [adminCategories, setAdminCategories] = useState([]);
+    const [selectedCategoryOption, setSelectedCategoryOption] = useState('');
+    const [customCategory, setCustomCategory] = useState('');
+
+    React.useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await sellerApi.getCategories();
+                const resData = response?.data;
+                const items = Array.isArray(resData?.result) 
+                    ? resData.result 
+                    : (Array.isArray(resData?.result?.items) ? resData.result.items : []);
+                
+                const mainCats = items.filter(c => c.type === 'category' || !c.parentId);
+                setAdminCategories(mainCats);
+
+                if (mainCats.length > 0) {
+                    const first = mainCats[0].name;
+                    setSelectedCategoryOption(first);
+                    setFormData(prev => ({ ...prev, category: first }));
+                } else {
+                    setSelectedCategoryOption('Grocery');
+                    setFormData(prev => ({ ...prev, category: 'Grocery' }));
+                }
+            } catch (err) {
+                console.error('Failed to load store categories:', err);
+                setSelectedCategoryOption('Grocery');
+                setFormData(prev => ({ ...prev, category: 'Grocery' }));
+            }
+        };
+        fetchCategories();
+    }, []);
+
+    const handleCategorySelectChange = (e) => {
+        const val = e.target.value;
+        setSelectedCategoryOption(val);
+        if (val === 'Other') {
+            setFormData(prev => ({ ...prev, category: customCategory.trim() }));
+        } else {
+            setFormData(prev => ({ ...prev, category: val }));
+        }
+    };
+
+    const handleCustomCategoryChange = (e) => {
+        const val = e.target.value;
+        setCustomCategory(val);
+        setFormData(prev => ({ ...prev, category: val.trim() }));
+    };
+
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
     const [documents, setDocuments] = useState({
@@ -166,6 +215,10 @@ const Auth = () => {
         }
 
         if (!isLogin) {
+            if (selectedCategoryOption === 'Other' && !customCategory.trim()) {
+                toast.error('Please write your store category.');
+                return;
+            }
             if (!documents.tradeLicense || !documents.gstCertificate || !documents.idProof) {
                 toast.error('All SOP documents are required for registration.');
                 return;
@@ -411,15 +464,47 @@ const Auth = () => {
                                             <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 ml-1">Store Category</label>
                                             <div className="relative group">
                                                 <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={18} />
-                                                <select name="category" required value={formData.category} onChange={handleChange} className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-100 transition-all appearance-none">
-                                                    <option value="Grocery">Grocery</option>
-                                                    <option value="Vegetables">Fruits & Vegetables</option>
-                                                    <option value="Meat">Meat & Fish</option>
-                                                    <option value="Bakery">Bakery & Snacks</option>
-                                                    <option value="Pharmacy">Pharmacy</option>
-                                                    <option value="General">General Store</option>
+                                                <select 
+                                                    name="categorySelect" 
+                                                    required 
+                                                    value={selectedCategoryOption} 
+                                                    onChange={handleCategorySelectChange} 
+                                                    className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-100 transition-all appearance-none cursor-pointer"
+                                                >
+                                                    {adminCategories.length > 0 ? (
+                                                        adminCategories.map((cat) => (
+                                                            <option key={cat._id || cat.name} value={cat.name}>
+                                                                {cat.name}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <>
+                                                            <option value="Grocery">Grocery</option>
+                                                            <option value="Fruits & Vegetables">Fruits & Vegetables</option>
+                                                            <option value="Meat & Fish">Meat & Fish</option>
+                                                            <option value="Bakery & Snacks">Bakery & Snacks</option>
+                                                            <option value="Pharmacy">Pharmacy</option>
+                                                            <option value="General Store">General Store</option>
+                                                        </>
+                                                    )}
+                                                    <option value="Other">Other (Custom Category)</option>
                                                 </select>
                                             </div>
+
+                                            {selectedCategoryOption === 'Other' && (
+                                                <div className="relative group mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
+                                                    <input 
+                                                        type="text" 
+                                                        name="customCategory" 
+                                                        required 
+                                                        value={customCategory} 
+                                                        onChange={handleCustomCategoryChange} 
+                                                        placeholder="Write your store category..." 
+                                                        className="w-full pl-12 pr-5 py-3.5 bg-slate-50 border-2 border-indigo-200 rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all" 
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 

@@ -64,7 +64,6 @@ const CustomerLoginPanel = ({
                 By continuing, you agree to our{' '}
                 <Link
                     to="/terms"
-                    onClick={onClose}
                     className="font-semibold underline underline-offset-2"
                     style={{ color: primary }}
                 >
@@ -73,7 +72,6 @@ const CustomerLoginPanel = ({
                 &amp;{' '}
                 <Link
                     to="/privacy"
-                    onClick={onClose}
                     className="font-semibold underline underline-offset-2"
                     style={{ color: primary }}
                 >

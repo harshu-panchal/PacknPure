@@ -164,6 +164,10 @@ const orderSchema = new mongoose.Schema(
       deliveryFee: Number,
       platformFee: Number,
       gst: Number,
+      expressCharge: {
+        type: Number,
+        default: 0,
+      },
       tip: {
         type: Number,
         default: 0,

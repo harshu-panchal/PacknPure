@@ -40,6 +40,11 @@ const sanitizeSettingsPayload = (raw = {}) => {
   if (typeof raw.slotTitle === "string" && raw.slotTitle.trim()) {
     payload.slotTitle = raw.slotTitle.trim();
   }
+  if (raw.expressCharge !== undefined) {
+    const v = Number(raw.expressCharge);
+    if (!Number.isFinite(v) || v < 0) throw new Error("expressCharge must be a non-negative number");
+    payload.expressCharge = v;
+  }
 
   if (raw.availableDays && typeof raw.availableDays === "object") {
     for (const day of DAY_KEYS) {
@@ -263,6 +268,7 @@ export const getAvailableDeliveryModes = async (req, res) => {
       expressMinTime: settings.expressMinTime,
       expressMaxTime: settings.expressMaxTime,
       expressTitle: settings.expressTitle,
+      expressCharge: settings.expressCharge ?? 0,
       slotTitle: settings.slotTitle,
       availableDays,
       slots,

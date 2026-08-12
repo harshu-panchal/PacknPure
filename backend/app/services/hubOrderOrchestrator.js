@@ -389,6 +389,27 @@ export const createAutoPurchaseRequests = async ({
     String(candidate?.categoryId || "") === String(base?.categoryId || "") &&
     String(candidate?.subcategoryId || "") === String(base?.subcategoryId || "");
 
+  const isSellerOfProduct = async (sellerId, masterProductId, masterProductName) => {
+    if (!sellerId || !masterProductId) return false;
+    const sidStr = typeof sellerId === "object" ? String(sellerId._id || sellerId) : String(sellerId);
+    const sidObj = mongoose.Types.ObjectId.isValid(sidStr) ? new mongoose.Types.ObjectId(sidStr) : sidStr;
+
+    const midStr = typeof masterProductId === "object" ? String(masterProductId._id || masterProductId) : String(masterProductId);
+    const midObj = mongoose.Types.ObjectId.isValid(midStr) ? new mongoose.Types.ObjectId(midStr) : midStr;
+
+    const matchOr = [{ _id: midObj }, { masterProductId: midObj }, { masterProductId: midStr }];
+    if (String(masterProductName || "").trim()) {
+      const escapedName = String(masterProductName).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      matchOr.push({ name: new RegExp(`^${escapedName}$`, "i") });
+    }
+    const count = await Product.countDocuments({
+      sellerId: { $in: [sidStr, sidObj] },
+      status: { $nin: ["inactive", "rejected"] },
+      $or: matchOr,
+    });
+    return count > 0;
+  };
+
   const selectCheapestSellers = async (
     baseProduct,
     shortageQty,
@@ -451,7 +472,15 @@ export const createAutoPurchaseRequests = async ({
     );
 
     if (selections.length === 0) {
-      const fallbackVendorId = item.vendorId || (baseProduct?.sellerId ? String(baseProduct.sellerId) : null);
+      const candidateVendorId = item.vendorId || (baseProduct?.sellerId ? String(baseProduct.sellerId) : null);
+      let fallbackVendorId = null;
+      if (candidateVendorId && baseProduct) {
+        const ownsProduct = await isSellerOfProduct(candidateVendorId, baseProduct._id, baseProduct.name);
+        if (ownsProduct) {
+          fallbackVendorId = candidateVendorId;
+        }
+      }
+
       enrichedShortages.push({
         ...item,
         vendorId: fallbackVendorId,
@@ -468,6 +497,7 @@ export const createAutoPurchaseRequests = async ({
         marginValue: DEFAULT_PROCUREMENT_MARGIN_VALUE,
         rankedSellers: [],
       });
+
     } else {
       let remainingToAssign = item.shortageQty;
         for (let i = 0; i < selections.length; i++) {
@@ -507,11 +537,26 @@ export const createAutoPurchaseRequests = async ({
           const baseGstAmount = Number((fallbackCost * (baseRate / 100)).toFixed(2));
           const finalSupply = Number((fallbackCost + baseGstAmount).toFixed(2));
           const totalProcurement = Number((finalSupply * remainingToAssign).toFixed(2));
+          const topChoice = (selections || []).find((s) => s?.vendorId) || null;
+          let fallbackVendorId = item.vendorId || (topChoice?.vendorId ? String(topChoice.vendorId) : null);
+          if (!fallbackVendorId && baseProduct?.sellerId) {
+            const candidateSeller = String(baseProduct.sellerId);
+            const ownsProduct = await isSellerOfProduct(candidateSeller, baseProduct._id, baseProduct.name);
+            if (ownsProduct) {
+              fallbackVendorId = candidateSeller;
+            }
+          }
+          // Deliberately NOT topChoice.selectedSellerProductId: that seller is in
+          // this bucket precisely because their live stock couldn't cover the
+          // shortage, so reserveAllocation() would re-check that same (low/zero)
+          // stock, clamp allocQty to 0, and silently drop the item — the seller
+          // would never get notified. Leave it unset so the fallback catalog-price
+          // reservation isn't re-clamped against the stock number that caused it.
 
           enrichedShortages.push({
             ...item,
             shortageQty: remainingToAssign,
-            vendorId: null,
+            vendorId: fallbackVendorId,
             selectedSellerProductId: null,
             vendorUnitCost: fallbackCost,
             vendorQuotedPrice: fallbackCost,

@@ -3,6 +3,42 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ArrowUpRight, ArrowDownLeft, ReceiptIndianRupee } from 'lucide-react';
 import { customerApi } from '../services/customerApi';
 
+const calculateOrderAmount = (order) => {
+    if (!order) return 0;
+
+    // 1. Check pricing object
+    const pricingTotal = Number(order.pricing?.total ?? order.pricing?.grandTotal);
+    if (!isNaN(pricingTotal) && pricingTotal > 0) return pricingTotal;
+
+    // 2. Check payment paidAmount / amount
+    const paidAmount = Number(order.payment?.paidAmount ?? order.payment?.amount);
+    if (!isNaN(paidAmount) && paidAmount > 0) return paidAmount;
+
+    // 3. Top-level total/amount fields
+    const topTotal = Number(order.totalAmount ?? order.payableAmount ?? order.grandTotal ?? order.total ?? order.amount);
+    if (!isNaN(topTotal) && topTotal > 0) return topTotal;
+
+    // 4. Subtotal + fees calculation in pricing
+    const subtotal = Number(order.pricing?.subtotal || 0);
+    const deliveryFee = Number(order.pricing?.deliveryFee || 0);
+    const platformFee = Number(order.pricing?.platformFee || 0);
+    const tax = Number(order.pricing?.gst || 0);
+    const calculatedSub = subtotal + deliveryFee + platformFee + tax;
+    if (calculatedSub > 0) return calculatedSub;
+
+    // 5. Fallback sum of items
+    if (Array.isArray(order.items) && order.items.length > 0) {
+        const itemsSum = order.items.reduce((sum, item) => {
+            const price = Number(item.price ?? item.salePrice ?? item.unitPrice ?? item.finalCost ?? 0);
+            const qty = Number(item.quantity ?? 1);
+            return sum + (price * qty);
+        }, 0);
+        if (itemsSum > 0) return itemsSum;
+    }
+
+    return 0;
+};
+
 const OrderTransactionsPage = () => {
     const navigate = useNavigate();
     const [orders, setOrders] = useState([]);
@@ -68,9 +104,10 @@ const OrderTransactionsPage = () => {
                     ) : (
                         <div className="divide-y divide-slate-100">
                             {orders.map((order) => {
-                                const isRefund = order.paymentStatus === 'refunded';
-                                const amount = order.totalAmount || order.payableAmount || 0;
+                                const isRefund = order.paymentStatus === 'refunded' || order.payment?.status === 'refunded' || order.status === 'refunded';
+                                const amount = calculateOrderAmount(order);
                                 const createdAt = order.createdAt ? new Date(order.createdAt) : null;
+                                const paymentMethod = order.paymentMethod || order.payment?.method || order.payment?.paymentMode || 'Online';
 
                                 return (
                                     <div
@@ -95,9 +132,9 @@ const OrderTransactionsPage = () => {
                                                 <h4 className="font-semibold text-slate-800 text-sm">
                                                     {isRefund ? 'Refund' : 'Order Payment'}
                                                 </h4>
-                                                <p className="text-[11px] text-slate-500">
+                                                <p className="text-[11px] text-slate-500 capitalize">
                                                     #{order.orderId || order._id?.slice(-8)} •{' '}
-                                                    {order.paymentMethod || 'Online'}
+                                                    {paymentMethod}
                                                 </p>
                                                 {createdAt && (
                                                     <p className="text-[11px] text-slate-500 mt-0.5">
@@ -115,7 +152,7 @@ const OrderTransactionsPage = () => {
                                                 isRefund ? 'text-amber-600' : 'text-slate-900'
                                             }`}
                                         >
-                                            {isRefund ? '+' : '-'}₹{amount}
+                                            {isRefund ? '+' : '-'}₹{amount.toLocaleString('en-IN')}
                                         </div>
                                     </div>
                                 );

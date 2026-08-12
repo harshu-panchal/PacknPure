@@ -51,7 +51,15 @@ const emptyRequestForm = { productId: "", quantity: "100", notes: "" };
 
 function sellerProductOptionLabel(product) {
   const stock = Number(product?.catalogStock ?? product?.stock ?? 0);
-  const supply = Number(product?.purchasePrice ?? product?.price ?? 0);
+  const supply = Number(
+    product?.purchasePrice ??
+      product?.supplyPrice ??
+      product?.price ??
+      product?.variants?.[0]?.purchasePrice ??
+      product?.variants?.[0]?.supplyPrice ??
+      product?.variants?.[0]?.price ??
+      0,
+  );
   const kind = product?.masterProductId ? "Catalog" : "Own";
   return `${product?.name || "Product"} · ${kind} · stock ${stock}${supply > 0 ? ` · ₹${supply}` : ""}`;
 }

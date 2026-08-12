@@ -744,7 +744,7 @@ const OrdersList = () => {
                                         {o.customer?.name || "Customer"} — {o.address?.address || o.address?.city || ""}
                                     </span>
                                     <span className="ml-auto font-bold text-emerald-600">
-                                        ₹{Number(o.totalAmount || 0).toLocaleString("en-IN")}
+                                        ₹{Number(o.pricing?.total || o.totalAmount || 0).toLocaleString("en-IN")}
                                     </span>
                                 </label>
                             ))}

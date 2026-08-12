@@ -26,7 +26,7 @@ const TermsPage = () => {
             {/* Header */}
             <div className="bg-white sticky top-0 z-30 px-4 py-3 flex items-center gap-1 shadow-sm">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
                     className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors"
                 >
                     <ChevronLeft size={24} className="text-slate-600" />
@@ -35,28 +35,77 @@ const TermsPage = () => {
             </div>
 
             <div className="p-5 max-w-3xl mx-auto space-y-6">
-                <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center text-[#E23744]">
+                <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+                        <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center text-[#E23744] shrink-0">
                             <ScrollText size={24} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-800">Terms of Use</h2>
-                            <p className="text-xs text-slate-500 font-medium">Last updated: Oct 2025</p>
+                            <h2 className="text-xl font-bold text-slate-800">Terms of Service</h2>
+                            <p className="text-xs text-slate-500 font-medium">Last updated: August 2026</p>
                         </div>
                     </div>
 
-                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 space-y-4">
+                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed space-y-6">
                         {isLoading ? (
                             <div className="animate-pulse space-y-3">
                                 <div className="h-4 bg-slate-200 rounded w-3/4"></div>
                                 <div className="h-4 bg-slate-200 rounded w-1/2"></div>
                                 <div className="h-4 bg-slate-200 rounded w-5/6"></div>
                             </div>
-                        ) : pageContent ? (
+                        ) : pageContent?.content ? (
                             <div dangerouslySetInnerHTML={{ __html: pageContent.content }} />
                         ) : (
-                            <p>Terms and conditions content is not available yet.</p>
+                            <div className="space-y-6 text-sm text-slate-700">
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">1. Acceptance of Terms</h3>
+                                    <p>
+                                        Welcome to {appName}. By accessing, browsing, or using our mobile application or website, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">2. Account Registration & Security</h3>
+                                    <p>
+                                        To place orders or access specific features, you must register using a valid Indian mobile number and verify via OTP. You are responsible for maintaining the confidentiality of your credentials and for all activities under your account.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">3. Orders, Pricing & Catalog Listings</h3>
+                                    <p>
+                                        All product prices displayed on {appName} include applicable taxes unless specified otherwise. We reserve the right to modify prices, update catalog availability, or limit order quantities at any time without prior notice.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">4. Delivery & Logistics</h3>
+                                    <p>
+                                        Delivery time estimates are provided for convenience and may vary based on weather, traffic, or operational conditions. Delivery partners will make reasonable attempts to fulfill dispatches to the specified address.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">5. Cancellations & Refunds</h3>
+                                    <p>
+                                        Orders may be cancelled prior to partner assignment or dispatch. Refund requests for damaged or missing items must be submitted within 24 hours of delivery through the customer support panel.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">6. User Conduct</h3>
+                                    <p>
+                                        You agree not to misuse {appName} by introducing malicious code, attempting unauthorized system access, or misrepresenting identity or payment details.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-base font-bold text-slate-900">7. Contact & Support</h3>
+                                    <p>
+                                        For inquiries or assistance regarding these terms, please contact our support team via the Help section or email {settings?.supportEmail || 'support@packnpure.com'}.
+                                    </p>
+                                </section>
+                            </div>
                         )}
                     </div>
                 </div>

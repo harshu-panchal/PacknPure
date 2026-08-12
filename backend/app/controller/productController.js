@@ -2010,9 +2010,7 @@ export const getSellerProductGoLivePreview = async (req, res) => {
     }
 
     const sellerVariants = mapVariantsForResponse(sellerProduct.variants);
-    const supplyPrice = Number(
-      sellerProduct.purchasePrice ?? sellerProduct.price ?? 0,
-    );
+    const supplyPrice = resolveSupplyPriceFromInput(sellerProduct);
 
     return handleResponse(res, 200, "Go-live preview loaded", {
       sellerProduct: {

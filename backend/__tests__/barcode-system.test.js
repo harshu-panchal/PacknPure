@@ -68,6 +68,8 @@ describe("barcodeService (isolated)", () => {
         {
           _id: "cccccccccccccccccccccccc",
           name: "1kg",
+          price: 100,
+          salePrice: 90,
           barcodeValue: "PNP-ADM-00000002",
           barcodeId: "PNP-ADM-00000002",
           sellerBarcodeValue: "PNP-SLR-SHOULD-IGNORE",
@@ -78,6 +80,9 @@ describe("barcodeService (isolated)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].barcodeValue).toBe("PNP-ADM-00000002");
     expect(rows[0].variantName).toBe("1kg");
+    expect(rows[0].rate).toBe(90);
+    expect(rows[0].salePrice).toBe(90);
+    expect(rows[0].price).toBe(100);
   });
 
   test("collectBarcodeLabelRows returns seller barcodes only for seller products", () => {

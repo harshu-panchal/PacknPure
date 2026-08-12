@@ -562,13 +562,13 @@ const OrderDetails = () => {
   const handleOtpValidationSuccess = (data) => {
     const nextStop = data?.result?.nextStop;
     if (nextStop?.orderId) {
-      toast.success(`Delivery confirmed! Next stop: order #${nextStop.orderId}`);
-      setTimeout(() => {
-        navigate(`/delivery/order-details/${encodeURIComponent(nextStop.orderId)}`);
-      }, 1500);
-      return;
+      toast.success(`Delivery confirmed! Next stop ready: order #${nextStop.orderId}`);
+    } else {
+      toast.success("Delivery confirmed!");
     }
-    toast.success("Delivery confirmed!");
+    // Always return the rider to the dashboard instead of auto-jumping into
+    // the next trip stop — the rider must come back and choose to start the
+    // next delivery themselves (no OTP is pre-generated for the next stop).
     setTimeout(() => {
       navigate("/delivery/dashboard");
     }, 1500);

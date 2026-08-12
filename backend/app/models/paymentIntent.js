@@ -37,6 +37,7 @@ const paymentIntentSchema = new mongoose.Schema(
       couponCode: String,
       walletUsed: Number,
       deliveryFee: Number,
+      expressCharge: { type: Number, default: 0 },
       platformFee: Number,
       total: Number,
       pricingVersion: String, // Hash to detect stale pricing

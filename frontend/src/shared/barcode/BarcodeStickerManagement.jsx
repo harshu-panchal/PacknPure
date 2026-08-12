@@ -78,9 +78,19 @@ function BarcodePreviewModal({ open, row, onClose, onPrint, onDownload }) {
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Product</p>
             <p className="text-base font-bold text-slate-900">{row.productName}</p>
           </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Variant</p>
-            <p className="text-sm font-semibold text-slate-700">{row.variantName || '—'}</p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Variant</p>
+              <p className="text-sm font-semibold text-slate-700">{row.variantName || '—'}</p>
+            </div>
+            {(row.rate || row.salePrice || row.price) ? (
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Rate / Price</p>
+                <p className="text-sm font-black text-emerald-600">
+                  ₹{row.rate ?? row.salePrice ?? row.price}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 flex flex-col items-center min-h-[120px] justify-center">
@@ -463,7 +473,14 @@ export default function BarcodeStickerManagement({ role = 'admin' }) {
                     <tr key={`${row.productId}-${row.variantId}`} className="border-t border-slate-50 hover:bg-slate-50/40">
                       <td className="px-4 py-3 pl-8">
                         <p className="text-sm font-semibold text-slate-800">{row.variantName || 'Variant'}</p>
-                        {row.unit && <p className="text-[11px] text-slate-400">{row.unit}</p>}
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                          {row.unit && <span>{row.unit}</span>}
+                          {(row.rate || row.salePrice || row.price) ? (
+                            <span className="font-bold text-emerald-600">
+                              ₹{row.rate ?? row.salePrice ?? row.price}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {row.hasBarcode ? (

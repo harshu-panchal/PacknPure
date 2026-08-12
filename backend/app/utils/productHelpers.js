@@ -166,6 +166,13 @@ export function resolveSupplyPriceFromInput(input = {}) {
     const n = Number(input[key]);
     if (Number.isFinite(n) && n > 0) return n;
   }
+  const variants = Array.isArray(input?.variants) ? input.variants : [];
+  if (variants.length > 0) {
+    for (const v of variants) {
+      const p = resolveSupplyPriceFromVariantRow(v);
+      if (p > 0) return p;
+    }
+  }
   return 0;
 }
 

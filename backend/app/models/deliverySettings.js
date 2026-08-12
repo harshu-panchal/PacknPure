@@ -39,6 +39,7 @@ const deliverySettingsSchema = new mongoose.Schema(
     expressMinTime: { type: Number, default: 30, min: 1 }, // minutes
     expressMaxTime: { type: Number, default: 60, min: 1 }, // minutes
     expressTitle: { type: String, default: "Express Delivery", trim: true },
+    expressCharge: { type: Number, default: 0, min: 0 },
 
     // Slot delivery configuration
     slotEnabled: { type: Boolean, default: true },
