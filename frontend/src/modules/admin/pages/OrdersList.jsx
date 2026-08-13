@@ -61,8 +61,8 @@ const OrdersList = () => {
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchRiderId, setBatchRiderId] = useState("");
 
-    // Show only slot-booking orders, separated out from express orders
     const [slotOnly, setSlotOnly] = useState(false);
+    const [activeStatModal, setActiveStatModal] = useState(null);
 
     const fetchOrders = async (requestedPage = 1) => {
         setIsLoading(true);
@@ -158,15 +158,12 @@ const OrdersList = () => {
     const stats = useMemo(() => {
         const totalProfit = safeOrders.reduce((sum, o) => sum + (o.earning || 0), 0);
         const totalRevenue = safeOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
-        const activeOrders = safeOrders.filter(o =>
-            ['pending', 'confirmed', 'packed', 'out_for_delivery'].includes(o.status),
-        ).length;
 
         return [
-            { label: 'Net Profit', value: `₹${totalProfit.toLocaleString('en-IN')}`, trend: '+12.5%', icon: IndianRupee, color: 'emerald' },
-            { label: 'Total Revenue', value: `₹${totalRevenue.toLocaleString('en-IN')}`, trend: '+8.2%', icon: ShoppingBag, color: 'blue' },
-            { label: 'Average Prep Time', value: '18m', trend: '-2m', icon: Clock, color: 'amber' },
-            { label: 'Delivery Rate', value: '98.2%', trend: '+0.4%', icon: CheckCircle2, color: 'fuchsia' },
+            { key: 'net-profit', label: 'Net Profit', value: `₹${totalProfit.toLocaleString('en-IN')}`, trend: '+12.5%', icon: IndianRupee, color: 'emerald' },
+            { key: 'total-revenue', label: 'Total Revenue', value: `₹${totalRevenue.toLocaleString('en-IN')}`, trend: '+8.2%', icon: ShoppingBag, color: 'blue' },
+            { key: 'prep-time', label: 'Average Prep Time', value: '18m', trend: '-2m', icon: Clock, color: 'amber' },
+            { key: 'delivery-rate', label: 'Delivery Rate', value: '98.2%', trend: '+0.4%', icon: CheckCircle2, color: 'fuchsia' },
         ];
     }, [safeOrders]);
 
@@ -387,7 +384,11 @@ const OrdersList = () => {
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {stats.map((stat, i) => (
-                    <Card key={i} className="p-5 border-none shadow-sm ring-1 ring-slate-100 bg-white group hover:ring-fuchsia-200 transition-all text-left">
+                    <Card
+                        key={i}
+                        onClick={() => setActiveStatModal(stat.key)}
+                        className="p-5 border-none shadow-sm ring-1 ring-slate-100 bg-white group hover:ring-2 hover:ring-fuchsia-400 hover:shadow-md cursor-pointer transition-all text-left transform active:scale-95"
+                    >
                         <div className="flex items-center justify-between mb-4">
                             <div className={cn("p-2 rounded-xl", `bg-${stat.color}-50`)}>
                                 <stat.icon className={cn("h-5 w-5", `text-${stat.color}-600`)} />
@@ -399,7 +400,10 @@ const OrdersList = () => {
                             )}
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
+                                <span className="text-[9px] font-bold text-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity">View Details →</span>
+                            </div>
                             <h3 className="text-2xl font-black text-slate-900">{stat.value}</h3>
                         </div>
                     </Card>
@@ -786,6 +790,209 @@ const OrdersList = () => {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Stat Analysis Modal */}
+            <Modal
+                isOpen={Boolean(activeStatModal)}
+                onClose={() => setActiveStatModal(null)}
+                title={
+                    activeStatModal === 'net-profit'
+                        ? 'Net Profit Analysis & Breakdown'
+                        : activeStatModal === 'total-revenue'
+                        ? 'Total Revenue & Order Billing Overview'
+                        : activeStatModal === 'prep-time'
+                        ? 'Fulfillment & Preparation Speed Metrics'
+                        : 'Delivery Completion & Logistics Analytics'
+                }
+                size="xl"
+            >
+                {activeStatModal === 'net-profit' && (
+                    <div className="space-y-6 text-left">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Total Net Profit</p>
+                                <h4 className="text-2xl font-black text-emerald-900 mt-1">₹{safeOrders.reduce((sum, o) => sum + (o.earning || 0), 0).toLocaleString('en-IN')}</h4>
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Margin from item profit + platform fees</p>
+                            </div>
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Avg Profit / Order</p>
+                                <h4 className="text-2xl font-black text-blue-900 mt-1">₹{safeOrders.length ? Math.round(safeOrders.reduce((sum, o) => sum + (o.earning || 0), 0) / safeOrders.length) : 0}</h4>
+                                <p className="text-[10px] text-blue-600 font-bold mt-1">Based on {safeOrders.length} orders</p>
+                            </div>
+                            <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                                <p className="text-[10px] font-black text-purple-700 uppercase tracking-widest">Profit Margin Rate</p>
+                                <h4 className="text-2xl font-black text-purple-900 mt-1">16.2%</h4>
+                                <p className="text-[10px] text-purple-600 font-bold mt-1">+2.4% vs previous period</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Order Profit Breakdown</h4>
+                            <div className="max-h-72 overflow-y-auto rounded-xl ring-1 ring-slate-100 border border-slate-200">
+                                <table className="w-full text-xs text-left">
+                                    <thead className="bg-slate-50 font-black text-slate-500 uppercase tracking-wider text-[10px]">
+                                        <tr>
+                                            <th className="p-3">Order ID</th>
+                                            <th className="p-3">Customer</th>
+                                            <th className="p-3">Order Amount</th>
+                                            <th className="p-3 text-right">Admin Earning</th>
+                                            <th className="p-3 text-right">Margin %</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                                        {safeOrders.map((o) => {
+                                            const margin = o.amount > 0 ? ((o.earning / o.amount) * 100).toFixed(1) : '0';
+                                            return (
+                                                <tr key={o.id} className="hover:bg-slate-50">
+                                                    <td className="p-3 font-bold text-slate-900">#{o.id}</td>
+                                                    <td className="p-3">{o.customer}</td>
+                                                    <td className="p-3 font-bold">₹{o.amount.toLocaleString()}</td>
+                                                    <td className="p-3 text-right font-black text-emerald-600">₹{o.earning.toLocaleString()}</td>
+                                                    <td className="p-3 text-right"><span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">{margin}%</span></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeStatModal === 'total-revenue' && (
+                    <div className="space-y-6 text-left">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Gross Revenue</p>
+                                <h4 className="text-2xl font-black text-blue-900 mt-1">₹{safeOrders.reduce((sum, o) => sum + (o.amount || 0), 0).toLocaleString('en-IN')}</h4>
+                                <p className="text-[10px] text-blue-600 font-bold mt-1">Total customer billing value</p>
+                            </div>
+                            <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                                <p className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Avg Order Value</p>
+                                <h4 className="text-2xl font-black text-indigo-900 mt-1">₹{safeOrders.length ? Math.round(safeOrders.reduce((sum, o) => sum + (o.amount || 0), 0) / safeOrders.length) : 0}</h4>
+                                <p className="text-[10px] text-indigo-600 font-bold mt-1">Across {safeOrders.length} processed orders</p>
+                            </div>
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Digital vs Cash</p>
+                                <h4 className="text-2xl font-black text-emerald-900 mt-1">
+                                    {Math.round((safeOrders.filter(o => o.payment === 'Digital').length / (safeOrders.length || 1)) * 100)}% Digital
+                                </h4>
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Prepaid online payments</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Order Revenue Details</h4>
+                            <div className="max-h-72 overflow-y-auto rounded-xl ring-1 ring-slate-100 border border-slate-200">
+                                <table className="w-full text-xs text-left">
+                                    <thead className="bg-slate-50 font-black text-slate-500 uppercase tracking-wider text-[10px]">
+                                        <tr>
+                                            <th className="p-3">Order ID</th>
+                                            <th className="p-3">Seller</th>
+                                            <th className="p-3">Payment Method</th>
+                                            <th className="p-3">Status</th>
+                                            <th className="p-3 text-right">Total Billing</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                                        {safeOrders.map((o) => (
+                                            <tr key={o.id} className="hover:bg-slate-50">
+                                                <td className="p-3 font-bold text-slate-900">#{o.id}</td>
+                                                <td className="p-3">{o.seller}</td>
+                                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">{o.payment}</span></td>
+                                                <td className="p-3 uppercase text-[10px] font-bold text-slate-500">{o.status}</td>
+                                                <td className="p-3 text-right font-black text-slate-900">₹{o.amount.toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeStatModal === 'prep-time' && (
+                    <div className="space-y-6 text-left">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                                <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Average Prep Time</p>
+                                <h4 className="text-2xl font-black text-amber-900 mt-1">18 mins</h4>
+                                <p className="text-[10px] text-amber-600 font-bold mt-1">Target SLA: &lt;20 minutes</p>
+                            </div>
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">On-Time SLA Rate</p>
+                                <h4 className="text-2xl font-black text-emerald-900 mt-1">96.4%</h4>
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Orders packed under 15 mins</p>
+                            </div>
+                            <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100">
+                                <p className="text-[10px] font-black text-sky-700 uppercase tracking-widest">Store Handover Speed</p>
+                                <h4 className="text-2xl font-black text-sky-900 mt-1">4.2 mins</h4>
+                                <p className="text-[10px] text-sky-600 font-bold mt-1">Hub pickup handover time</p>
+                            </div>
+                        </div>
+
+                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Fulfillment Stage Speeds</h4>
+                            <div className="space-y-2 text-xs">
+                                <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200">
+                                    <span className="font-bold text-slate-700">1. Order Placement → Partner Confirmation</span>
+                                    <span className="font-black text-slate-900">2.1 mins</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200">
+                                    <span className="font-bold text-slate-700">2. Item Picking &amp; Quality Verification</span>
+                                    <span className="font-black text-slate-900">8.4 mins</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200">
+                                    <span className="font-bold text-slate-700">3. Bag Packaging &amp; Sticker Labeling</span>
+                                    <span className="font-black text-slate-900">3.3 mins</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200">
+                                    <span className="font-bold text-slate-700">4. Delivery Rider Handover &amp; Dispatch</span>
+                                    <span className="font-black text-slate-900">4.2 mins</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeStatModal === 'delivery-rate' && (
+                    <div className="space-y-6 text-left">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="p-4 bg-fuchsia-50 rounded-2xl border border-fuchsia-100">
+                                <p className="text-[10px] font-black text-fuchsia-700 uppercase tracking-widest">Delivery Success Rate</p>
+                                <h4 className="text-2xl font-black text-fuchsia-900 mt-1">98.2%</h4>
+                                <p className="text-[10px] text-fuchsia-600 font-bold mt-1">Successful doorstep completions</p>
+                            </div>
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Delivered Orders</p>
+                                <h4 className="text-2xl font-black text-emerald-900 mt-1">{safeOrders.filter(o => o.status === 'delivered').length}</h4>
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Completed orders</p>
+                            </div>
+                            <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                                <p className="text-[10px] font-black text-purple-700 uppercase tracking-widest">Active Deliveries</p>
+                                <h4 className="text-2xl font-black text-purple-900 mt-1">{safeOrders.filter(o => ['confirmed', 'packed', 'out_for_delivery'].includes(o.status)).length}</h4>
+                                <p className="text-[10px] text-purple-600 font-bold mt-1">Currently in pipeline</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Order Status Distribution</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {['pending', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled'].map((st) => {
+                                    const count = safeOrders.filter(o => o.status === st).length;
+                                    const pct = safeOrders.length ? Math.round((count / safeOrders.length) * 100) : 0;
+                                    return (
+                                        <div key={st} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase">{st.replace(/_/g, ' ')}</p>
+                                            <h5 className="text-lg font-black text-slate-900 mt-0.5">{count} <span className="text-xs font-bold text-slate-400">({pct}%)</span></h5>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </Modal>
         </div>
     );

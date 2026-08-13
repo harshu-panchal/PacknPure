@@ -222,15 +222,6 @@ const CatalogListing = () => {
               <HiOutlineArrowPath className="h-4 w-4" /> Refresh
             </span>
           </ShimmerButton>
-          <ShimmerButton
-            disabled={!isVerified}
-            onClick={() => navigate("/seller/products/add")}
-            className="shadow-2xl"
-          >
-            <span className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-              <HiOutlineSquaresPlus className="h-4 w-4" /> List New Product
-            </span>
-          </ShimmerButton>
         </div>
       </div>
 

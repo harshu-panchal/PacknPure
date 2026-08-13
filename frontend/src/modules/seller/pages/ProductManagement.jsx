@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Card from "@shared/components/ui/Card";
 import Badge from "@shared/components/ui/Badge";
 import {
@@ -755,491 +756,506 @@ const ProductManagement = () => {
       </div>
 
       {/* Edit Modal */}
-      <AnimatePresence>
-        {isProductModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-12 overflow-y-auto">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsProductModalOpen(false)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }} className="w-full max-w-5xl relative z-10 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="flex items-center justify-between p-6 border-b border-slate-100">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 bg-slate-900 text-white rounded-xl flex items-center justify-center shrink-0">
-                    <HiOutlineCube className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-bold text-slate-900 truncate">
-                      {isCatalogLocked
-                        ? "Update supply price & stock"
-                        : editingItem
-                          ? "Edit product"
-                          : "Add product"}
-                    </h3>
-                    {editingItem && (
-                      <p className="text-xs font-semibold text-slate-500 truncate">{editingItem.name}</p>
-                    )}
-                  </div>
-                </div>
-                <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors shrink-0">
-                  <HiOutlineXMark className="h-5 w-5" />
-                </button>
-              </div>
-
-              {isCatalogLocked && (
-                <div className="mx-6 mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
-                  <HiOutlineLink className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-bold text-indigo-900">Hub catalog product</p>
-                    <p className="text-xs text-indigo-700 mt-0.5">
-                      Photos, categories, and variants are managed by admin. You can only update your supply price and stock.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {isCatalogLocked && editingItem?.mainImage && (
-                <div className="px-6 pt-4 flex items-center gap-4">
-                  <img
-                    src={editingItem.mainImage}
-                    alt=""
-                    className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{editingItem.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {editingItem.categoryId?.name || "—"}
-                      {editingItem.brand ? ` · ${editingItem.brand}` : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Live summary — variant-wise totals */}
-              <div className="px-6 py-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="text-center sm:border-r-0 border-b sm:border-b-0 border-slate-200/80 pb-3 sm:pb-0">
-                  <p className="text-sm font-medium text-slate-500">Variants</p>
-                  <p className="text-base font-semibold text-slate-900">{formSummary.variantCount}</p>
-                </div>
-                <div className="text-center sm:border-x border-slate-200/80 pb-3 sm:pb-0">
-                  <p className="text-sm font-medium text-slate-500">Supply prices</p>
-                  <p className="text-base font-semibold text-emerald-700">{formSummary.priceLabel}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-slate-500">Total stock</p>
-                  <p className="text-base font-semibold text-sky-700">{formSummary.totalStock}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-                <div
-                  className="lg:w-1/4 bg-slate-50/50 border-r border-slate-100 p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
-                  onWheel={(e) => e.stopPropagation()}
-                  onTouchMove={(e) => e.stopPropagation()}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isProductModalOpen && (
+              <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 lg:p-8 overflow-y-auto">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-slate-900/50 backdrop-blur-md"
+                  onClick={() => setIsProductModalOpen(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="w-full max-w-5xl relative z-10 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto"
                 >
-                  {modalTabs.map((tab) => (
-                    <button key={tab.id} onClick={() => setModalTab(tab.id)} className={cn("w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left", modalTab === tab.id ? "bg-white text-primary shadow-sm ring-1 ring-slate-100" : "text-slate-600 hover:bg-slate-100")}>
-                      <tab.icon className="h-4 w-4" /> <span>{tab.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div
-                  className="flex-1 p-8 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
-                  onWheel={(e) => e.stopPropagation()}
-                  onTouchMove={(e) => e.stopPropagation()}
-                >
-                  {modalTab === "general" && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-600 ml-1">Product title *</label>
-                        <input
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          disabled={isCatalogLocked}
-                          className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/5 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="e.g. Premium Basmati Rice"
-                        />
+                  <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-10 w-10 bg-slate-900 text-white rounded-xl flex items-center justify-center shrink-0">
+                        <HiOutlineCube className="h-5 w-5" />
                       </div>
-
-                      {/* HUB-FIRST MAPPING SECTION */}
-                      {!isCatalogLocked && (
-                        <div className="p-4 bg-slate-900 rounded-2xl relative overflow-visible group">
-                          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <HiOutlineLink className="h-16 w-16 text-white rotate-12" />
-                          </div>
-                          <div className="relative z-10 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-xs font-black text-white italic tracking-tight uppercase">Hub-First Mapping</h4>
-                              {formData.masterProductId ? (
-                                <Badge variant="success" className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400">Linked</Badge>
-                              ) : (
-                                <Badge variant="warning" className="px-2 py-0.5 text-xs animate-pulse">Unlinked</Badge>
-                              )}
-                            </div>
-                            <div className="relative">
-                              <div className="relative group/search">
-                                <HiOutlineMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 group-focus-within/search:text-primary transition-all" />
-                                <input
-                                  type="text"
-                                  autoComplete="off"
-                                  placeholder="Search Master Catalog..."
-                                  onChange={(e) => searchMasterCatalog(e.target.value)}
-                                  className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-1 focus:ring-primary/50"
-                                />
-                              </div>
-                              {showMasterSuggestions && masterSuggestions.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-48 overflow-y-auto">
-                                  {masterSuggestions.map(m => (
-                                    <button key={m._id} type="button" onClick={() => handleMasterLink(m)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800 text-left border-b border-slate-800 last:border-0">
-                                      <img src={m.mainImage} alt="" className="h-8 w-8 rounded object-cover" />
-                                      <div>
-                                        <p className="text-xs font-bold text-white">{m.name}</p>
-                                        <p className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-tighter">{m.categoryId?.name || 'Master'}</p>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {formData.masterProductId && (
-                            <button onClick={() => setFormData({ ...formData, masterProductId: null })} className="text-xs font-black text-slate-500 hover:text-rose-500 uppercase self-end">Clear Mapping</button>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Description</label>
-                        <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} disabled={isCatalogLocked} className="w-full px-4 py-3 bg-slate-100 border-none rounded-2xl text-sm font-semibold min-h-[120px] outline-none disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Product details..." />
-                      </div>
-                    </div>
-                  )}
-
-                  {modalTab === "variants" && (
-                    <div className="space-y-5 animate-in fade-in slide-in-from-right-2">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900">Variants, supply price & stock</h4>
-                          <p className="text-sm text-slate-500 font-medium mt-0.5">
-                            Each row is one pack/size you sell. Set <strong>supply price</strong> (what hub pays you) and <strong>your stock</strong> per variant.
-                          </p>
-                        </div>
-                        {!isCatalogLocked && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateVariants([
-                                ...(formData.variants || []),
-                                {
-                                  id: Date.now(),
-                                  name: "",
-                                  unit: formData.unit || DEFAULT_PRODUCT_UNIT,
-                                  supplyPrice: "",
-                                  stock: "",
-                                  gstEnabled: false,
-                                  gstRate: 0,
-                                },
-                              ])
-                            }
-                            className="shrink-0 flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-xl text-sm font-semibold hover:bg-primary/20"
-                          >
-                            <HiOutlinePlus className="h-3.5 w-3.5" /> Add variant
-                          </button>
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-slate-900 truncate">
+                          {isCatalogLocked
+                            ? "Update supply price & stock"
+                            : editingItem
+                              ? "Edit product"
+                              : "Add product"}
+                        </h3>
+                        {editingItem && (
+                          <p className="text-xs font-semibold text-slate-500 truncate">{editingItem.name}</p>
                         )}
                       </div>
+                    </div>
+                    <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+                      <HiOutlineXMark className="h-5 w-5" />
+                    </button>
+                  </div>
 
-                      <div className="space-y-3">
-                        {(formData.variants || []).map((variant, idx) => (
-                          <div
-                            key={variant.id || idx}
-                            className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-12 gap-3 items-end"
-                          >
-                            <div className="col-span-12 sm:col-span-4 space-y-1">
-                              <label className="text-sm font-medium text-slate-500 ml-1">Name *</label>
-                              <input
-                                value={variant.name}
-                                onChange={(e) => {
-                                  const next = [...formData.variants];
-                                  next[idx] = { ...next[idx], name: e.target.value };
-                                  updateVariants(next);
-                                }}
-                                disabled={isCatalogLocked}
-                                placeholder="e.g. 1 kg pack"
-                                className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 rounded-xl text-sm font-medium outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                              />
-                            </div>
-                            <div className="col-span-6 sm:col-span-2 space-y-1">
-                              <label className="text-sm font-medium text-slate-500 ml-1">Unit</label>
-                              <select
-                                value={variant.unit || formData.unit}
-                                onChange={(e) => {
-                                  const next = [...formData.variants];
-                                  next[idx] = { ...next[idx], unit: e.target.value };
-                                  updateVariants(next);
-                                }}
-                                disabled={isCatalogLocked}
-                                className="w-full px-2 py-2 bg-white ring-1 ring-slate-200 rounded-xl text-sm font-medium outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                              >
-                                {PRODUCT_UNITS.map((u) => (
-                                  <option key={u.value} value={u.value}>{u.label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="col-span-6 sm:col-span-3 space-y-1">
-                              <div className="flex items-center justify-between ml-1">
-                                <label className="text-sm font-medium text-emerald-700">Supply price (₹) *</label>
-                                {isCatalogLocked && variant.masterSalePrice && (
-                                  <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded" title="Supply price incl. GST cannot exceed this Hub selling price">Max limit: ₹{variant.masterSalePrice}</span>
-                                )}
+                  {isCatalogLocked && (
+                    <div className="mx-6 mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
+                      <HiOutlineLink className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-bold text-indigo-900">Hub catalog product</p>
+                        <p className="text-xs text-indigo-700 mt-0.5">
+                          Photos, categories, and variants are managed by admin. You can only update your supply price and stock.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCatalogLocked && editingItem?.mainImage && (
+                    <div className="px-6 pt-4 flex items-center gap-4">
+                      <img
+                        src={editingItem.mainImage}
+                        alt=""
+                        className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{editingItem.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {editingItem.categoryId?.name || "—"}
+                          {editingItem.brand ? ` · ${editingItem.brand}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live summary — variant-wise totals */}
+                  <div className="px-6 py-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="text-center sm:border-r-0 border-b sm:border-b-0 border-slate-200/80 pb-3 sm:pb-0">
+                      <p className="text-sm font-medium text-slate-500">Variants</p>
+                      <p className="text-base font-semibold text-slate-900">{formSummary.variantCount}</p>
+                    </div>
+                    <div className="text-center sm:border-x border-slate-200/80 pb-3 sm:pb-0">
+                      <p className="text-sm font-medium text-slate-500">Supply prices</p>
+                      <p className="text-base font-semibold text-emerald-700">{formSummary.priceLabel}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-500">Total stock</p>
+                      <p className="text-base font-semibold text-sky-700">{formSummary.totalStock}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+                    <div
+                      className="lg:w-1/4 bg-slate-50/50 border-r border-slate-100 p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
+                      onWheel={(e) => e.stopPropagation()}
+                      onTouchMove={(e) => e.stopPropagation()}
+                    >
+                      {modalTabs.map((tab) => (
+                        <button key={tab.id} onClick={() => setModalTab(tab.id)} className={cn("w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left", modalTab === tab.id ? "bg-white text-primary shadow-sm ring-1 ring-slate-100" : "text-slate-600 hover:bg-slate-100")}>
+                          <tab.icon className="h-4 w-4" /> <span>{tab.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div
+                      className="flex-1 p-8 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
+                      onWheel={(e) => e.stopPropagation()}
+                      onTouchMove={(e) => e.stopPropagation()}
+                    >
+                      {modalTab === "general" && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-slate-600 ml-1">Product title *</label>
+                            <input
+                              value={formData.name}
+                              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                              disabled={isCatalogLocked}
+                              className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                              placeholder="e.g. Premium Basmati Rice"
+                            />
+                          </div>
+
+                          {/* HUB-FIRST MAPPING SECTION */}
+                          {!isCatalogLocked && (
+                            <div className="p-4 bg-slate-900 rounded-2xl relative overflow-visible group">
+                              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <HiOutlineLink className="h-16 w-16 text-white rotate-12" />
                               </div>
-                              <input
-                                type="number"
-                                min="0"
-                                value={variant.supplyPrice ?? variant.price ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  const next = [...formData.variants];
-                                  next[idx] = { ...next[idx], supplyPrice: val };
-                                  updateVariants(next);
-                                }}
-                                className="w-full px-3 py-2 bg-white ring-1 ring-emerald-100 rounded-xl text-sm font-medium outline-none"
-                              />
-                            </div>
-                            <div className="col-span-6 sm:col-span-2 space-y-1">
-                              <label className="text-sm font-medium text-sky-700 ml-1">Stock *</label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={variant.stock}
-                                onChange={(e) => {
-                                  const next = [...formData.variants];
-                                  next[idx] = { ...next[idx], stock: e.target.value };
-                                  updateVariants(next);
-                                }}
-                                className="w-full px-3 py-2 bg-white ring-1 ring-sky-100 rounded-xl text-sm font-medium outline-none"
-                              />
-                            </div>
-                            <div className="col-span-6 sm:col-span-1 flex justify-end">
-                              {!isCatalogLocked && (formData.variants?.length || 0) > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => updateVariants(formData.variants.filter((_, i) => i !== idx))}
-                                  className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"
-                                  title="Remove variant"
-                                >
-                                  <HiOutlineTrash className="h-4 w-4" />
-                                </button>
+                              <div className="relative z-10 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-xs font-black text-white italic tracking-tight uppercase">Hub-First Mapping</h4>
+                                  {formData.masterProductId ? (
+                                    <Badge variant="success" className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400">Linked</Badge>
+                                  ) : (
+                                    <Badge variant="warning" className="px-2 py-0.5 text-xs animate-pulse">Unlinked</Badge>
+                                  )}
+                                </div>
+                                <div className="relative">
+                                  <div className="relative group/search">
+                                    <HiOutlineMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 group-focus-within/search:text-primary transition-all" />
+                                    <input
+                                      type="text"
+                                      autoComplete="off"
+                                      placeholder="Search Master Catalog..."
+                                      onChange={(e) => searchMasterCatalog(e.target.value)}
+                                      className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-1 focus:ring-primary/50"
+                                    />
+                                  </div>
+                                  {showMasterSuggestions && masterSuggestions.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-48 overflow-y-auto">
+                                      {masterSuggestions.map(m => (
+                                        <button key={m._id} type="button" onClick={() => handleMasterLink(m)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800 text-left border-b border-slate-800 last:border-0">
+                                          <img src={m.mainImage} alt="" className="h-8 w-8 rounded object-cover" />
+                                          <div>
+                                            <p className="text-xs font-bold text-white">{m.name}</p>
+                                            <p className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-tighter">{m.categoryId?.name || 'Master'}</p>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {formData.masterProductId && (
+                                <button onClick={() => setFormData({ ...formData, masterProductId: null })} className="text-xs font-black text-slate-500 hover:text-rose-500 uppercase self-end">Clear Mapping</button>
                               )}
                             </div>
-                            <div className="col-span-12">
-                              <VariantGstFields
-                                variant={variant}
-                                gstRates={gstRates}
-                                taxablePrice={Number(variant.supplyPrice ?? variant.price) || 0}
-                                compact
-                                onChange={(patch) => {
-                                  const next = [...formData.variants];
-                                  next[idx] = { ...next[idx], ...patch };
-                                  updateVariants(next);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          )}
 
-                      {!isCatalogLocked && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
-                          <div>
-                            <p className="text-sm font-medium text-amber-800">Default unit (product)</p>
-                            <select
-                              value={formData.unit}
-                              onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                              className="mt-1 w-full px-3 py-2 bg-white rounded-xl text-xs font-bold outline-none ring-1 ring-amber-100"
-                            >
-                              {PRODUCT_UNITS.map((u) => (
-                                <option key={u.value} value={u.value}>{u.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-rose-700">Low stock alert</p>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.lowStockAlert}
-                              onChange={(e) => setFormData({ ...formData, lowStockAlert: e.target.value })}
-                              className="mt-1 w-full px-3 py-2 bg-white rounded-xl text-xs font-bold text-rose-600 outline-none ring-1 ring-rose-100"
-                            />
+                          <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Description</label>
+                            <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} disabled={isCatalogLocked} className="w-full px-4 py-3 bg-slate-100 border-none rounded-2xl text-sm font-semibold min-h-[120px] outline-none disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Product details..." />
                           </div>
                         </div>
                       )}
-                    </div>
-                  )}
 
-                  {modalTab === "details" && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium text-slate-600 ml-1">Brand</label>
-                          <input value={formData.brand} onChange={(e) => setFormData({ ...formData, brand: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="e.g. India Gate" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-sm font-medium text-slate-600 ml-1">Weight / pack info</label>
-                          <input value={formData.weight} onChange={(e) => setFormData({ ...formData, weight: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="e.g. 5kg" />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-600 ml-1">Tags (comma separated)</label>
-                        <input value={formData.tags} onChange={(e) => setFormData({ ...formData, tags: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="organic, basmati" />
-                      </div>
-                    </div>
-                  )}
-
-                  {modalTab === "category" && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Parent category</label>
-                          <SearchableCategorySelect
-                            value={formData.category}
-                            onChange={id => setFormData({ ...formData, category: id, subcategory: "" })}
-                            options={categories}
-                            placeholder="Select parent category"
-                            searchPlaceholder="Search parent categories..."
-                            emptyLabel="No parent category matches"
-                          />
-                        </div>
-                        <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Subcategory</label>
-                          <SearchableCategorySelect
-                            value={formData.subcategory}
-                            onChange={id => setFormData({ ...formData, subcategory: id })}
-                            options={categories.find(p => (p._id || p.id) === formData.category)?.children || []}
-                            disabled={!formData.category}
-                            placeholder={formData.category ? "Select subcategory" : "Choose a parent category first"}
-                            searchPlaceholder="Search subcategories..."
-                            emptyLabel={formData.category ? "No subcategory matches" : "Select a parent category first"}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {modalTab === "media" && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
-                      <div className="space-y-3">
-                        <label className="text-sm font-medium text-slate-600 ml-1">Cover Photo</label>
-                        <div className="w-48 aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center cursor-pointer overflow-hidden relative group hover:border-primary">
-                          <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={e => handleImageUpload(e, "main")} />
-                          {formData.mainImage ? (
-                            <>
-                              <img src={formData.mainImage} className="w-full h-full object-cover" />
+                      {modalTab === "variants" && (
+                        <div className="space-y-5 animate-in fade-in slide-in-from-right-2">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900">Variants, supply price & stock</h4>
+                              <p className="text-sm text-slate-500 font-medium mt-0.5">
+                                Each row is one pack/size you sell. Set <strong>supply price</strong> (what hub pays you) and <strong>your stock</strong> per variant.
+                              </p>
+                            </div>
+                            {!isCatalogLocked && (
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setFormData(prev => ({ ...prev, mainImage: "", mainImageFile: null }));
-                                }}
-                                className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center z-20"
-                                title="Remove Cover Photo"
+                                onClick={() =>
+                                  updateVariants([
+                                    ...(formData.variants || []),
+                                    {
+                                      id: Date.now(),
+                                      name: "",
+                                      unit: formData.unit || DEFAULT_PRODUCT_UNIT,
+                                      supplyPrice: "",
+                                      stock: "",
+                                      gstEnabled: false,
+                                      gstRate: 0,
+                                    },
+                                  ])
+                                }
+                                className="shrink-0 flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-xl text-sm font-semibold hover:bg-primary/20"
                               >
-                                <HiOutlineXMark className="h-4 w-4 text-slate-700" />
+                                <HiOutlinePlus className="h-3.5 w-3.5" /> Add variant
                               </button>
-                            </>
-                          ) : (
-                            <HiOutlinePhoto className="h-10 w-10 text-slate-200" />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-end justify-between gap-3">
-                          <label className="text-sm font-medium text-slate-600 ml-1">
-                            Gallery Images <span className="text-slate-400 normal-case tracking-normal font-semibold">({(formData.galleryItems || []).length}/5)</span>
-                          </label>
-                          <div className="text-sm font-medium text-slate-500">Select multiple</div>
-                        </div>
-
-                        <div className={cn(
-                          "rounded-2xl border-2 border-dashed bg-slate-50 p-5 transition-colors relative",
-                          (formData.galleryItems || []).length >= 5 ? "border-slate-200 opacity-60 cursor-not-allowed" : "border-slate-200 hover:border-primary"
-                        )}>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            disabled={(formData.galleryItems || []).length >= 5}
-                            className="absolute inset-0 opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                            onChange={(e) => handleImageUpload(e, "gallery")}
-                          />
-                          <div className="flex items-center gap-3 text-slate-500">
-                            <div className="h-10 w-10 rounded-xl bg-white ring-1 ring-slate-100 flex items-center justify-center">
-                              <HiOutlineSquaresPlus className="h-5 w-5" />
-                            </div>
-                            <div className="text-xs font-semibold">
-                              Click to add gallery images (max 5)
-                            </div>
+                            )}
                           </div>
-                        </div>
 
-                        {(formData.galleryItems || []).length > 0 && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {(formData.galleryItems || []).map((it) => (
-                              <div key={it.id} className="relative rounded-2xl overflow-hidden ring-1 ring-slate-100 bg-white">
-                                <img src={it.preview} alt="" className="w-full aspect-square object-cover" />
-                                <button
-                                  type="button"
-                                  onClick={() => removeGalleryItem(it.id)}
-                                  className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center"
-                                  title="Remove"
-                                >
-                                  <HiOutlineXMark className="h-4 w-4 text-slate-700" />
-                                </button>
+                          <div className="space-y-3">
+                            {(formData.variants || []).map((variant, idx) => (
+                              <div
+                                key={variant.id || idx}
+                                className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-12 gap-3 items-end"
+                              >
+                                <div className="col-span-12 sm:col-span-4 space-y-1">
+                                  <label className="text-sm font-medium text-slate-500 ml-1">Name *</label>
+                                  <input
+                                    value={variant.name}
+                                    onChange={(e) => {
+                                      const next = [...formData.variants];
+                                      next[idx] = { ...next[idx], name: e.target.value };
+                                      updateVariants(next);
+                                    }}
+                                    disabled={isCatalogLocked}
+                                    placeholder="e.g. 1 kg pack"
+                                    className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 rounded-xl text-sm font-medium outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                                  />
+                                </div>
+                                <div className="col-span-6 sm:col-span-2 space-y-1">
+                                  <label className="text-sm font-medium text-slate-500 ml-1">Unit</label>
+                                  <select
+                                    value={variant.unit || formData.unit}
+                                    onChange={(e) => {
+                                      const next = [...formData.variants];
+                                      next[idx] = { ...next[idx], unit: e.target.value };
+                                      updateVariants(next);
+                                    }}
+                                    disabled={isCatalogLocked}
+                                    className="w-full px-2 py-2 bg-white ring-1 ring-slate-200 rounded-xl text-sm font-medium outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    {PRODUCT_UNITS.map((u) => (
+                                      <option key={u.value} value={u.value}>{u.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="col-span-6 sm:col-span-3 space-y-1">
+                                  <div className="flex items-center justify-between ml-1">
+                                    <label className="text-sm font-medium text-emerald-700">Supply price (₹) *</label>
+                                    {isCatalogLocked && variant.masterSalePrice && (
+                                      <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded" title="Supply price incl. GST cannot exceed this Hub selling price">Max limit: ₹{variant.masterSalePrice}</span>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={variant.supplyPrice ?? variant.price ?? ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const next = [...formData.variants];
+                                      next[idx] = { ...next[idx], supplyPrice: val };
+                                      updateVariants(next);
+                                    }}
+                                    className="w-full px-3 py-2 bg-white ring-1 ring-emerald-100 rounded-xl text-sm font-medium outline-none"
+                                  />
+                                </div>
+                                <div className="col-span-6 sm:col-span-2 space-y-1">
+                                  <label className="text-sm font-medium text-sky-700 ml-1">Stock *</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={variant.stock}
+                                    onChange={(e) => {
+                                      const next = [...formData.variants];
+                                      next[idx] = { ...next[idx], stock: e.target.value };
+                                      updateVariants(next);
+                                    }}
+                                    className="w-full px-3 py-2 bg-white ring-1 ring-sky-100 rounded-xl text-sm font-medium outline-none"
+                                  />
+                                </div>
+                                <div className="col-span-6 sm:col-span-1 flex justify-end">
+                                  {!isCatalogLocked && (formData.variants?.length || 0) > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateVariants(formData.variants.filter((_, i) => i !== idx))}
+                                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"
+                                      title="Remove variant"
+                                    >
+                                      <HiOutlineTrash className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="col-span-12">
+                                  <VariantGstFields
+                                    variant={variant}
+                                    gstRates={gstRates}
+                                    taxablePrice={Number(variant.supplyPrice ?? variant.price) || 0}
+                                    compact
+                                    onChange={(patch) => {
+                                      const next = [...formData.variants];
+                                      next[idx] = { ...next[idx], ...patch };
+                                      updateVariants(next);
+                                    }}
+                                  />
+                                </div>
                               </div>
                             ))}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
-                <button onClick={() => setIsProductModalOpen(false)} className="px-6 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
-                {editingItem?._id && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadBarcodes(editingItem)}
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-white"
-                      title="Download Barcode PDF"
-                    >
-                      Download Barcode PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePrintBarcodes(editingItem)}
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-white"
-                      title="Print Barcode"
-                    >
-                      Print Barcode
-                    </button>
-                  </>
-                )}
-                {isCatalogLocked || modalTab === "details" ? (
-                  <button onClick={handleSave} disabled={isSaving} className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-sm font-semibold shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">{isSaving ? "Saving..." : isCatalogLocked ? "Save price & stock" : "Save Changes"}</button>
-                ) : (
-                  <button onClick={() => {
-                    const tabIds = modalTabs.map((t) => t.id);
-                    const currentIdx = tabIds.indexOf(modalTab);
-                    if (currentIdx < tabIds.length - 1) setModalTab(tabIds[currentIdx + 1]);
-                  }} className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-sm font-semibold shadow-xl hover:-translate-y-0.5 transition-all">
-                    Next
-                  </button>
-                )}
+                          {!isCatalogLocked && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
+                              <div>
+                                <p className="text-sm font-medium text-amber-800">Default unit (product)</p>
+                                <select
+                                  value={formData.unit}
+                                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                                  className="mt-1 w-full px-3 py-2 bg-white rounded-xl text-xs font-bold outline-none ring-1 ring-amber-100"
+                                >
+                                  {PRODUCT_UNITS.map((u) => (
+                                    <option key={u.value} value={u.value}>{u.label}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-rose-700">Low stock alert</p>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={formData.lowStockAlert}
+                                  onChange={(e) => setFormData({ ...formData, lowStockAlert: e.target.value })}
+                                  className="mt-1 w-full px-3 py-2 bg-white rounded-xl text-xs font-bold text-rose-600 outline-none ring-1 ring-rose-100"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {modalTab === "details" && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1.5">
+                              <label className="text-sm font-medium text-slate-600 ml-1">Brand</label>
+                              <input value={formData.brand} onChange={(e) => setFormData({ ...formData, brand: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="e.g. India Gate" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-sm font-medium text-slate-600 ml-1">Weight / pack info</label>
+                              <input value={formData.weight} onChange={(e) => setFormData({ ...formData, weight: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="e.g. 5kg" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-slate-600 ml-1">Tags (comma separated)</label>
+                            <input value={formData.tags} onChange={(e) => setFormData({ ...formData, tags: e.target.value })} className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none" placeholder="organic, basmati" />
+                          </div>
+                        </div>
+                      )}
+
+                      {modalTab === "category" && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Parent category</label>
+                              <SearchableCategorySelect
+                                value={formData.category}
+                                onChange={id => setFormData({ ...formData, category: id, subcategory: "" })}
+                                options={categories}
+                                placeholder="Select parent category"
+                                searchPlaceholder="Search parent categories..."
+                                emptyLabel="No parent category matches"
+                              />
+                            </div>
+                            <div className="space-y-1.5"><label className="text-sm font-medium text-slate-600 ml-1">Subcategory</label>
+                              <SearchableCategorySelect
+                                value={formData.subcategory}
+                                onChange={id => setFormData({ ...formData, subcategory: id })}
+                                options={categories.find(p => (p._id || p.id) === formData.category)?.children || []}
+                                disabled={!formData.category}
+                                placeholder={formData.category ? "Select subcategory" : "Choose a parent category first"}
+                                searchPlaceholder="Search subcategories..."
+                                emptyLabel={formData.category ? "No subcategory matches" : "Select a parent category first"}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {modalTab === "media" && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-2">
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-slate-600 ml-1">Cover Photo</label>
+                            <div className="w-48 aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center cursor-pointer overflow-hidden relative group hover:border-primary">
+                              <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={e => handleImageUpload(e, "main")} />
+                              {formData.mainImage ? (
+                                <>
+                                  <img src={formData.mainImage} className="w-full h-full object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setFormData(prev => ({ ...prev, mainImage: "", mainImageFile: null }));
+                                    }}
+                                    className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center z-20"
+                                    title="Remove Cover Photo"
+                                  >
+                                    <HiOutlineXMark className="h-4 w-4 text-slate-700" />
+                                  </button>
+                                </>
+                              ) : (
+                                <HiOutlinePhoto className="h-10 w-10 text-slate-200" />
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex items-end justify-between gap-3">
+                              <label className="text-sm font-medium text-slate-600 ml-1">
+                                Gallery Images <span className="text-slate-400 normal-case tracking-normal font-semibold">({(formData.galleryItems || []).length}/5)</span>
+                              </label>
+                              <div className="text-sm font-medium text-slate-500">Select multiple</div>
+                            </div>
+
+                            <div className={cn(
+                              "rounded-2xl border-2 border-dashed bg-slate-50 p-5 transition-colors relative",
+                              (formData.galleryItems || []).length >= 5 ? "border-slate-200 opacity-60 cursor-not-allowed" : "border-slate-200 hover:border-primary"
+                            )}>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={(formData.galleryItems || []).length >= 5}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                                onChange={(e) => handleImageUpload(e, "gallery")}
+                              />
+                              <div className="flex items-center gap-3 text-slate-500">
+                                <div className="h-10 w-10 rounded-xl bg-white ring-1 ring-slate-100 flex items-center justify-center">
+                                  <HiOutlineSquaresPlus className="h-5 w-5" />
+                                </div>
+                                <div className="text-xs font-semibold">
+                                  Click to add gallery images (max 5)
+                                </div>
+                              </div>
+                            </div>
+
+                            {(formData.galleryItems || []).length > 0 && (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                {(formData.galleryItems || []).map((it) => (
+                                  <div key={it.id} className="relative rounded-2xl overflow-hidden ring-1 ring-slate-100 bg-white">
+                                    <img src={it.preview} alt="" className="w-full aspect-square object-cover" />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeGalleryItem(it.id)}
+                                      className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center"
+                                      title="Remove"
+                                    >
+                                      <HiOutlineXMark className="h-4 w-4 text-slate-700" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                    <button onClick={() => setIsProductModalOpen(false)} className="px-6 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
+                    {editingItem?._id && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadBarcodes(editingItem)}
+                          className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-white"
+                          title="Download Barcode PDF"
+                        >
+                          Download Barcode PDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintBarcodes(editingItem)}
+                          className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-white"
+                          title="Print Barcode"
+                        >
+                          Print Barcode
+                        </button>
+                      </>
+                    )}
+                    {isCatalogLocked || modalTab === "details" ? (
+                      <button onClick={handleSave} disabled={isSaving} className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-sm font-semibold shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">{isSaving ? "Saving..." : isCatalogLocked ? "Save price & stock" : "Save Changes"}</button>
+                    ) : (
+                      <button onClick={() => {
+                        const tabIds = modalTabs.map((t) => t.id);
+                        const currentIdx = tabIds.indexOf(modalTab);
+                        if (currentIdx < tabIds.length - 1) setModalTab(tabIds[currentIdx + 1]);
+                      }} className="bg-slate-900 text-white px-10 py-2.5 rounded-xl text-sm font-semibold shadow-xl hover:-translate-y-0.5 transition-all">
+                        Next
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
 
       {/* Delete Modal */}
       <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Confirm Deletion" size="sm" footer={

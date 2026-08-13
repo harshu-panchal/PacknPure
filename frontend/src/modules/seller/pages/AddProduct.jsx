@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Button from "@shared/components/ui/Button";
 import Badge from "@shared/components/ui/Badge";
 import {
@@ -476,9 +477,9 @@ const AddProduct = () => {
               </div>
 
               {/* Browse Catalog Modal Overlay */}
-              {isBrowseModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-                  <div className="bg-white w-full max-w-4xl max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+              {isBrowseModalOpen && typeof document !== "undefined" && createPortal(
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+                  <div className="bg-white w-full max-w-4xl max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col my-auto relative z-10">
                     <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                       <div>
                         <h3 className="text-lg font-black text-slate-900 tracking-tight">Master Catalog</h3>
@@ -539,7 +540,8 @@ const AddProduct = () => {
                       )}
                     </div>
                   </div>
-                </div>
+                </div>,
+                document.body
               )}
 
               <div className="space-y-1.5 flex flex-col">

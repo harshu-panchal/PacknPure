@@ -39,20 +39,84 @@ export function formatStatus(status) {
 export function getCustomerFromOrder(order) {
   const customer = order?.customer || {};
   const guest = order?.guestCustomer || {};
-  const address = order?.address || {};
+  const address = order?.address || order?.shippingAddress || order?.deliveryAddress || {};
+
+  let rawAddress = '';
+  let name = '';
+  let phone = '';
+  let email = customer?.email || guest?.email || '—';
+  let city = '';
+  let landmark = '';
+  let state = '';
+  let pincode = '';
+
+  if (typeof address === 'string') {
+    rawAddress = address;
+  } else if (address && typeof address === 'object') {
+    rawAddress = address.address || address.street || address.addressLine1 || address.fullAddress || '';
+    name = address.name || '';
+    phone = address.phone || '';
+    city = address.city || '';
+    landmark = address.landmark || '';
+    state = address.state || '';
+    pincode = address.pincode || address.pinCode || address.zip || address.postalCode || '';
+  }
+
+  if (!name) {
+    name = customer?.name || guest?.name || (order?.orderSource === 'POS' ? 'Walk-in Customer' : '—');
+  }
+  if (!phone) {
+    phone = customer?.phone || guest?.phone || '—';
+  }
+
+  // Parse rawAddress if city, state, or pincode are empty
+  if (rawAddress) {
+    if (!pincode) {
+      const pinMatch = rawAddress.match(/\b(\d{6})\b/);
+      if (pinMatch) pincode = pinMatch[1];
+    }
+
+    const parts = rawAddress.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      const cleanParts = parts.filter((p) => !/^india$/i.test(p));
+
+      if (!pincode && cleanParts.length > 0) {
+        const lastPart = cleanParts[cleanParts.length - 1] || '';
+        const pinMatch = lastPart.match(/\b(\d{6})\b/);
+        if (pinMatch) pincode = pinMatch[1];
+      }
+
+      if (!state && cleanParts.length >= 2) {
+        let statePart = cleanParts[cleanParts.length - 1];
+        statePart = statePart.replace(/\b\d{6}\b/, '').trim();
+        if (statePart && !/^\d+$/.test(statePart)) {
+          state = statePart;
+        } else if (cleanParts.length >= 3) {
+          statePart = cleanParts[cleanParts.length - 2].replace(/\b\d{6}\b/, '').trim();
+          if (statePart) state = statePart;
+        }
+      }
+
+      if (!city && cleanParts.length >= 2) {
+        let cityCandidate = cleanParts[cleanParts.length - 2];
+        if (state && cityCandidate.toLowerCase() === state.toLowerCase()) {
+          if (cleanParts.length >= 3) cityCandidate = cleanParts[cleanParts.length - 3];
+        }
+        cityCandidate = cityCandidate.replace(/\b\d{6}\b/, '').trim();
+        if (cityCandidate) city = cityCandidate;
+      }
+    }
+  }
+
   return {
-    name:
-      address?.name ||
-      customer?.name ||
-      guest?.name ||
-      (order?.orderSource === 'POS' ? 'Walk-in Customer' : '—'),
-    phone: address?.phone || customer?.phone || guest?.phone || '—',
-    email: customer?.email || guest?.email || '—',
-    addressLine: address?.address || '—',
-    city: address?.city || '',
-    landmark: address?.landmark || '',
-    state: address?.state || '',
-    pincode: address?.pincode || address?.pinCode || address?.zip || '',
+    name,
+    phone,
+    email,
+    addressLine: rawAddress || '—',
+    city: city || '—',
+    landmark: landmark || '',
+    state: state || '—',
+    pincode: pincode || '—',
   };
 }
 

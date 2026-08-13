@@ -4,7 +4,6 @@ import { SettingsProvider } from './core/context/SettingsContext';
 import { ToastProvider } from './shared/components/ui/Toast';
 import Loader from './shared/components/ui/Loader';
 import ErrorBoundary from './shared/components/ErrorBoundary';
-import LenisProvider from './shared/components/LenisProvider';
 import MobileAppHardening from './core/components/MobileAppHardening';
 
 function App() {
@@ -14,9 +13,7 @@ function App() {
         <ToastProvider>
           <MobileAppHardening />
           <Suspense fallback={<Loader fullScreen />}>
-            <LenisProvider>
-              <AppRouter />
-            </LenisProvider>
+            <AppRouter />
           </Suspense>
         </ToastProvider>
       </SettingsProvider>

@@ -142,7 +142,10 @@ const AdminDashboard = () => {
                         <Badge variant="outline" className="ds-badge ds-badge-gray hidden sm:inline-flex">
                             Last Update: Today, 12:45 PM
                         </Badge>
-                        <button className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 whitespace-nowrap transition-transform">
+                        <button
+                            onClick={() => navigate('/admin/reports')}
+                            className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 whitespace-nowrap transition-transform cursor-pointer"
+                        >
                             Download Report
                         </button>
                     </div>
@@ -233,7 +236,7 @@ const AdminDashboard = () => {
                         subtitle="Sales breakdown by category"
                         className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full"
                     >
-                        <div className="h-[250px] min-h-[250px] relative">
+                        <div className="h-[250px] min-h-[250px] relative cursor-pointer" onClick={() => navigate('/admin/categories/hierarchy')}>
                             <ResponsiveContainer width="100%" height={250}>
                                 <PieChart>
                                     <Pie
@@ -259,7 +262,11 @@ const AdminDashboard = () => {
                         </div>
                         <div className="space-y-3 mt-4">
                             {categoryData.map((cat) => (
-                                <div key={cat.name} className="flex items-center justify-between">
+                                <div
+                                    key={cat.name}
+                                    onClick={() => navigate('/admin/categories/hierarchy')}
+                                    className="flex items-center justify-between cursor-pointer p-1.5 rounded-xl hover:bg-slate-50 transition-colors"
+                                >
                                     <div className="flex items-center space-x-2">
                                         <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
                                         <span className="text-sm font-semibold text-gray-600">{cat.name}</span>
@@ -293,8 +300,12 @@ const AdminDashboard = () => {
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {recentOrders.map((order) => (
-                                        <tr key={order.id} className="group hover:bg-gray-50/50 transition-all">
-                                            <td className="py-4 text-sm font-semibold text-primary">{order.id}</td>
+                                        <tr
+                                            key={order.id}
+                                            onClick={() => navigate(`/admin/orders/view/${order.id}`)}
+                                            className="group hover:bg-slate-50/80 transition-all cursor-pointer"
+                                        >
+                                            <td className="py-4 text-sm font-semibold text-primary">#{order.id}</td>
                                             <td className="py-4">
                                                 <div className="flex items-center space-x-2">
                                                     <div className="h-7 w-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-500 ring-2 ring-white shadow-sm uppercase">
@@ -315,7 +326,10 @@ const AdminDashboard = () => {
                                 </tbody>
                             </table>
                         </div>
-                        <button className="w-full mt-6 py-3 rounded-xl bg-gray-50 text-xs font-bold text-gray-500 hover:bg-primary hover:text-white transition-all">
+                        <button
+                            onClick={() => navigate('/admin/orders/all')}
+                            className="w-full mt-6 py-3 rounded-xl bg-gray-50 text-xs font-bold text-gray-500 hover:bg-primary hover:text-white transition-all cursor-pointer"
+                        >
                             VIEW ALL ORDERS
                         </button>
                     </Card>
@@ -330,7 +344,11 @@ const AdminDashboard = () => {
                     >
                         <div className="space-y-4">
                             {topProducts.length > 0 ? topProducts.map((product, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 rounded-2xl hover:bg-gray-50 transition-all border border-transparent hover:border-gray-100 group">
+                                <div
+                                    key={i}
+                                    onClick={() => navigate('/admin/products')}
+                                    className="flex items-center justify-between p-3 rounded-2xl hover:bg-gray-50 transition-all border border-transparent hover:border-gray-100 group cursor-pointer"
+                                >
                                     <div className="flex items-center space-x-3">
                                         <div className={cn("h-12 w-12 rounded-xl flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform", product.color)}>
                                             {product.icon}
@@ -349,7 +367,10 @@ const AdminDashboard = () => {
                                 <div className="py-12 text-center text-slate-300 italic text-xs">No sales data yet</div>
                             )}
                         </div>
-                        <button className="w-full mt-6 py-3 border-2 border-dashed border-gray-100 rounded-xl text-xs font-bold text-gray-400 hover:border-primary hover:text-primary transition-all">
+                        <button
+                            onClick={() => navigate('/admin/products')}
+                            className="w-full mt-6 py-3 border-2 border-dashed border-gray-100 rounded-xl text-xs font-bold text-gray-400 hover:border-primary hover:text-primary transition-all cursor-pointer"
+                        >
                             VIEW ALL PRODUCTS
                         </button>
                     </Card>

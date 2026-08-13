@@ -4,11 +4,12 @@ import { Download, Printer, X } from 'lucide-react';
 import { useSettings } from '@core/context/SettingsContext';
 import { useAuth } from '@core/context/AuthContext';
 import OrderInvoiceDocument from './OrderInvoiceDocument';
+import { buildInvoiceViewModel } from './invoiceUtils';
+import { exportAdminInvoicePdf } from './exportAdminInvoicePdf';
 import './PrintStyles.css';
 
 /**
  * Full-screen invoice preview for a single admin order.
- * Print / Save as PDF both use the browser print dialog (A4 + Save as PDF).
  */
 export default function OrderInvoiceModal({ isOpen, onClose, order }) {
   const { settings } = useSettings();
@@ -17,13 +18,21 @@ export default function OrderInvoiceModal({ isOpen, onClose, order }) {
   const systemUser =
     user?.name || user?.email || user?.phone || user?.role || 'Admin';
 
-  const handlePrint = () => {
+  const handlePrint = (e) => {
+    e?.stopPropagation();
     window.print();
   };
 
-  const handleSavePdf = () => {
-    // Browser "Save as PDF" is the most reliable A4 export path for HTML invoices.
-    window.print();
+  const handleSavePdf = async (e) => {
+    e?.stopPropagation();
+    if (!order) return;
+    const model = buildInvoiceViewModel(order, settings, systemUser);
+    await exportAdminInvoicePdf(model);
+  };
+
+  const handleClose = (e) => {
+    e?.stopPropagation();
+    onClose?.();
   };
 
   useEffect(() => {
@@ -37,13 +46,7 @@ export default function OrderInvoiceModal({ isOpen, onClose, order }) {
     };
     document.addEventListener('keydown', onKeyDown);
 
-    // Allow barcode/QR to render, then open the browser print dialog.
-    const printTimer = window.setTimeout(() => {
-      window.print();
-    }, 450);
-
     return () => {
-      window.clearTimeout(printTimer);
       document.body.style.overflow = previousOverflow;
       document.body.classList.remove('admin-invoice-open');
       document.removeEventListener('keydown', onKeyDown);
@@ -58,24 +61,39 @@ export default function OrderInvoiceModal({ isOpen, onClose, order }) {
       role="dialog"
       aria-modal="true"
       aria-label="Print Invoice"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="admin-invoice-panel"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-invoice-toolbar no-print">
-          <h2>Invoice · #{order.orderId}</h2>
+          <div className="admin-invoice-toolbar-header">
+            <h2>Invoice · #{order.orderId || order._id}</h2>
+          </div>
           <div className="admin-invoice-toolbar-actions">
-            <button type="button" className="admin-invoice-btn admin-invoice-btn--primary" onClick={handlePrint}>
+            <button
+              type="button"
+              className="admin-invoice-btn admin-invoice-btn--primary"
+              onClick={handlePrint}
+            >
               <Printer size={14} />
               Print / Browser Print
             </button>
-            <button type="button" className="admin-invoice-btn" onClick={handleSavePdf}>
+            <button
+              type="button"
+              className="admin-invoice-btn"
+              onClick={handleSavePdf}
+            >
               <Download size={14} />
               Save as PDF
             </button>
-            <button type="button" className="admin-invoice-btn" onClick={onClose} aria-label="Close">
+            <button
+              type="button"
+              className="admin-invoice-btn admin-invoice-btn--close"
+              onClick={handleClose}
+              aria-label="Close invoice preview"
+            >
               <X size={14} />
               Close
             </button>

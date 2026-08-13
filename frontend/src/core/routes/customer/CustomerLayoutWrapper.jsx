@@ -2,6 +2,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
 import { useAuth } from '@core/context/AuthContext';
+import LenisProvider from '@shared/components/LenisProvider';
 import { WishlistProvider } from '@modules/customer/context/WishlistContext';
 import { CartProvider } from '@modules/customer/context/CartContext';
 import { CartAnimationProvider } from '@modules/customer/context/CartAnimationContext';
@@ -62,30 +63,32 @@ const CustomerLayoutWrapper = () => {
   };
 
   return (
-    <CustomerLoginProvider>
-      <LocationProvider>
-        <WishlistProvider>
-          <CartProvider>
-            <CartAnimationProvider>
-              <ProductDetailProvider>
-                <ScrollToTop />
-                <CustomerLayout>
-                  <Suspense fallback={<Loader fullScreen />}>
-                    <Outlet />
-                  </Suspense>
-                </CustomerLayout>
-                {/* Name prompt for returning users who have no name yet */}
-                <SetNameModal
-                  open={showSetName}
-                  onSuccess={handleNameSaved}
-                  onLogout={handleLogout}
-                />
-              </ProductDetailProvider>
-            </CartAnimationProvider>
-          </CartProvider>
-        </WishlistProvider>
-      </LocationProvider>
-    </CustomerLoginProvider>
+    <LenisProvider>
+      <CustomerLoginProvider>
+        <LocationProvider>
+          <WishlistProvider>
+            <CartProvider>
+              <CartAnimationProvider>
+                <ProductDetailProvider>
+                  <ScrollToTop />
+                  <CustomerLayout>
+                    <Suspense fallback={<Loader fullScreen />}>
+                      <Outlet />
+                    </Suspense>
+                  </CustomerLayout>
+                  {/* Name prompt for returning users who have no name yet */}
+                  <SetNameModal
+                    open={showSetName}
+                    onSuccess={handleNameSaved}
+                    onLogout={handleLogout}
+                  />
+                </ProductDetailProvider>
+              </CartAnimationProvider>
+            </CartProvider>
+          </WishlistProvider>
+        </LocationProvider>
+      </CustomerLoginProvider>
+    </LenisProvider>
   );
 };
 

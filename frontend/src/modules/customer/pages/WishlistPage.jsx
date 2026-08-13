@@ -257,7 +257,7 @@ const WishlistPage = () => {
                   className="shrink-0 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-md"
                   style={{ backgroundColor: ACCENT }}
                 >
-                  Add all in stock
+                  Add all to cart
                 </button>
               )}
             </div>

@@ -28,10 +28,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 16px;
+  padding: 14px 20px;
   border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
+  background: #0f172a;
+  color: #ffffff;
   flex-shrink: 0;
 }
 
@@ -39,44 +40,69 @@
   margin: 0;
   font-size: 14px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #0f172a;
+  color: #f8fafc;
 }
 
 .admin-invoice-toolbar-actions {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .admin-invoice-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #0f172a;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f8fafc;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 10px 14px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 8px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-invoice-btn:hover {
+  background: #334155;
+  border-color: #475569;
+  color: #ffffff;
 }
 
 .admin-invoice-btn--primary {
-  background: #0f172a;
-  color: #fff;
-  border-color: #0f172a;
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.admin-invoice-btn--primary:hover {
+  background: #2563eb;
+  border-color: #1d4ed8;
+}
+
+.admin-invoice-btn--close {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.admin-invoice-btn--close:hover {
+  background: #dc2626;
+  border-color: #b91c1c;
 }
 
 .admin-invoice-scroll {
   overflow: auto;
   flex: 1;
-  background: #e2e8f0;
-  padding: 16px;
+  background: #f1f5f9;
+  padding: 24px 16px;
 }
 
 /* ——— Document ——— */
