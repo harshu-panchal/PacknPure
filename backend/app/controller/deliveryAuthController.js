@@ -58,6 +58,7 @@ export const signupDelivery = async (req, res) => {
         let aadharUrl = delivery?.documents?.aadhar || "";
         let panUrl = delivery?.documents?.pan || "";
         let dlUrl = delivery?.documents?.drivingLicense || "";
+        let photoUrl = delivery?.documents?.profileImage || "";
 
         if (req.files) {
             if (req.files.aadhar && req.files.aadhar[0]) {
@@ -69,12 +70,19 @@ export const signupDelivery = async (req, res) => {
             if (req.files.dl && req.files.dl[0]) {
                 dlUrl = await uploadToCloudinary(req.files.dl[0].buffer, 'delivery_docs');
             }
+            if (req.files.photo && req.files.photo[0]) {
+                photoUrl = await uploadToCloudinary(req.files.photo[0].buffer, 'delivery_docs');
+            }
+        }
+
+        if (!photoUrl) {
+            return handleResponse(res, 400, "Profile photo is required");
         }
 
         const deliveryData = {
             name, phone, vehicleType, email, address, vehicleNumber, drivingLicenseNumber,
             aadharNumber, panNumber, accountHolder, accountNumber, ifsc,
-            documents: { aadhar: aadharUrl, pan: panUrl, drivingLicense: dlUrl },
+            documents: { aadhar: aadharUrl, pan: panUrl, drivingLicense: dlUrl, profileImage: photoUrl },
             otp, otpExpiry: Date.now() + 5 * 60 * 1000,
         };
 

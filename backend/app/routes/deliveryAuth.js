@@ -47,6 +47,7 @@ router.post(
     { name: "aadhar", maxCount: 1 },
     { name: "pan", maxCount: 1 },
     { name: "dl", maxCount: 1 },
+    { name: "photo", maxCount: 1 },
   ]),
   signupDelivery,
 );

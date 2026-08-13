@@ -219,6 +219,8 @@ export const createSellerGroupedPurchaseRequests = async ({
       allocationId,
     }));
 
+    const sellerResponseTimeoutMs = (sellerResponseTimeout || 15) * 60 * 1000;
+
     const doc = await createPurchaseRequest({
       requestId: buildRequestId(),
       orderId: order._id,
@@ -229,7 +231,7 @@ export const createSellerGroupedPurchaseRequests = async ({
       vendorId,
       rankedSellers: mergedRankedSellers,
       status: "created",
-      expiresAt: new Date(Date.now() + 52000),
+      expiresAt: new Date(Date.now() + sellerResponseTimeoutMs),
       items: prItems,
       notes: `Multi-product PR for order ${order.orderId} (${preparedLines.length} items)`,
     });

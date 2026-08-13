@@ -62,6 +62,7 @@ const ActiveDeliveryBoys = () => {
                 phone: r.phone,
                 email: r.email,
                 status: r.isOnline ? 'available' : 'offline',
+                profileImage: r.documents?.profileImage || '',
                 vehicle: r.vehicleType,
                 vehicleNum: r.vehicleNumber || 'N/A',
                 rating: r.rating || 0,
@@ -257,8 +258,16 @@ const ActiveDeliveryBoys = () => {
                                         <div className="flex justify-between items-start">
                                             <div className="flex gap-4">
                                                 <div className="relative">
-                                                    <div className="h-14 w-14 rounded-[22px] bg-slate-100 flex items-center justify-center text-slate-400 group-hover:scale-105 transition-transform">
-                                                        <User className="h-8 w-8" />
+                                                    <div className="h-14 w-14 rounded-[22px] bg-slate-100 flex items-center justify-center text-slate-400 overflow-hidden group-hover:scale-105 transition-transform">
+                                                        {rider.profileImage ? (
+                                                            <img
+                                                                src={rider.profileImage}
+                                                                alt={rider.name}
+                                                                className="h-full w-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <User className="h-8 w-8" />
+                                                        )}
                                                     </div>
                                                     <div className={cn(
                                                         "absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-4 border-white shadow-sm",

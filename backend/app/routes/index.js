@@ -31,6 +31,7 @@ import deliveryModeRoute from "./deliveryModeRoutes.js";
 import barcodeRoute from "./barcodeRoutes.js";
 import stockAuditRoute from "./stockAuditRoutes.js";
 import deliveryTripRoute from "./deliveryTripRoutes.js";
+import stockNotificationRoute from "./stockNotificationRoutes.js";
 
 import express from "express";
 
@@ -61,6 +62,7 @@ const setupRoutes = (app) => {
     router.use("/products", productRoute);
     router.use("/cart", cartRoute);
     router.use("/wishlist", wishlistRoute);
+    router.use("/stock-notifications", stockNotificationRoute);
     router.use("/orders", orderRoute);
     router.use("/payments", paymentRoute);
     router.use("/payments/webhook", paymentWebhookRoute);

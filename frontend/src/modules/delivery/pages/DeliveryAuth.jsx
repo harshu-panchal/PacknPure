@@ -77,6 +77,8 @@ const DeliveryAuth = () => {
   const [aadharFile, setAadharFile] = useState(null);
   const [panFile, setPanFile] = useState(null);
   const [dlFile, setDlFile] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
 
   // OTP state
   const [otp, setOtp] = useState(["", "", "", ""]);
@@ -226,10 +228,19 @@ const DeliveryAuth = () => {
       setAadharFile(file);
       setAadharVerified(true);
       toast.success("Aadhar Card Accepted!");
-    } else { 
-      setAadharFile(null); 
-      setAadharVerified(null); 
+    } else {
+      setAadharFile(null);
+      setAadharVerified(null);
     }
+  };
+
+  const handlePhotoUpload = (file) => {
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+    setPhotoFile(file || null);
+    if (file) toast.success("Profile photo added!");
   };
 
   const handleSendOtp = async () => {
@@ -258,6 +269,7 @@ const DeliveryAuth = () => {
         if (!signupAccountHolder.trim()) { toast.error("Please enter Account Holder Name"); return; }
         if (!PATTERNS.account.test(signupAccountNumber)) { toast.error("Please enter a valid Bank Account Number"); return; }
         if (!PATTERNS.ifsc.test(signupIfsc)) { toast.error("Please enter a valid IFSC Code"); return; }
+        if (!photoFile) { toast.error("Please upload a profile photo"); return; }
 
         const formData = new FormData();
         formData.append("name", tName);
@@ -276,6 +288,7 @@ const DeliveryAuth = () => {
         if (aadharFile) formData.append("aadhar", aadharFile);
         if (panFile) formData.append("pan", panFile);
         if (dlFile) formData.append("dl", dlFile);
+        formData.append("photo", photoFile);
 
         const res = await deliveryApi.sendSignupOtp(formData);
         toast.success(res.data?.message || "OTP sent!");
@@ -347,6 +360,11 @@ const DeliveryAuth = () => {
     setAadharFile(null);
     setPanFile(null);
     setDlFile(null);
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPhotoFile(null);
     setAgreed(false);
   };
 
@@ -743,6 +761,55 @@ const DeliveryAuth = () => {
                           className="space-y-4"
                         >
                           <div className="space-y-3">
+                            {/* Profile Photo — mandatory */}
+                            <div className="relative">
+                              <input
+                                type="file"
+                                id="photo"
+                                className="hidden"
+                                accept="image/*"
+                                capture="user"
+                                onChange={(e) => handlePhotoUpload(e.target.files[0])}
+                              />
+                              <label
+                                htmlFor="photo"
+                                className={`flex items-center justify-between p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${photoFile
+                                  ? "border-green-200 bg-green-50/50"
+                                  : "border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 hover:border-indigo-200 hover:bg-indigo-50/30"
+                                  }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`h-9 w-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 ${photoFile ? "bg-green-100" : "bg-white dark:bg-gray-800 shadow-sm"}`}>
+                                    {photoPreview ? (
+                                      <img src={photoPreview} alt="Profile preview" className="h-full w-full object-cover" />
+                                    ) : (
+                                      <Camera className="w-4 h-4 text-gray-400" />
+                                    )}
+                                  </div>
+                                  <div className="text-left">
+                                    <p className={`text-xs font-black uppercase tracking-tight ${photoFile ? "text-green-700" : "text-gray-500 dark:text-gray-400"}`}>
+                                      Profile Photo (Required)
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 font-bold truncate max-w-[180px]">
+                                      {photoFile ? photoFile.name : "Tap to upload a clear face photo"}
+                                    </p>
+                                  </div>
+                                </div>
+                                {photoFile && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handlePhotoUpload(null);
+                                    }}
+                                    className="p-1.5 hover:bg-green-100 rounded-lg text-green-600 transition-colors"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </label>
+                            </div>
+
                             {[
                               { label: "Aadhar Card (Front/Back)", state: aadharFile, setter: setAadharFile, id: "aadhar" },
                               { label: "PAN Card (Optional)", state: panFile, setter: setPanFile, id: "pan" },
@@ -917,7 +984,7 @@ const DeliveryAuth = () => {
                             </button>
                             <button
                               onClick={handleSendOtp}
-                              disabled={loading || dlVerified !== true || (signupPanNumber.trim() ? panVerified !== true : false) || aadharVerified !== true}
+                              disabled={loading || !photoFile || dlVerified !== true || (signupPanNumber.trim() ? panVerified !== true : false) || aadharVerified !== true}
                               className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {loading ? (

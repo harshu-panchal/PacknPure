@@ -1,11 +1,12 @@
-import React from 'react';
-import { Minus, Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Minus, Plus, Trash2, Bell, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useToast } from '@shared/components/ui/Toast';
 import { useProductDetail } from '../../context/ProductDetailContext';
 import { getUnitLabel } from '@shared/constants/productUnits';
+import { customerApi } from '../../services/customerApi';
 
 const ACCENT = '#E23744';
 
@@ -24,6 +25,7 @@ const WishlistProductRow = ({ product }) => {
   const { removeFromWishlist } = useWishlist();
   const { showToast } = useToast();
   const { openProduct } = useProductDetail();
+  const [notifyState, setNotifyState] = useState('idle'); // idle | loading | subscribed
 
   const productId = product.id || product._id;
   const targetVariantId = product.selectedVariantId || product.variants?.[0]?._id || product.variants?.[0]?.id || "";
@@ -74,6 +76,25 @@ const WishlistProductRow = ({ product }) => {
     e.stopPropagation();
     await removeFromWishlist(productId);
     showToast('Removed from your list', 'info');
+  };
+
+  const handleNotify = async (e) => {
+    e.stopPropagation();
+    if (notifyState !== 'idle') return;
+    setNotifyState('loading');
+    try {
+      const singleVariant = variantCount === 1 ? product.variants[0] : null;
+      const variantId = singleVariant?._id || singleVariant?.id || targetVariantId || null;
+      await customerApi.subscribeBackInStock({ productId, variantId });
+      setNotifyState('subscribed');
+      showToast(`We'll notify you when ${product.name} is back in stock`, 'success');
+    } catch (err) {
+      setNotifyState('idle');
+      showToast(
+        err?.response?.data?.message || 'Could not set up notification, try again',
+        'error',
+      );
+    }
   };
 
   return (
@@ -194,19 +215,35 @@ const WishlistProductRow = ({ product }) => {
             ) : (
               <button
                 type="button"
-                disabled={!inStock}
-                onClick={handleAdd}
+                disabled={!inStock && notifyState !== 'idle'}
+                onClick={inStock ? handleAdd : handleNotify}
                 className={cn(
-                  'min-w-[92px] rounded-lg border-2 py-1.5 text-[12px] font-bold uppercase tracking-wide',
+                  'flex min-w-[92px] items-center justify-center gap-1 rounded-lg border-2 py-1.5 text-[12px] font-bold uppercase tracking-wide',
                   inStock
                     ? 'bg-white hover:bg-rose-50'
-                    : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
+                    : notifyState === 'subscribed'
+                      ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-600'
+                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
                 )}
                 style={
                   inStock ? { borderColor: ACCENT, color: ACCENT } : undefined
                 }
               >
-                {mustPickVariant && inStock ? 'Options' : inStock ? 'Add' : 'Notify'}
+                {mustPickVariant && inStock ? (
+                  'Options'
+                ) : inStock ? (
+                  'Add'
+                ) : notifyState === 'subscribed' ? (
+                  <>
+                    <Check size={12} strokeWidth={3} /> Notified
+                  </>
+                ) : notifyState === 'loading' ? (
+                  '...'
+                ) : (
+                  <>
+                    <Bell size={12} strokeWidth={2.5} /> Notify
+                  </>
+                )}
               </button>
             )}
           </div>

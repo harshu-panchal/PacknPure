@@ -63,6 +63,9 @@ export class AdminInventoryProvider extends InventoryProvider {
             const view = canonicalCtx.productViews.get(String(product._id));
             const vv = view?.variantByKey?.get(normalizeVariantMatchKey(variant.name));
 
+            const hubQty = vv?.availableQtyHub ?? 0;
+            if (hubQty <= 0) return [];
+
             return [{
                 _id: product._id,
                 name: product.name,
@@ -76,11 +79,11 @@ export class AdminInventoryProvider extends InventoryProvider {
                 price: variant.salePrice || variant.price || 0,
                 stock: vv?.stock ?? toQty(variant.stock),
                 availableQty: vv?.totalAvailableQty ?? 0,
-                availableQtyHub: vv?.availableQtyHub ?? 0,
+                availableQtyHub: hubQty,
                 availableQtySeller: vv?.availableQtySeller ?? 0,
                 totalAvailableQty: vv?.totalAvailableQty ?? 0,
                 totalFulfillmentQty: vv?.totalFulfillmentQty ?? 0,
-                hubAvailableQty: vv?.availableQtyHub ?? 0,
+                hubAvailableQty: hubQty,
                 sellerSupplyBreakdown: vv?.sellerSupplyBreakdown ?? [],
             }];
         }
@@ -108,7 +111,7 @@ export class AdminInventoryProvider extends InventoryProvider {
               gstEnabled: p.gstEnabled,
               gstRate: p.gstRate,
               stock: view?.stock ?? 0,
-              availableQty: view?.totalAvailableQty ?? 0,
+              availableQty: view?.availableQtyHub ?? 0,
               availableQtyHub: view?.availableQtyHub ?? 0,
               availableQtySeller: view?.availableQtySeller ?? 0,
               totalAvailableQty: view?.totalAvailableQty ?? 0,
@@ -119,6 +122,7 @@ export class AdminInventoryProvider extends InventoryProvider {
             if (p.variants && p.variants.length > 0) {
               return p.variants.map((v) => {
                 const vv = view?.variantByKey?.get(normalizeVariantMatchKey(v.name));
+                const hubQty = vv?.availableQtyHub ?? toQty(v.stock);
                 return {
                   ...baseResult,
                   variantId: v._id,
@@ -127,12 +131,12 @@ export class AdminInventoryProvider extends InventoryProvider {
                   barcode: getVariantBarcodeValue(v, "admin"),
                   price: v.salePrice || v.price || 0,
                   stock: vv?.stock ?? toQty(v.stock),
-                  availableQty: vv?.totalAvailableQty ?? 0,
-                  availableQtyHub: vv?.availableQtyHub ?? 0,
+                  availableQty: hubQty,
+                  availableQtyHub: hubQty,
                   availableQtySeller: vv?.availableQtySeller ?? 0,
                   totalAvailableQty: vv?.totalAvailableQty ?? 0,
                   totalFulfillmentQty: vv?.totalFulfillmentQty ?? 0,
-                  hubAvailableQty: vv?.availableQtyHub ?? 0,
+                  hubAvailableQty: hubQty,
                   sellerSupplyBreakdown: vv?.sellerSupplyBreakdown ?? [],
                 };
               });
@@ -148,8 +152,13 @@ export class AdminInventoryProvider extends InventoryProvider {
           });
         const flatResults = formattedResults.flat();
 
-        const exactMatch = flatResults.find(r => r.barcode === term);
-        return exactMatch ? [exactMatch] : flatResults.slice(0, parseInt(limit));
+        // POS Quick Order fulfills directly from Hub physical stock.
+        // Filter out items that have no physical Hub stock (availableQtyHub <= 0),
+        // preventing seller-only stock items from appearing in POS Quick Order.
+        const hubAvailableResults = flatResults.filter(r => (r.availableQtyHub ?? 0) > 0);
+
+        const exactMatch = hubAvailableResults.find(r => r.barcode === term);
+        return exactMatch ? [exactMatch] : hubAvailableResults.slice(0, parseInt(limit));
     }
 
     async deductStock(productId, variantId, quantity, session) {

@@ -16,6 +16,7 @@ import {
   recordInventoryMutation,
   guardInventoryMutation,
 } from "./inventoryIdempotencyService.js";
+import { dispatchBackInStockNotifications } from "../stockNotificationService.js";
 
 const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
   const qty = Math.max(0, Number(availableQty) || 0);
@@ -826,6 +827,10 @@ export const setAdminHubStock = async (opts) => {
     reason,
     idempotencyKey,
   });
+
+  if (previousQty.availableQty <= 0 && newQty.availableQty > 0) {
+    dispatchBackInStockNotifications(productId).catch(() => {});
+  }
 
   return buildOperationResult({
     success: true,

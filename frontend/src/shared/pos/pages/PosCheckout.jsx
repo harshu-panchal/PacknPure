@@ -195,7 +195,7 @@ export default function PosCheckout() {
                 return false;
             }
 
-            const stock = Number(exact.availableQty || 0);
+            const stock = Number(exact.availableQtyHub ?? exact.availableQty ?? 0);
             if (stock <= 0) {
                 setScannerStatus('error');
                 toast.error('Out of stock');
@@ -601,7 +601,7 @@ export default function PosCheckout() {
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                             {searchResults.map((product, idx) => {
-                                const stock = product.availableQty || 0;
+                                const stock = product.availableQtyHub ?? product.availableQty ?? 0;
                                 const isOutOfStock = stock <= 0;
                                 return (
                                     <button

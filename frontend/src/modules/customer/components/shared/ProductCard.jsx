@@ -1,5 +1,5 @@
 import React from "react";
-import { Heart, Plus, Minus, Trash2 } from "lucide-react";
+import { Heart, Plus, Minus, Trash2, Bell, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWishlist } from "../../context/WishlistContext";
 import { useCart } from "../../context/CartContext";
@@ -14,6 +14,7 @@ import {
   resolveProductImageUrl,
 } from "@shared/utils/productDisplay";
 import { getUnitLabel } from "@shared/constants/productUnits";
+import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
   ({
@@ -39,6 +40,7 @@ const ProductCard = React.memo(
     const [imageSrc, setImageSrc] = React.useState(() =>
       resolveProductImageUrl(product),
     );
+    const [notifyState, setNotifyState] = React.useState("idle"); // idle | loading | subscribed
 
     React.useEffect(() => {
       setImageSrc(resolveProductImageUrl(product));
@@ -119,6 +121,30 @@ const ProductCard = React.memo(
         });
       },
       [animateAddToCart, product, addToCart, targetVariantId],
+    );
+
+    const handleNotify = React.useCallback(
+      async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (notifyState !== "idle") return;
+        setNotifyState("loading");
+        try {
+          await customerApi.subscribeBackInStock({
+            productId: product.id || product._id,
+            variantId: targetVariantId || null,
+          });
+          setNotifyState("subscribed");
+          showToast(`We'll notify you when ${product.name} is back in stock`, "success");
+        } catch (err) {
+          setNotifyState("idle");
+          showToast(
+            err?.response?.data?.message || "Could not set up notification, try again",
+            "error",
+          );
+        }
+      },
+      [notifyState, product, targetVariantId, showToast],
     );
 
     const handleIncrement = React.useCallback(
@@ -374,18 +400,32 @@ const ProductCard = React.memo(
               ) : (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
-                  onClick={handleAddToCart}
-                  disabled={product.inStock === false}
+                  onClick={product.inStock === false ? handleNotify : handleAddToCart}
+                  disabled={product.inStock === false && notifyState !== "idle"}
                   className={cn(
-                    "rounded-lg border-2 font-bold uppercase tracking-wide leading-none shadow-sm transition-all",
+                    "flex items-center justify-center gap-1 rounded-lg border-2 font-bold uppercase tracking-wide leading-none shadow-sm transition-all",
                     product.inStock === false
-                      ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                      ? notifyState === "subscribed"
+                        ? "cursor-default border-emerald-200 bg-emerald-50 text-emerald-600"
+                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
                       : "border-[#E23744] bg-[#E23744] text-white hover:bg-[#C41E35] hover:border-[#C41E35] shadow-md shadow-rose-100",
                     compact
                       ? "px-5 py-1.5 text-[12px]"
                       : "px-7 py-2 text-[13px] md:text-sm md:px-8 md:py-2.5",
                   )}>
-                  {mustPickVariant && product.inStock !== false ? (
+                  {product.inStock === false ? (
+                    notifyState === "subscribed" ? (
+                      <>
+                        <Check size={compact ? 12 : 14} strokeWidth={3} /> Notified
+                      </>
+                    ) : notifyState === "loading" ? (
+                      "..."
+                    ) : (
+                      <>
+                        <Bell size={compact ? 12 : 14} strokeWidth={2.5} /> Notify me
+                      </>
+                    )
+                  ) : mustPickVariant ? (
                     <span className="flex flex-col items-center leading-tight">
                       <span>ADD</span>
                       <span className={cn("mt-0.5 font-semibold normal-case tracking-normal", compact ? "text-[9px]" : "text-[10px] md:text-[11px]")}>

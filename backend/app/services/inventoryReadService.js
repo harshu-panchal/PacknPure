@@ -388,10 +388,18 @@ export const buildCanonicalStockContext = async (masterProductIds, hubId = DEFAU
 
     const variantViews = [];
     const productSellerBreakdownMap = new Map();
+    // HubInventory (one row per product, not per variant) is the source of
+    // truth admin's Hub Inventory screen reads from. Product.variants[].stock
+    // is only a best-effort mirror of it and can drift stale (e.g. a mirror
+    // write that silently failed), so never let the per-variant breakdown sum
+    // to more than the real hub row — cap against a running budget instead of
+    // trusting each variant's stock field outright.
+    let hubBudgetRemaining = hubRowAvailable;
 
     for (const mv of masterVariants) {
       const variantKey = normalizeVariantMatchKey(mv.name);
-      const hubPhysical = toQty(mv.stock);
+      const hubPhysical = Math.min(toQty(mv.stock), hubBudgetRemaining);
+      hubBudgetRemaining = Math.max(0, hubBudgetRemaining - hubPhysical);
       const availableQtyHub = hubPhysical;
 
       let availableQtySeller = 0;

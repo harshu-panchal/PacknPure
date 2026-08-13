@@ -8,14 +8,13 @@ import {
   onPurchaseRequestNew,
 } from '@core/services/orderSocket';
 
-const ALERT_SOUND_URL =
-  'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+import orderAlertSound from '@/assets/order-alert.mp3';
 
 const isEarningsRoute = (path) =>
   path.includes('earnings') || path.includes('withdrawals') || path.includes('transactions');
 
 function playAlertSound() {
-  new Audio(ALERT_SOUND_URL).play().catch(() => {});
+  new Audio(orderAlertSound).play().catch(() => {});
 }
 
 /**

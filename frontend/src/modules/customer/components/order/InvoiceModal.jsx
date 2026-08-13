@@ -42,18 +42,209 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
         window.print();
     };
 
+    const handleSavePdf = async () => {
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const doc = new jsPDF('p', 'mm', 'a4');
+
+            const pw = doc.internal.pageSize.getWidth();
+            let y = 15;
+
+            // Brand & Header
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(22);
+            doc.setTextColor(226, 55, 68); // #E23744
+            doc.text(appName.toUpperCase(), 14, y);
+
+            doc.setFontSize(10);
+            doc.setTextColor(50, 50, 50);
+            doc.text('TAX INVOICE', pw - 14, y, { align: 'right' });
+            y += 6;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(100, 100, 100);
+            doc.text(settings?.companyName || 'Pack n Pure Quick Commerce Private Limited', 14, y);
+            doc.setTextColor(50, 50, 50);
+            doc.text(`Order ID: #${orderRef}`, pw - 14, y, { align: 'right' });
+            y += 5;
+
+            doc.setTextColor(100, 100, 100);
+            doc.text(settings?.address || 'Indore, Madhya Pradesh, India', 14, y);
+            doc.text(`Date: ${createdDate.toLocaleDateString('en-IN')} ${createdDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, pw - 14, y, { align: 'right' });
+            y += 5;
+
+            if (settings?.supportPhone) {
+                doc.text(`Phone: ${settings.supportPhone}`, 14, y);
+            }
+            doc.text(`Payment: ${displayPaymentMethod}`, pw - 14, y, { align: 'right' });
+            y += 8;
+
+            // Line separator
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.5);
+            doc.line(14, y, pw - 14, y);
+            y += 8;
+
+            // Customer Details
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(120, 120, 120);
+            doc.text('CUSTOMER DETAILS / BILL TO:', 14, y);
+            doc.text('FULFILLED BY:', pw - 14, y, { align: 'right' });
+            y += 5;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(20, 20, 20);
+            doc.text(address.name || 'Customer', 14, y);
+            doc.text(`${appName} Partner Hub`, pw - 14, y, { align: 'right' });
+            y += 5;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(80, 80, 80);
+            doc.text(address.phone || '—', 14, y);
+            doc.text('Express Doorstep Delivery', pw - 14, y, { align: 'right' });
+            y += 5;
+
+            if (address.address) {
+                const addrStr = `${address.address}${address.city ? `, ${address.city}` : ''}`;
+                doc.text(addrStr, 14, y, { maxWidth: 100 });
+            }
+            y += 10;
+
+            // Items Table Header
+            doc.setFillColor(245, 247, 250);
+            doc.rect(14, y, pw - 28, 8, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(60, 60, 60);
+
+            doc.text('#', 18, y + 5.5);
+            doc.text('ITEM DESCRIPTION', 30, y + 5.5);
+            doc.text('QTY', 125, y + 5.5, { align: 'center' });
+            doc.text('PRICE', 155, y + 5.5, { align: 'right' });
+            doc.text('AMOUNT', pw - 18, y + 5.5, { align: 'right' });
+            y += 10;
+
+            // Table Rows
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(30, 30, 30);
+
+            items.forEach((item, idx) => {
+                const variantLabel = resolveOrderItemVariantLabel(item);
+                const qty = item.quantity ?? item.qty ?? 1;
+                const unitPrice = Number(item.price || 0);
+                const itemTotal = unitPrice * qty;
+
+                doc.text(String(idx + 1), 18, y);
+                doc.setFont('helvetica', 'bold');
+                doc.text(String(item.name || ''), 30, y, { maxWidth: 85 });
+                doc.setFont('helvetica', 'normal');
+
+                if (variantLabel) {
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(120, 120, 120);
+                    doc.text(variantLabel, 30, y + 4);
+                    doc.setFontSize(9);
+                    doc.setTextColor(30, 30, 30);
+                }
+
+                doc.text(String(qty), 125, y, { align: 'center' });
+                doc.text(`Rs. ${unitPrice.toLocaleString('en-IN')}`, 155, y, { align: 'right' });
+                doc.setFont('helvetica', 'bold');
+                doc.text(`Rs. ${itemTotal.toLocaleString('en-IN')}`, pw - 18, y, { align: 'right' });
+                doc.setFont('helvetica', 'normal');
+
+                y += variantLabel ? 10 : 7;
+
+                doc.setDrawColor(240, 240, 240);
+                doc.line(14, y - 3, pw - 14, y - 3);
+            });
+
+            y += 4;
+
+            // Totals
+            const rightX = pw - 18;
+            const labelX = pw - 75;
+
+            doc.setFontSize(9);
+            doc.setTextColor(80, 80, 80);
+
+            doc.text('Items Subtotal:', labelX, y);
+            doc.text(`Rs. ${subtotal.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+            y += 5;
+
+            if (Number(deliveryFee) > 0) {
+                doc.text('Delivery Charges:', labelX, y);
+                doc.text(`Rs. ${deliveryFee.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+                y += 5;
+            }
+
+            if (Number(platformFee) > 0) {
+                doc.text('Platform Fee:', labelX, y);
+                doc.text(`Rs. ${platformFee.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+                y += 5;
+            }
+
+            if (Number(tax) > 0) {
+                doc.text('GST / Taxes:', labelX, y);
+                doc.text(`Rs. ${tax.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+                y += 5;
+            }
+
+            if (Number(discount) > 0) {
+                doc.setTextColor(16, 185, 129);
+                doc.text('Discount Applied:', labelX, y);
+                doc.text(`-Rs. ${discount.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+                doc.setTextColor(80, 80, 80);
+                y += 5;
+            }
+
+            doc.setDrawColor(20, 20, 20);
+            doc.setLineWidth(0.7);
+            doc.line(labelX, y, rightX, y);
+            y += 6;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(20, 20, 20);
+            doc.text('Grand Total Paid:', labelX, y);
+            doc.text(`Rs. ${grandTotal.toLocaleString('en-IN')}`, rightX, y, { align: 'right' });
+            y += 12;
+
+            // Footer note
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(140, 140, 140);
+            doc.text(`Thank you for ordering with ${appName}!`, pw / 2, y, { align: 'center' });
+            y += 4;
+            doc.text('This is a computer-generated tax invoice and requires no physical signature.', pw / 2, y, { align: 'center' });
+
+            doc.save(`Invoice_${orderRef}.pdf`);
+        } catch (err) {
+            console.error('PDF generation error:', err);
+            window.print();
+        }
+    };
+
     const modalContent = (
         <div className="customer-invoice-portal-root">
             <AnimatePresence>
                 {isOpen && (
-                    <div className="customer-invoice-backdrop fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                    <div 
+                        onClick={onClose}
+                        className="customer-invoice-backdrop fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto cursor-pointer"
+                    >
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
                             transition={{ type: "spring", duration: 0.4, bounce: 0.2 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="customer-invoice-modal bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative my-auto border border-slate-100"
+                            className="customer-invoice-modal bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative my-auto border border-slate-100 cursor-default"
                         >
                             {/* Toolbar (Screen Only - Hidden when printing) */}
                             <div className="no-print bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
@@ -66,10 +257,13 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
                                 </div>
                                 <button 
                                     type="button"
-                                    onClick={onClose} 
-                                    className="p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-slate-300 hover:text-white"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onClose();
+                                    }} 
+                                    className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-slate-300 hover:text-white cursor-pointer"
                                 >
-                                    <X size={18} />
+                                    <X size={20} />
                                 </button>
                             </div>
 
@@ -207,15 +401,15 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
                                 <button 
                                     type="button"
                                     onClick={handlePrint} 
-                                    className="flex-1 py-3 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md hover:brightness-105" 
+                                    className="flex-1 py-3 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md hover:brightness-105 cursor-pointer" 
                                     style={{ backgroundColor: primaryColor }}
                                 >
                                     <Printer size={18} /> Print Bill
                                 </button>
                                 <button 
                                     type="button" 
-                                    onClick={handlePrint}
-                                    className="flex-1 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors shadow-sm"
+                                    onClick={handleSavePdf}
+                                    className="flex-1 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors shadow-sm cursor-pointer"
                                 >
                                     <Download size={18} /> Save as PDF
                                 </button>

@@ -309,15 +309,26 @@ const CheckoutPage = () => {
     ? selectedCoupon.discountAmount || selectedCoupon.discount || 0
     : 0;
 
+  const isExpressMode = deliverySelection?.mode === "EXPRESS";
+
+  // When Express Delivery is selected and address is within limit range area (not out of range),
+  // standard delivery fee is waived (0) and only express delivery charges apply.
+  const effectiveDeliveryFee = useMemo(() => {
+    if (isExpressMode && !isOutOfRange) {
+      return 0;
+    }
+    return deliveryFee;
+  }, [isExpressMode, isOutOfRange, deliveryFee]);
+
   const expressDeliveryCharge = useMemo(() => {
-    if (deliverySelection?.mode === "EXPRESS") {
+    if (isExpressMode && !isOutOfRange) {
       return Number(deliveryModeOptions?.expressCharge || 0);
     }
     return 0;
-  }, [deliverySelection, deliveryModeOptions]);
+  }, [isExpressMode, isOutOfRange, deliveryModeOptions]);
 
   const totalAmount =
-    cartTotal - discountAmount + deliveryFee + expressDeliveryCharge + platformFee;
+    cartTotal - discountAmount + effectiveDeliveryFee + expressDeliveryCharge + platformFee;
 
   const selectedPaymentLabel =
     paymentMethods.find((m) => m.id === selectedPayment)?.label ?? "Cash on Delivery";
@@ -565,7 +576,9 @@ const CheckoutPage = () => {
         };
 
       const rawLoc = addressForOrder.location || (currentLocation?.latitude ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null);
-      const deliveryLoc = rawLoc ? { lat: Number(rawLoc.lat), lng: Number(rawLoc.lng) } : null;
+      const deliveryLoc = (rawLoc && Number.isFinite(Number(rawLoc.lat)) && Number.isFinite(Number(rawLoc.lng)))
+        ? { lat: Number(rawLoc.lat), lng: Number(rawLoc.lng) }
+        : { lat: 28.6139, lng: 77.2090 };
 
       // Delivery Mode feature: fields resolved from the cart-page selection.
       // Defaults to EXPRESS so legacy behavior is unchanged when nothing was picked.
@@ -586,7 +599,7 @@ const CheckoutPage = () => {
         ...deliveryModeFields,
         pricing: {
           subtotal: cartTotal,
-          deliveryFee,
+          deliveryFee: effectiveDeliveryFee,
           platformFee,
           expressCharge: expressDeliveryCharge,
           gst: 0,
@@ -1056,8 +1069,9 @@ const CheckoutPage = () => {
                       </div>
 
                       <Button
+                        type="button"
                         onClick={handleSaveRecipient}
-                        className="h-12 w-full rounded-xl bg-brand-600 font-semibold text-white hover:bg-brand-700">
+                        className="h-12 w-full rounded-xl bg-[#E23744] hover:bg-[#c22e3a] font-bold text-white shadow-md transition-all active:scale-[0.99] flex items-center justify-center">
                         Save address
                       </Button>
                     </div>
@@ -1232,16 +1246,16 @@ const CheckoutPage = () => {
                     </button>
                   </span>
                   <span className="font-semibold text-slate-900">
-                    {deliveryFee === 0 ? (
+                    {effectiveDeliveryFee === 0 ? (
                       <span className="text-brand-600">FREE</span>
                     ) : isCalculatingFee || isLocationFetching ? (
                       "…"
                     ) : (
-                      `₹${deliveryFee}`
+                      `₹${effectiveDeliveryFee}`
                     )}
                   </span>
                 </div>
-                {deliveryFee > 0 && freeDeliveryThreshold > 0 && cartTotal < freeDeliveryThreshold && (
+                {effectiveDeliveryFee > 0 && freeDeliveryThreshold > 0 && cartTotal < freeDeliveryThreshold && (
                   <p className="text-[11px] font-medium text-brand-700">
                     Add ₹{freeDeliveryThreshold - cartTotal} more for free delivery
                   </p>

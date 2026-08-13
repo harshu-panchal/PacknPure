@@ -13,24 +13,15 @@ import Button from "@shared/components/ui/Button";
 import { useToast } from "@shared/components/ui/Toast";
 import { sellerApi } from "@/modules/seller/services/sellerApi";
 import { getOrderSocket } from "@core/services/orderSocket";
+import orderAlertSound from "@/assets/order-alert.mp3";
 
-/** Play subtle audio chime on new request alert */
+/** Play audio chime on new request alert */
 const playAlertChime = () => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
+    const audio = new Audio(orderAlertSound);
+    audio.play().catch(() => {});
   } catch {
-    /* Web Audio API fallback silent */
+    /* fallback silent */
   }
 };
 
@@ -62,8 +53,6 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
     const handleNewPR = (payload) => {
       if (!payload || !payload.purchaseRequestId) return;
 
-      playAlertChime();
-
       let initialSeconds = 52;
       if (payload.expiresAt) {
         const expMs = new Date(payload.expiresAt).getTime();
@@ -76,7 +65,7 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
 
       setActiveRequest(payload);
       setSecondsLeft(initialSeconds);
-      showToast("Urgent Item Request Received! (52s Alert)", "info");
+      showToast("Urgent Item Request Received!", "info");
     };
 
     if (socket) {
@@ -124,9 +113,8 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
 
             setActiveRequest((prev) => {
               if (!prev || prev.purchaseRequestId !== mappedPayload.purchaseRequestId) {
-                playAlertChime();
                 setSecondsLeft(rem);
-                showToast("Urgent Item Request Received! (52s Alert)", "info");
+                showToast("Urgent Item Request Received!", "info");
                 return mappedPayload;
               }
               return prev;
@@ -147,7 +135,37 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
     };
   }, [isSeller, showToast]);
 
-  // Real-time 52-second countdown timer
+  const audioRef = useRef(null);
+
+  // Play continuous looping alert sound while activeRequest is present
+  useEffect(() => {
+    if (activeRequest) {
+      try {
+        if (!audioRef.current) {
+          audioRef.current = new Audio(orderAlertSound);
+          audioRef.current.loop = true;
+        }
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(() => {});
+      } catch {
+        /* silent catch */
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    };
+  }, [activeRequest]);
+
+  // Real-time countdown timer
   useEffect(() => {
     if (!activeRequest) return;
 
@@ -155,13 +173,13 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          showToast("Item request timer expired (52s)", "warning");
+          showToast("Item request timer expired", "warning");
 
           if (activeRequest?.purchaseRequestId) {
             sellerApi
               .respondPurchaseRequest(activeRequest.purchaseRequestId, {
                 action: "reject_line",
-                rejectionReason: "Seller 52s alert timed out",
+                rejectionReason: "Seller alert timed out",
                 notes: "Automatic timeout fallback trigger",
               })
               .catch(() => {});

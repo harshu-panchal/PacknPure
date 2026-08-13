@@ -60,6 +60,11 @@ export const createRazorpayOrder = async (req, res) => {
         if (resolvedMode === "EXPRESS") {
             const delSettings = await DeliverySettings.getSingleton();
             expressCharge = delSettings.expressCharge || 0;
+            // Subtract standard delivery fee if present so only express charge applies
+            if (pricing.deliveryFee > 0) {
+                pricing.total = Number((pricing.total - pricing.deliveryFee).toFixed(2));
+                pricing.deliveryFee = 0;
+            }
         }
 
         pricing.expressCharge = expressCharge;
@@ -258,6 +263,17 @@ export const verifyPayment = async (req, res) => {
                 deliveryCoords: { lat: intent.address?.lat, lng: intent.address?.lng },
                 userId: intent.user.toString(),
             });
+
+            if (intent.deliveryMode !== "SLOT") {
+                const delSettings = await DeliverySettings.getSingleton();
+                const expCharge = delSettings.expressCharge || 0;
+                if (recalculated.pricing.deliveryFee > 0) {
+                    recalculated.pricing.total = Number((recalculated.pricing.total - recalculated.pricing.deliveryFee).toFixed(2));
+                    recalculated.pricing.deliveryFee = 0;
+                }
+                recalculated.pricing.expressCharge = expCharge;
+                recalculated.pricing.total = Number((recalculated.pricing.total + expCharge).toFixed(2));
+            }
 
             // Validate pricing consistency
             await validatePricingConsistency(recalculated.pricing, intent.pricingBreakdown);

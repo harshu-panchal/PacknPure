@@ -221,6 +221,9 @@ export const executeCoreOrderFulfillment = async ({
       if (deliveryMode === "EXPRESS") {
         const delSettings = await DeliverySettings.getSingleton();
         expressCharge = delSettings.expressCharge || 0;
+        // When Express delivery is selected and customer is within limit range area (not out of range),
+        // standard delivery fee is waived so only express charge applies.
+        validatedPricing.deliveryFee = 0;
       }
       validatedPricing.expressCharge = expressCharge;
 

@@ -128,8 +128,16 @@ const DeliveryPartnerProfile = () => {
                         </div>
                         <div className="flex flex-col items-center text-center mt-4">
                             <div className="relative mb-6">
-                                <div className="h-28 w-28 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner">
-                                    <User className="h-14 w-14" />
+                                <div className="h-28 w-28 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner overflow-hidden">
+                                    {rider.documents?.profileImage ? (
+                                        <img
+                                            src={rider.documents.profileImage}
+                                            alt={rider.name}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <User className="h-14 w-14" />
+                                    )}
                                 </div>
                                 <div className={cn(
                                     "absolute -bottom-2 -right-2 h-8 w-8 rounded-full border-4 border-white shadow-md flex items-center justify-center",

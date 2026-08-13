@@ -623,6 +623,8 @@ export const createAutoPurchaseRequests = async ({
     });
   }
 
+  const sellerResponseTimeoutMs = (sellerResponseTimeout || 15) * 60 * 1000;
+
   const insertedDocs = [];
   for (const item of enrichedShortages) {
     if (!item.vendorId) continue;
@@ -681,7 +683,7 @@ export const createAutoPurchaseRequests = async ({
       vendorId: item.vendorId,
       rankedSellers: item.rankedSellers || [],
       status: "created",
-      expiresAt: new Date(Date.now() + 52000),
+      expiresAt: new Date(Date.now() + sellerResponseTimeoutMs),
       items: [{
         productId: item.productId,
         variantId: item.variantId || undefined,
@@ -755,9 +757,10 @@ export const notifyAndEmitPurchaseRequests = async (purchaseRequests = [], order
         };
       });
 
+      const sellerResponseTimeout = await getSellerResponseTimeoutMinutes();
       const expiresAtIso = pr.expiresAt
         ? new Date(pr.expiresAt).toISOString()
-        : new Date(Date.now() + 52000).toISOString();
+        : new Date(Date.now() + (sellerResponseTimeout || 15) * 60 * 1000).toISOString();
 
       const orderCode = orderId || pr.orderId?.orderId || pr.orderId || "";
       const totalAmount = itemsDetailed.reduce(

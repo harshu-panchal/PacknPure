@@ -124,7 +124,13 @@ export function buildVariantSignature(variants = [], rootUnit = "Pieces") {
 
   return rows
     .map((v) => {
-      const n = String(v?.name || "default").trim().toLowerCase();
+      // normalizeVariantMatchKey strips whitespace/punctuation ("2kg" vs "2 kg"
+      // vs "2 Kg" all collapse to the same key). A plain trim+lowercase here
+      // previously let differently-spaced labels for the same pack size be
+      // treated as distinct variants, so the "duplicate master" check below
+      // could miss an existing admin catalog product and let a second one
+      // be created for the same real-world item.
+      const n = normalizeVariantMatchKey(v?.name) || "default";
       const u = normalizeUnit(v?.unit, unit).toLowerCase();
       return `${n}|${u}`;
     })

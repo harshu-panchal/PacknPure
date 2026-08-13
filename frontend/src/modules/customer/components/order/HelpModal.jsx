@@ -5,13 +5,42 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSettings } from '@core/context/SettingsContext';
 import { handlePhoneClick } from '@shared/utils/phoneUtils';
 
-const HelpModal = ({ isOpen, onClose }) => {
+const HelpModal = ({ isOpen, onClose, order, onRequestReturn }) => {
     const { settings } = useSettings();
     const supportPhone = settings?.supportPhone || '';
     const issues = [
-        { icon: PackageX, label: 'Items missing or incorrect', sub: 'Get a refund or replacement' },
-        { icon: AlertCircle, label: 'Item quality issue', sub: 'Report damaged or expired items' },
-        { icon: Truck, label: 'Delivery delay', sub: 'Track your order status' },
+        { 
+            icon: PackageX, 
+            label: 'Items missing or incorrect', 
+            sub: 'Get a refund or replacement',
+            action: () => {
+                if (onRequestReturn) {
+                    onRequestReturn();
+                } else {
+                    onClose();
+                }
+            }
+        },
+        { 
+            icon: AlertCircle, 
+            label: 'Item quality issue', 
+            sub: 'Report damaged or expired items',
+            action: () => {
+                if (onRequestReturn) {
+                    onRequestReturn();
+                } else {
+                    onClose();
+                }
+            }
+        },
+        { 
+            icon: Truck, 
+            label: 'Delivery delay', 
+            sub: 'Track your order status',
+            action: () => {
+                onClose();
+            }
+        },
     ];
 
     return (
@@ -23,7 +52,7 @@ const HelpModal = ({ isOpen, onClose }) => {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm"
+                        className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
                     >
                         <motion.div
                             initial={{ y: "100%" }}
@@ -31,7 +60,7 @@ const HelpModal = ({ isOpen, onClose }) => {
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", damping: 25, stiffness: 300 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="bg-white rounded-t-[2rem] sm:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+                            className="bg-white rounded-t-[2rem] sm:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl cursor-default"
                         >
 
                             <div className="p-6">
@@ -40,14 +69,23 @@ const HelpModal = ({ isOpen, onClose }) => {
                                         <h2 className="text-xl font-black text-slate-800">Need Help?</h2>
                                         <p className="text-sm text-slate-500 font-medium">Select an issue with your order</p>
                                     </div>
-                                    <button onClick={onClose} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors">
+                                    <button 
+                                        type="button"
+                                        onClick={onClose} 
+                                        className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                                    >
                                         <X size={20} className="text-slate-500" />
                                     </button>
                                 </div>
 
                                 <div className="space-y-3 mb-8">
                                     {issues.map((item, idx) => (
-                                        <button key={idx} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-brand-200 hover:bg-rose-50/50 transition-all group">
+                                        <button 
+                                            key={idx} 
+                                            type="button"
+                                            onClick={item.action}
+                                            className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-rose-200 hover:bg-rose-50/50 transition-all group cursor-pointer text-left"
+                                        >
                                             <div className="flex items-center gap-4">
                                                 <div className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 group-hover:bg-white group-hover:text-[#E23744] transition-colors">
                                                     <item.icon size={20} />
@@ -63,15 +101,26 @@ const HelpModal = ({ isOpen, onClose }) => {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Link to="/support" className="col-span-2 py-3.5 rounded-xl border-2 border-[#E23744] text-[#E23744] font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-lg shadow-rose-50">
+                                    <Link 
+                                        to="/support" 
+                                        onClick={onClose}
+                                        className="col-span-2 py-3.5 rounded-xl border-2 border-[#E23744] text-[#E23744] font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-lg shadow-rose-50"
+                                    >
                                         <PlusCircle size={18} /> Raise a Ticket
                                     </Link>
-                                    <Link to="/chat" className="py-3.5 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors">
+                                    <Link 
+                                        to="/support" 
+                                        onClick={onClose}
+                                        className="py-3.5 rounded-xl bg-slate-900 text-white font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors"
+                                    >
                                         <MessageCircle size={18} /> Chat Us
                                     </Link>
                                     <a
                                         href={supportPhone ? `tel:${supportPhone}` : 'tel:+919876543210'}
-                                        onClick={(e) => handlePhoneClick(e, supportPhone || '+919876543210')}
+                                        onClick={(e) => {
+                                            handlePhoneClick(e, supportPhone || '+919876543210');
+                                            onClose();
+                                        }}
                                         className="py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
                                     >
                                         <Phone size={18} /> Call Us

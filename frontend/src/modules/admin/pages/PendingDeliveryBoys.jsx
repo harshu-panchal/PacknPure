@@ -43,7 +43,10 @@ const PendingDeliveryBoys = () => {
             // Map backend data to frontend format
             const mappedRiders = list.map(r => {
                 const docsObj = r.documents || {};
-                const docEntries = Object.entries(docsObj).filter(([_, val]) => !!val);
+                // profileImage is rendered separately as the rider's avatar, not a legal document
+                const docEntries = Object.entries(docsObj).filter(
+                    ([key, val]) => !!val && key !== 'profileImage',
+                );
                 
                 return {
                     id: r._id,
@@ -221,8 +224,16 @@ const PendingDeliveryBoys = () => {
                                     <tr key={rider.id} className="group hover:bg-slate-50/50 transition-colors">
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:scale-110 group-hover:bg-primary/10 group-hover:text-primary transition-all flex-shrink-0">
-                                                    <IdCard className="h-6 w-6" />
+                                                <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 overflow-hidden group-hover:scale-110 group-hover:bg-primary/10 group-hover:text-primary transition-all flex-shrink-0">
+                                                    {rider.rawDocuments?.profileImage ? (
+                                                        <img
+                                                            src={rider.rawDocuments.profileImage}
+                                                            alt={rider.name}
+                                                            className="h-full w-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <IdCard className="h-6 w-6" />
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-900">{rider.name}</p>

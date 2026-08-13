@@ -7,8 +7,20 @@ import {
   onPickupBroadcastWithdrawn,
 } from "@core/services/orderSocket";
 
+import orderAlertSound from "@/assets/order-alert.mp3";
+
 const POLL_MS = 15000;
 const getToken = () => localStorage.getItem("auth_pickup_partner");
+
+function playPickupAlert() {
+  try {
+    const audio = new Audio(orderAlertSound);
+    audio.volume = 1;
+    audio.play().catch(() => {});
+  } catch {
+    /* audio optional */
+  }
+}
 
 export function usePickupBroadcasts({ onAccepted } = {}) {
   const [broadcasts, setBroadcasts] = useState([]);
@@ -43,6 +55,7 @@ export function usePickupBroadcasts({ onAccepted } = {}) {
 
   useEffect(() => {
     const offNew = onPickupBroadcast(getToken, (payload) => {
+      playPickupAlert();
       setBroadcasts((prev) => {
         if (prev.some((b) => b.requestId === payload.requestId)) return prev;
         toast.info(`New pickup request: ${payload.vendorName || "a vendor"}`);

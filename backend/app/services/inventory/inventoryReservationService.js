@@ -15,6 +15,7 @@ import {
   recordInventoryMutation,
   guardInventoryMutation,
 } from "./inventoryIdempotencyService.js";
+import { dispatchBackInStockNotifications } from "../stockNotificationService.js";
 
 const hubInventoryStatus = (availableQty, reorderLevel = 10) => {
   const qty = Math.max(0, Number(availableQty) || 0);
@@ -496,6 +497,12 @@ export const addHubAvailableStock = async (opts) => {
       idempotencyKey,
     });
 
+    if (previousQty.availableQty <= 0 && newQty.availableQty > 0) {
+      // Fire-and-forget: notifying wishlist subscribers must never block or
+      // fail the inventory mutation itself.
+      dispatchBackInStockNotifications(productId).catch(() => {});
+    }
+
     return buildOperationResult({
       success: true,
       applied: true,
@@ -534,6 +541,10 @@ export const addHubAvailableStock = async (opts) => {
     reason,
     idempotencyKey,
   });
+
+  if (newQty.availableQty > 0) {
+    dispatchBackInStockNotifications(productId).catch(() => {});
+  }
 
   return buildOperationResult({
     success: true,

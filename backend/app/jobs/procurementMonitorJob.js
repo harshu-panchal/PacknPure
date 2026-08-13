@@ -148,6 +148,7 @@ export const processExpirations = async () => {
 
 const processPickupTimeouts = async () => {
   const timeoutMs = await getPickupTimeoutMs();
+  const timeoutMins = Math.round(timeoutMs / 60000);
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await findPurchaseRequests({
@@ -164,7 +165,7 @@ const processPickupTimeouts = async () => {
       await updatePurchaseRequestById(pr._id, { $set: { pickupTimeoutAlertedAt: new Date() } });
       await notifyAdmins(
         "Pickup Timeout Alert",
-        `PR ${pr.requestId} has been waiting for pickup for over 2 hours.`,
+        `PR ${pr.requestId} has been waiting for pickup for over ${timeoutMins} minutes.`,
         { purchaseRequestId: pr._id }
       );
       // We don't auto-cancel yet, just alert admin
@@ -177,6 +178,7 @@ const processPickupTimeouts = async () => {
 
 const processHubReceiveTimeouts = async () => {
   const timeoutMs = await getHubReceiveTimeoutMs();
+  const timeoutMins = Math.round(timeoutMs / 60000);
   const cutoff = new Date(Date.now() - timeoutMs);
   try {
     const stalledPRs = await findPurchaseRequests({
@@ -191,7 +193,7 @@ const processHubReceiveTimeouts = async () => {
       await updatePurchaseRequestById(pr._id, { $set: { hubReceiveTimeoutAlertedAt: new Date() } });
       await notifyAdmins(
         "Hub Receive Timeout Alert",
-        `PR ${pr.requestId} was picked up but hasn't reached the hub for over 3 hours.`,
+        `PR ${pr.requestId} was picked up but hasn't reached the hub for over ${timeoutMins} minutes.`,
         { purchaseRequestId: pr._id }
       );
       console.log(`[ProcurementMonitor] Alerted admin for PR ${pr.requestId} hub receive timeout.`);
