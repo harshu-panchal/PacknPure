@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useState } from 'react';
+import React, { createContext, useContext, useRef, useState, useEffect } from 'react';
 import { normalizeCustomerProduct } from '@shared/utils/productDisplay';
 import { customerApi } from '../services/customerApi';
 import { useLocation } from './LocationContext';
@@ -18,12 +18,18 @@ export const ProductDetailProvider = ({ children }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const requestSeq = useRef(0);
+    const pushedStateRef = useRef(false);
     const { currentLocation } = useLocation();
 
     const openProduct = (product) => {
         const seq = ++requestSeq.current;
         setSelectedProduct(normalizeCustomerProduct(product));
         setIsOpen(true);
+
+        try {
+            window.history.pushState({ modalOpen: 'productDetail' }, '');
+            pushedStateRef.current = true;
+        } catch (e) {}
 
         const id = product?._id || product?.id;
         if (!id) return;
@@ -64,7 +70,30 @@ export const ProductDetailProvider = ({ children }) => {
             setSelectedProduct(null);
             setIsRefreshing(false);
         }, 300);
+
+        try {
+            if (pushedStateRef.current) {
+                pushedStateRef.current = false;
+                window.history.back();
+            }
+        } catch (e) {}
     };
+
+    useEffect(() => {
+        const handlePopState = () => {
+            if (isOpen) {
+                pushedStateRef.current = false;
+                setIsOpen(false);
+                setTimeout(() => {
+                    setSelectedProduct(null);
+                    setIsRefreshing(false);
+                }, 300);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [isOpen]);
 
     return (
         <ProductDetailContext.Provider

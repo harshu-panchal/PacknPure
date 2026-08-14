@@ -101,6 +101,34 @@ const LocationDrawer = ({ isOpen, onClose }) => {
     resetAutocompleteSession();
   }, [isOpen, resetAutocompleteSession]);
 
+  const pushedStateRef = React.useRef(false);
+
+  // Manage hardware back button when LocationDrawer is open
+  React.useEffect(() => {
+    if (isOpen) {
+      try {
+        window.history.pushState({ modalOpen: 'locationDrawer' }, '');
+        pushedStateRef.current = true;
+      } catch (e) {}
+
+      const handlePopState = () => {
+        pushedStateRef.current = false;
+        onClose();
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (pushedStateRef.current) {
+          pushedStateRef.current = false;
+          try {
+            window.history.back();
+          } catch (e) {}
+        }
+      };
+    }
+  }, [isOpen, onClose]);
+
   // Lock body scroll when drawer is open
   React.useEffect(() => {
     if (isOpen) {

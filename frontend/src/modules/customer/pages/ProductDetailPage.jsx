@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Heart, Plus, Minus, Star, ShieldCheck, Clock, ArrowLeft, ShoppingBag, Loader2, ImageIcon, X, CheckCircle, ChevronRight, Trash2 } from 'lucide-react';
+import { Heart, Plus, Minus, Star, ShieldCheck, ArrowLeft, ShoppingBag, Loader2, ImageIcon, X, CheckCircle, ChevronRight, Trash2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '@shared/components/ui/Toast';
@@ -176,11 +176,11 @@ const RatingSummaryCard = ({ effectiveProduct, className }) => {
     const maxCount = Math.max(1, ...[1,2,3,4,5].map(s => Number(distObj[String(s)] || 0)));
 
     return (
-        <div className={cn("bg-white p-6 lg:p-8 rounded-[2rem] lg:rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between", className)}>
+        <div className={cn("bg-white p-5 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between", className)}>
             <div>
-                <h3 className="text-xl lg:text-2xl font-black text-slate-800 mb-1">Customer Ratings</h3>
+                <h3 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-800 mb-1">Customer Ratings</h3>
                 <div className="flex items-end gap-3 mb-4 lg:mb-6">
-                    <span className="text-5xl lg:text-6xl font-black text-slate-800">
+                    <span className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-800">
                         {Number(effectiveProduct?.averageRating || 0).toFixed(1)}
                     </span>
                     <div className="pb-1 lg:pb-2">
@@ -532,15 +532,15 @@ const ProductDetailPage = () => {
     ];
 
     return (
-        <div className="relative z-10 py-8 w-full max-w-[1920px] mx-auto px-4 md:px-[50px] animate-in fade-in duration-700 pt-6 md:pt-8">
+        <div className="relative z-10 py-6 sm:py-8 w-full max-w-[1920px] mx-auto px-4 sm:px-6 md:px-10 lg:px-[50px] animate-in fade-in duration-700 pt-4 sm:pt-6 md:pt-8">
             {/* Back Button */}
-            <Link to={-1} className="inline-flex items-center gap-2 text-slate-500 hover:text-[#E23744] font-bold mb-6 transition-colors group">
+            <Link to={-1} className="inline-flex items-center gap-2 text-slate-500 hover:text-[#E23744] font-bold mb-4 sm:mb-6 transition-colors group">
                 <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" /> Back
             </Link>
 
-            <div className="flex flex-col lg:flex-row gap-10 xl:gap-16">
+            <div className="flex flex-col lg:flex-row gap-8 lg:gap-10 xl:gap-16">
                 {/* Image Gallery Section */}
-                <div className="lg:w-[45%] xl:w-[35%] relative">
+                <div className="w-full max-w-md sm:max-w-lg mx-auto lg:max-w-none lg:w-[45%] xl:w-[35%] relative">
                     <button
                         onClick={handleToggleWishlist}
                         className={cn(
@@ -696,9 +696,6 @@ const ProductDetailPage = () => {
                         <div className="flex flex-col gap-1 text-center sm:text-left">
                             <span className="text-xs font-black text-[#E23744] uppercase tracking-widest flex items-center justify-center sm:justify-start gap-1">
                                 <ShieldCheck size={14} /> Hygiene Guaranteed
-                            </span>
-                            <span className="text-sm font-bold text-slate-400 flex items-center justify-center sm:justify-start gap-1">
-                                <Clock size={14} /> Delivered in 10-15 mins
                             </span>
                         </div>
                     </div>

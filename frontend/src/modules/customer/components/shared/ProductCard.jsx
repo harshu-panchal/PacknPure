@@ -103,7 +103,14 @@ const ProductCard = React.memo(
         e.preventDefault();
         e.stopPropagation();
         if (product.inStock === false) return;
-        
+
+        if (mustPickVariant) {
+          if (openProduct) {
+            openProduct(product);
+          }
+          return;
+        }
+
         if (imageRef.current) {
           animateAddToCart(
             imageRef.current.getBoundingClientRect(),
@@ -120,7 +127,7 @@ const ProductCard = React.memo(
             : {}),
         });
       },
-      [animateAddToCart, product, addToCart, targetVariantId],
+      [animateAddToCart, product, addToCart, targetVariantId, mustPickVariant, openProduct],
     );
 
     const handleNotify = React.useCallback(
@@ -258,10 +265,12 @@ const ProductCard = React.memo(
 
           <div
             className={cn(
-              "flex aspect-square w-full items-center justify-center overflow-hidden p-2 transition-transform duration-500 group-hover:scale-105",
-              compact || neutralBg
-                ? "rounded-xl bg-white/70"
-                : "rounded-xl bg-white/50",
+              "flex items-center justify-center overflow-hidden transition-transform duration-500 group-hover:scale-105",
+              compact
+                ? "aspect-[4/3] max-h-28 w-full p-1.5 rounded-xl bg-white/70"
+                : neutralBg
+                  ? "aspect-square w-full p-2 rounded-xl bg-white/70"
+                  : "aspect-square w-full p-2 rounded-xl bg-white/50",
             )}>
             <img
               ref={imageRef}
@@ -281,9 +290,9 @@ const ProductCard = React.memo(
         <div
           className={cn(
             "flex flex-col flex-1",
-            compact ? "gap-1 p-3 pt-2" : "bg-white/40 p-3 pt-4 gap-0.5",
+            compact ? "gap-0.5 p-2 pt-1" : "bg-white/40 p-3 pt-4 gap-0.5",
           )}>
-          <div className="mb-1 flex flex-wrap items-center gap-1">
+          <div className="mb-0.5 flex flex-wrap items-center gap-1">
             {product.brand ? (
               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600">
                 {product.brand}
@@ -308,18 +317,14 @@ const ProductCard = React.memo(
 
           <h4
             className={cn(
-              "font-semibold text-slate-900 leading-tight line-clamp-2",
-              compact ? "text-[12px] min-h-10" : "text-[13px] min-h-9",
+              "font-semibold text-slate-900 leading-snug line-clamp-2",
+              compact ? "text-[12px] min-h-[32px]" : "text-[13px] min-h-9",
             )}>
             {product.name}
           </h4>
 
-          {(product.subcategoryName || product.categoryName) && (
-            <p
-              className={cn(
-                "line-clamp-1 text-slate-500",
-                compact ? "text-[10px]" : "text-[11px]",
-              )}>
+          {(product.subcategoryName || product.categoryName) && !compact && (
+            <p className="line-clamp-1 text-slate-500 text-[11px]">
               {[product.subcategoryName, product.categoryName].filter(Boolean).join(' · ')}
             </p>
           )}
@@ -334,44 +339,44 @@ const ProductCard = React.memo(
             </p>
           )}
 
-          {showStockInfo && product.stockQty != null && product.inStock !== false && (
-            <p className={cn("text-slate-500", compact ? "text-[9px]" : "text-[10px]")}>
+          {showStockInfo && !compact && product.stockQty != null && product.inStock !== false && (
+            <p className="text-slate-500 text-[10px]">
               {product.stockQty} available
             </p>
           )}
 
           {/* Price Row / ADD Button */}
-          <div className="mt-auto flex items-center justify-between gap-1.5 pt-1">
+          <div className="mt-auto flex items-end justify-between gap-1.5 pt-1.5">
             <div className="flex min-w-0 flex-col">
               <span
                 className={cn(
-                  "font-bold text-slate-900",
-                  compact ? "text-[13px]" : "text-sm",
+                  "font-bold text-slate-900 whitespace-nowrap leading-tight",
+                  compact ? "text-[12px] sm:text-[13px]" : "text-sm",
                 )}>
                 {product.hasMultipleVariants && product.displayPrice != null
                   ? product.displayPriceMax > product.displayPrice
-                    ? `₹${Number(product.displayPrice).toLocaleString('en-IN')} – ₹${Number(product.displayPriceMax).toLocaleString('en-IN')}`
+                    ? `₹${Number(product.displayPrice).toLocaleString('en-IN')}–₹${Number(product.displayPriceMax).toLocaleString('en-IN')}`
                     : `From ₹${Number(product.displayPrice).toLocaleString('en-IN')}`
                   : `₹${Number(product.price || 0).toLocaleString('en-IN')}`}
               </span>
               {product.originalPrice > product.price && product.inStock !== false && (
-                <span className="text-[10px] font-medium leading-none text-slate-400 line-through">
+                <span className="text-[10px] font-medium leading-none text-slate-400 line-through whitespace-nowrap">
                   ₹{Number(product.originalPrice).toLocaleString('en-IN')}
                 </span>
               )}
             </div>
 
             {/* ADD Button / Quantity Selector (Always in price row) */}
-            <div className="flex">
+            <div className="flex shrink-0">
               {quantity > 0 ? (
                 <div
                   className={cn(
                     "flex items-center rounded-lg border-2 border-brand-600 bg-white p-0.5 justify-between",
-                    compact ? "min-w-[80px]" : "min-w-[90px] md:min-w-[100px]",
+                    compact ? "min-w-[72px] sm:min-w-[80px]" : "min-w-[90px] md:min-w-[100px]",
                   )}>
                   <button
                     onClick={handleDecrement}
-                    className="p-1 px-1.5 text-brand-600 active:scale-90 transition-transform">
+                    className="p-1 px-1 text-brand-600 active:scale-90 transition-transform">
                     {quantity === 1 ? <Trash2 size={compact ? 11 : 13} strokeWidth={2.5} /> : <Minus size={compact ? 12 : 14} strokeWidth={3.5} />}
                   </button>
                   <input
@@ -387,13 +392,13 @@ const ProductCard = React.memo(
                       }
                     }}
                     className={cn(
-                      "w-6 text-center font-bold text-brand-600 bg-transparent border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none",
-                      compact ? "text-[12px]" : "text-[13px] md:text-sm",
+                      "w-5 text-center font-bold text-brand-600 bg-transparent border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none",
+                      compact ? "text-[11px] sm:text-[12px]" : "text-[13px] md:text-sm",
                     )}
                   />
                   <button
                     onClick={handleIncrement}
-                    className="p-1 px-1.5 text-brand-600 active:scale-90 transition-transform">
+                    className="p-1 px-1 text-brand-600 active:scale-90 transition-transform">
                     <Plus size={compact ? 12 : 14} strokeWidth={3.5} />
                   </button>
                 </div>
@@ -403,14 +408,14 @@ const ProductCard = React.memo(
                   onClick={product.inStock === false ? handleNotify : handleAddToCart}
                   disabled={product.inStock === false && notifyState !== "idle"}
                   className={cn(
-                    "flex items-center justify-center gap-1 rounded-lg border-2 font-bold uppercase tracking-wide leading-none shadow-sm transition-all",
+                    "flex items-center justify-center gap-1 rounded-lg border-2 font-bold uppercase tracking-wide leading-none shadow-sm transition-all shrink-0",
                     product.inStock === false
                       ? notifyState === "subscribed"
                         ? "cursor-default border-emerald-200 bg-emerald-50 text-emerald-600"
                         : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
                       : "border-[#E23744] bg-[#E23744] text-white hover:bg-[#C41E35] hover:border-[#C41E35] shadow-md shadow-rose-100",
                     compact
-                      ? "px-5 py-1.5 text-[12px]"
+                      ? "px-3 sm:px-4 py-1.5 text-[11px] sm:text-[12px]"
                       : "px-7 py-2 text-[13px] md:text-sm md:px-8 md:py-2.5",
                   )}>
                   {product.inStock === false ? (

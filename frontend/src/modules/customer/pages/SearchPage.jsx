@@ -335,11 +335,11 @@ const SearchPage = () => {
           </div>
         ) : lowestPriceProducts.length > 0 ? (
           <>
-            <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar -mx-1 px-1 snap-x md:hidden">
+            <div className="flex gap-2.5 overflow-x-auto pb-2 hide-scrollbar -mx-1 px-1 snap-x md:hidden">
               {lowestPriceProducts.map((product) => (
                 <div
                   key={product.id || product._id}
-                  className="min-w-[130px] max-w-[130px] shrink-0 snap-start"
+                  className="min-w-[145px] max-w-[155px] sm:min-w-[165px] sm:max-w-[175px] shrink-0 snap-start"
                 >
                   <ProductCard product={product} compact />
                 </div>

@@ -46,6 +46,9 @@ function formatInr(n) {
 }
 
 export function ProductImageGallery({ images, name, activeIndex, onSelect, fullFrame = false }) {
+  const [touchStartX, setTouchStartX] = useState(null);
+  const [touchEndX, setTouchEndX] = useState(null);
+
   // Auto-slide functionality
   useEffect(() => {
     if (!images || images.length <= 1) return;
@@ -56,23 +59,55 @@ export function ProductImageGallery({ images, name, activeIndex, onSelect, fullF
   }, [images, onSelect]);
 
   const handlePrev = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
+    if (!images || images.length <= 1) return;
     onSelect((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
 
   const handleNext = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
+    if (!images || images.length <= 1) return;
     onSelect((prev) => (prev + 1) % images.length);
+  };
+
+  const handleTouchStart = (e) => {
+    setTouchEndX(null);
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX === null || touchEndX === null || !images || images.length <= 1) return;
+    const distance = touchStartX - touchEndX;
+    const minSwipeDistance = 35;
+
+    if (distance > minSwipeDistance) {
+      // Swiped Left -> Next image
+      handleNext();
+    } else if (distance < -minSwipeDistance) {
+      // Swiped Right -> Previous image
+      handlePrev();
+    }
   };
 
   return (
     <div className="flex h-full flex-col justify-center relative group">
       <div className={cn("flex items-center justify-center relative", fullFrame ? "p-0" : "p-4 sm:p-6 lg:p-10")}>
         {/* Added border, shadow, and frame */}
-        <div className={cn(
-          "relative flex items-center justify-center overflow-hidden bg-white transition-all",
-          fullFrame ? "aspect-[4/5] sm:aspect-square w-full" : "aspect-square w-full max-w-[320px] sm:max-w-[380px] rounded-3xl border border-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-slate-900/5"
-        )}>
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className={cn(
+            "relative flex items-center justify-center overflow-hidden bg-white transition-all touch-pan-y select-none cursor-grab active:cursor-grabbing",
+            fullFrame
+              ? "aspect-square sm:aspect-square w-full max-h-[350px] sm:max-h-[420px] md:max-h-[480px] lg:max-h-none"
+              : "aspect-square w-full max-w-[320px] sm:max-w-[380px] rounded-3xl border border-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-slate-900/5"
+          )}
+        >
           <AnimatePresence mode="wait">
             <motion.img
               key={activeIndex}
@@ -82,7 +117,7 @@ export function ProductImageGallery({ images, name, activeIndex, onSelect, fullF
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="absolute inset-0 h-full w-full object-cover object-top mix-blend-multiply"
+              className="absolute inset-0 h-full w-full object-contain p-2 sm:p-4 mix-blend-multiply pointer-events-none"
             />
           </AnimatePresence>
 
@@ -92,7 +127,7 @@ export function ProductImageGallery({ images, name, activeIndex, onSelect, fullF
               <button
                 type="button"
                 onClick={handlePrev}
-                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-white/80 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:scale-110 opacity-0 group-hover:opacity-100 z-20"
+                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:scale-110 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 z-20"
                 aria-label="Previous image"
               >
                 <ChevronLeft size={20} className="text-slate-800" />
@@ -100,7 +135,7 @@ export function ProductImageGallery({ images, name, activeIndex, onSelect, fullF
               <button
                 type="button"
                 onClick={handleNext}
-                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-white/80 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:scale-110 opacity-0 group-hover:opacity-100 z-20"
+                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur-sm transition-all hover:bg-white hover:scale-110 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 z-20"
                 aria-label="Next image"
               >
                 <ChevronRight size={20} className="text-slate-800" />
