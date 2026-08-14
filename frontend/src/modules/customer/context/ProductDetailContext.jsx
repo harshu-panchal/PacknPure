@@ -64,7 +64,8 @@ export const ProductDetailProvider = ({ children }) => {
             });
     };
 
-    const closeProduct = () => {
+    const closeProduct = (opts) => {
+        const skipBack = opts?.skipHistoryBack === true;
         setIsOpen(false);
         setTimeout(() => {
             setSelectedProduct(null);
@@ -72,9 +73,11 @@ export const ProductDetailProvider = ({ children }) => {
         }, 300);
 
         try {
-            if (pushedStateRef.current) {
+            if (pushedStateRef.current && !skipBack) {
                 pushedStateRef.current = false;
                 window.history.back();
+            } else {
+                pushedStateRef.current = false;
             }
         } catch (e) {}
     };

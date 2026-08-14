@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { X, Heart, Share2, Minus, Plus, Package, Loader2, ChevronRight, Star, ChevronLeft, Trash2 } from 'lucide-react';
 import { useProductDetail } from '../../context/ProductDetailContext';
 import { useCart } from '../../context/CartContext';
@@ -563,6 +563,7 @@ function ProductDetailFooter({
 }
 
 const ProductDetailSheet = () => {
+  const navigate = useNavigate();
   const { selectedProduct, isOpen, isRefreshing, closeProduct } = useProductDetail();
   const { cart, cartCount, addToCart, updateQuantity, removeFromCart } = useCart();
   const { toggleWishlist: toggleWishlistGlobal, isInWishlist } = useWishlist();
@@ -781,23 +782,35 @@ const ProductDetailSheet = () => {
   const reviewCount = Number(effectiveProduct?.totalReviews || 0);
   const productSlug = effectiveProduct?.slug || effectiveProduct?._id || effectiveProduct?.id || '';
 
+  const handleOpenReviews = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (!productSlug) return;
+    const targetUrl = `/product/${productSlug}${selectedVariantId ? `?variant=${selectedVariantId}` : ''}#reviews`;
+    closeProduct({ skipHistoryBack: true });
+    navigate(targetUrl);
+  };
+
   const aboutSection = (
     <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 space-y-3 mt-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product Info & Rating</p>
-        <Link
-          to={`/product/${productSlug}${selectedVariantId ? `?variant=${selectedVariantId}` : ''}#reviews`}
-          onClick={closeProduct}
-          className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-100 hover:border-[#E23744]/30 hover:bg-[#E23744]/5 transition-colors"
-        >
+      <div 
+        onClick={handleOpenReviews}
+        className="flex items-center justify-between cursor-pointer group hover:opacity-90 transition-opacity"
+        role="button"
+        tabIndex={0}
+      >
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-[#E23744] transition-colors flex items-center gap-1">
+          Product Info & Rating <ChevronRight size={12} className="text-slate-400 group-hover:text-[#E23744]" />
+        </p>
+        <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg shadow-sm border border-slate-200 group-hover:border-[#E23744]/40 group-hover:bg-[#E23744]/5 transition-all">
           <div className="flex gap-0.5">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} size={12} strokeWidth={1.5} className={i < Math.floor(ratingVal) ? "fill-[#E23744] text-black" : "fill-transparent text-black"} />
+              <Star key={i} size={13} strokeWidth={1.5} className={i < Math.floor(ratingVal) ? "fill-[#E23744] text-[#E23744]" : "fill-slate-100 text-slate-300"} />
             ))}
           </div>
           <span className="text-xs font-black text-slate-800 ml-1">{Number(ratingVal).toFixed(1)}</span>
           <span className="text-[10px] font-bold text-slate-400">({reviewCount})</span>
-        </Link>
+        </div>
       </div>
 
       {desc ? (
