@@ -42,7 +42,7 @@ import { HiOutlineLink } from 'react-icons/hi2';
 import SearchableCategorySelect from '../components/SearchableCategorySelect';
 import PurchaseRequestListPanel from '../components/PurchaseRequestListPanel';
 import { barcodeApi } from '@core/services/barcodeApi';
-import { PRODUCT_UNITS, DEFAULT_PRODUCT_UNIT } from '@shared/constants/productUnits';
+import { PRODUCT_UNITS, DEFAULT_PRODUCT_UNIT, getAllUnits, addCustomUnit } from '@shared/constants/productUnits';
 import { useDebouncedValue, useDebouncedCallback, DEBOUNCE_MS } from '@shared/hooks/useDebounce';
 import {
     parseAdminProductListResponse,
@@ -139,6 +139,38 @@ const ProductManagement = () => {
     const [quickCatModal, setQuickCatModal] = useState({ isOpen: false, type: 'category' });
     const [quickCatForm, setQuickCatForm] = useState({ name: '', description: '', imageFile: null, preview: null });
     const [isQuickCatSaving, setIsQuickCatSaving] = useState(false);
+
+    const [availableUnits, setAvailableUnits] = useState(getAllUnits());
+    const [customUnitModal, setCustomUnitModal] = useState({ isOpen: false, variantIndex: null, newUnitName: '' });
+
+    const openAddUnitModal = (variantIndex = null) => {
+        setCustomUnitModal({ isOpen: true, variantIndex, newUnitName: '' });
+    };
+
+    const handleSaveCustomUnit = () => {
+        const name = customUnitModal.newUnitName.trim();
+        if (!name) {
+            toast.error('Please enter a unit name');
+            return;
+        }
+        const created = addCustomUnit(name);
+        if (created) {
+            const updatedList = getAllUnits();
+            setAvailableUnits(updatedList);
+            if (customUnitModal.variantIndex !== null && customUnitModal.variantIndex !== undefined) {
+                const idx = customUnitModal.variantIndex;
+                const newVariants = [...formData.variants];
+                if (newVariants[idx]) {
+                    newVariants[idx].unit = created.value;
+                    setFormData((prev) => ({ ...prev, variants: newVariants }));
+                }
+            } else {
+                setFormData((prev) => ({ ...prev, unit: created.value }));
+            }
+            toast.success(`Unit "${created.value}" added successfully`);
+        }
+        setCustomUnitModal({ isOpen: false, variantIndex: null, newUnitName: '' });
+    };
 
     const openQuickCategoryModal = (type) => {
         if (type === 'subcategory' && !formData.categoryId) {
@@ -2455,19 +2487,34 @@ const ProductManagement = () => {
                                                                 />
                                                             </div>
                                                             <div className="col-span-3 lg:col-span-2 space-y-1">
-                                                                <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest ml-1">Unit</label>
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest ml-1">Unit</label>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => openAddUnitModal(idx)}
+                                                                        className="p-0.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition-colors flex items-center gap-0.5"
+                                                                        title="Create new unit"
+                                                                    >
+                                                                        <HiOutlinePlus className="h-3 w-3" />
+                                                                    </button>
+                                                                </div>
                                                                 <select
                                                                     value={variant.unit || formData.unit || DEFAULT_PRODUCT_UNIT}
                                                                     onChange={(e) => {
-                                                                        const newVariants = [...formData.variants];
-                                                                        newVariants[idx].unit = e.target.value;
-                                                                        setFormData({ ...formData, variants: newVariants });
+                                                                        if (e.target.value === "__add_new_unit__") {
+                                                                            openAddUnitModal(idx);
+                                                                        } else {
+                                                                            const newVariants = [...formData.variants];
+                                                                            newVariants[idx].unit = e.target.value;
+                                                                            setFormData({ ...formData, variants: newVariants });
+                                                                        }
                                                                     }}
-                                                                    className="w-full px-3 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-[10px] font-semibold outline-none focus:ring-2 focus:ring-primary/10"
+                                                                    className="w-full px-2.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-[10px] font-semibold outline-none focus:ring-2 focus:ring-primary/10"
                                                                 >
-                                                                    {PRODUCT_UNITS.map((u) => (
+                                                                    {availableUnits.map((u) => (
                                                                         <option key={u.value} value={u.value}>{u.label}</option>
                                                                     ))}
+                                                                    <option value="__add_new_unit__">+ Add Custom Unit...</option>
                                                                 </select>
                                                             </div>
                                                             <div className="col-span-1 py-1">
@@ -3417,6 +3464,57 @@ const ProductManagement = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Create Custom Unit Modal */}
+            <Modal
+                isOpen={customUnitModal.isOpen}
+                onClose={() => setCustomUnitModal({ isOpen: false, variantIndex: null, newUnitName: '' })}
+                title="Create New Unit"
+                size="sm"
+                footer={
+                    <div className="flex items-center justify-end gap-2 w-full">
+                        <button
+                            type="button"
+                            onClick={() => setCustomUnitModal({ isOpen: false, variantIndex: null, newUnitName: '' })}
+                            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSaveCustomUnit}
+                            className="bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-slate-800 transition-all"
+                        >
+                            Add Unit
+                        </button>
+                    </div>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-xs text-slate-500">
+                        Enter a custom measurement or packaging unit (e.g. Roll, Set, Carton, Packet, Pair, Dozen).
+                    </p>
+                    <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+                            Unit Name
+                        </label>
+                        <input
+                            type="text"
+                            value={customUnitModal.newUnitName}
+                            onChange={(e) => setCustomUnitModal((prev) => ({ ...prev, newUnitName: e.target.value }))}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveCustomUnit();
+                                }
+                            }}
+                            placeholder="e.g. Roll, Set, Packet..."
+                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/30 focus:outline-none"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };
