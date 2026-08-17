@@ -27,7 +27,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const CashCollection = () => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('live_balances'); // live_balances or history
+    const [activeTab, setActiveTab] = useState('live_balances'); // live_balances, pending, or history
+    const [pendingData, setPendingData] = useState([]);
+    const [pendingPage, setPendingPage] = useState(1);
+    const [pendingTotal, setPendingTotal] = useState(0);
+    const [processingRemittanceId, setProcessingRemittanceId] = useState(null);
     const [selectedRider, setSelectedRider] = useState(null);
     const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
     const [settlementData, setSettlementData] = useState({ rider: null, amount: 0 });
@@ -50,13 +54,21 @@ const CashCollection = () => {
         avgBalance: 0
     });
 
-    const fetchData = async (cashPage = 1, histPage = 1) => {
+    const fetchData = async (cashPage = 1, histPage = 1, pendPage = 1) => {
         try {
             setLoading(true);
-            const [cashRes, historyRes] = await Promise.all([
+            const [cashRes, historyRes, pendingRes] = await Promise.all([
                 adminApi.getDeliveryCashBalances({ page: cashPage, limit: pageSize }),
-                adminApi.getCashSettlementHistory({ page: histPage, limit: pageSize })
+                adminApi.getCashSettlementHistory({ page: histPage, limit: pageSize }),
+                adminApi.getPendingCashSettlements({ page: pendPage, limit: pageSize })
             ]);
+
+            if (pendingRes.data?.success) {
+                const payload = pendingRes.data.result || {};
+                setPendingData(Array.isArray(payload.items) ? payload.items : []);
+                setPendingTotal(typeof payload.total === 'number' ? payload.total : 0);
+                setPendingPage(typeof payload.page === 'number' ? payload.page : pendPage);
+            }
 
             if (cashRes.data.success) {
                 const payload = cashRes.data.result || {};
@@ -91,17 +103,40 @@ const CashCollection = () => {
     useEffect(() => {
         setRidersPage(1);
         setHistoryPage(1);
-        fetchData(1, 1);
+        setPendingPage(1);
+        fetchData(1, 1, 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageSize]);
 
+    const fetchPendingPage = (p) => {
+        setPendingPage(p);
+        fetchData(ridersPage, historyPage, p);
+    };
+
+    const handleRemittanceDecision = async (remittance, status) => {
+        try {
+            setProcessingRemittanceId(remittance.id);
+            const res = await adminApi.updateCashSettlementStatus(remittance.id, { status });
+            if (res.data.success) {
+                toast.success(`Remittance ${status === 'Settled' ? 'approved' : 'rejected'} successfully`);
+                fetchData(ridersPage, historyPage, pendingPage);
+            } else {
+                toast.error(res.data.message || "Failed to update remittance");
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to update remittance");
+        } finally {
+            setProcessingRemittanceId(null);
+        }
+    };
+
     const fetchRidersPage = (p) => {
         setRidersPage(p);
-        fetchData(p, historyPage);
+        fetchData(p, historyPage, pendingPage);
     };
     const fetchHistoryPage = (p) => {
         setHistoryPage(p);
-        fetchData(ridersPage, p);
+        fetchData(ridersPage, p, pendingPage);
     };
 
     const [editingLimitRiderId, setEditingLimitRiderId] = useState(null);
@@ -123,7 +158,7 @@ const CashCollection = () => {
                 if (selectedRider && selectedRider.id === riderId) {
                     setSelectedRider(prev => ({ ...prev, limit: Number(limitAmount) }));
                 }
-                fetchData(ridersPage, historyPage);
+                fetchData(ridersPage, historyPage, pendingPage);
             } else {
                 toast.error(res.data.message || "Failed to update limit");
             }
@@ -190,7 +225,7 @@ const CashCollection = () => {
 
             if (response.data.success) {
                 toast.success(`Settlement of ₹${settlementData.amount} for ${settlementData.rider.name} processed successfully.`);
-                fetchData(ridersPage, historyPage);
+                fetchData(ridersPage, historyPage, pendingPage);
                 setIsSettleModalOpen(false);
             }
         } catch (error) {
@@ -260,6 +295,21 @@ const CashCollection = () => {
                         LIVE RIDER BALANCES
                     </button>
                     <button
+                        onClick={() => setActiveTab('pending')}
+                        className={cn(
+                            "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all relative",
+                            activeTab === 'pending' ? "bg-white text-slate-900 shadow-xl" : "text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        <Clock className="h-4 w-4" />
+                        PENDING REMITTANCES
+                        {pendingTotal > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                                {pendingTotal}
+                            </span>
+                        )}
+                    </button>
+                    <button
                         onClick={() => setActiveTab('history')}
                         className={cn(
                             "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all",
@@ -274,7 +324,7 @@ const CashCollection = () => {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => {
-                            fetchData(ridersPage, historyPage);
+                            fetchData(ridersPage, historyPage, pendingPage);
                             toast.success("Cash balances synchronized");
                         }}
                         className="p-3 bg-white ring-1 ring-slate-200 text-slate-400 hover:text-emerald-600 hover:ring-emerald-200 rounded-2xl transition-all shadow-sm active:scale-95"
@@ -431,6 +481,64 @@ const CashCollection = () => {
                                 ))}
                             </tbody>
                         </table>
+                    ) : activeTab === 'pending' ? (
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50/50 border-b border-slate-100">
+                                    <th className="ds-table-header-cell pl-8 py-5">Partner</th>
+                                    <th className="ds-table-header-cell text-center">Amount</th>
+                                    <th className="ds-table-header-cell text-center">Mode</th>
+                                    <th className="ds-table-header-cell">Requested</th>
+                                    <th className="ds-table-header-cell text-right pr-8">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {pendingData.length > 0 ? pendingData.map((r) => (
+                                    <tr key={r.id} className="group hover:bg-slate-50/40 transition-all">
+                                        <td className="px-6 py-5 pl-8">
+                                            <p className="text-sm font-black text-slate-900">{r.rider}</p>
+                                            <p className="text-[10px] font-bold text-slate-400">{r.phone}</p>
+                                        </td>
+                                        <td className="px-6 py-5 text-center text-sm font-black text-slate-900">
+                                            ₹{r.amount.toLocaleString()}
+                                        </td>
+                                        <td className="px-6 py-5 text-center">
+                                            <Badge variant="secondary" className="text-[9px] font-black px-2 py-0.5 uppercase">
+                                                {r.mode}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-6 py-5 text-xs font-semibold text-slate-500">
+                                            {new Date(r.requestedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </td>
+                                        <td className="px-6 py-5 text-right pr-8">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    disabled={processingRemittanceId === r.id}
+                                                    onClick={() => handleRemittanceDecision(r, 'Settled')}
+                                                    className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    disabled={processingRemittanceId === r.id}
+                                                    onClick={() => handleRemittanceDecision(r, 'Failed')}
+                                                    className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black hover:bg-rose-600 hover:text-white transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={5} className="py-16 text-center">
+                                            <CheckCircle2 className="h-10 w-10 text-slate-200 mx-auto mb-3" />
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No pending remittances</p>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     ) : (
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -464,15 +572,16 @@ const CashCollection = () => {
                 </div>
                 <div className="px-6 py-3 border-t border-slate-100">
                     <Pagination
-                        page={activeTab === 'live_balances' ? ridersPage : historyPage}
-                        totalPages={Math.ceil((activeTab === 'live_balances' ? ridersTotal : historyTotal) / pageSize) || 1}
-                        total={activeTab === 'live_balances' ? ridersTotal : historyTotal}
+                        page={activeTab === 'live_balances' ? ridersPage : activeTab === 'pending' ? pendingPage : historyPage}
+                        totalPages={Math.ceil((activeTab === 'live_balances' ? ridersTotal : activeTab === 'pending' ? pendingTotal : historyTotal) / pageSize) || 1}
+                        total={activeTab === 'live_balances' ? ridersTotal : activeTab === 'pending' ? pendingTotal : historyTotal}
                         pageSize={pageSize}
-                        onPageChange={activeTab === 'live_balances' ? fetchRidersPage : fetchHistoryPage}
+                        onPageChange={activeTab === 'live_balances' ? fetchRidersPage : activeTab === 'pending' ? fetchPendingPage : fetchHistoryPage}
                         onPageSizeChange={(newSize) => {
                             setPageSize(newSize);
                             setRidersPage(1);
                             setHistoryPage(1);
+                            setPendingPage(1);
                         }}
                         loading={loading}
                     />

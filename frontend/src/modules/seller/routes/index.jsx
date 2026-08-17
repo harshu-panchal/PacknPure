@@ -115,6 +115,9 @@ function resolveSellerPage(pathname) {
   const sub = pathname.replace(/^\/seller\/?/, "").replace(/\/$/, "");
 
   if (!sub) return <Dashboard />;
+  if (sub === "products/add" || sub.startsWith("products/edit")) {
+    return <AddProduct />;
+  }
 
   switch (sub) {
     case "products":

@@ -11,6 +11,9 @@ import {
   AlertCircle,
   Route,
   Store,
+  Wallet,
+  Banknote,
+  ArrowUpRight,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,6 +40,14 @@ const Dashboard = () => {
     incentives: 0,
     cashCollected: 0,
   });
+  const [wallet, setWallet] = useState({
+    earningsWallet: 0,
+    cashWallet: 0,
+    todayCashCollected: 0,
+    cashLimit: 5000,
+    cashLimitUsedPercent: 0,
+    isOverCashLimit: false,
+  });
 
   // Sync isOnline with user profile from context
   useEffect(() => {
@@ -56,6 +67,17 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error("Failed to fetch statistics:", error);
+    }
+  };
+
+  const fetchWalletSummary = async () => {
+    try {
+      const response = await deliveryApi.getWalletSummary();
+      if (response.data.success) {
+        setWallet(response.data.result);
+      }
+    } catch (error) {
+      console.error("Failed to fetch wallet summary:", error);
     }
   };
 
@@ -139,6 +161,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchStats();
+    fetchWalletSummary();
     fetchNotifications();
     if (user?.isVerified) {
       fetchAvailableOrders();
@@ -345,6 +368,76 @@ const Dashboard = () => {
             </div>
           </div>
         </Card>
+
+        {/* Wallets — Earnings (yours, withdrawable) vs Cash Collection (admin's, must be remitted) */}
+        <div className="grid grid-cols-2 gap-3">
+          <Card
+            className="bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 p-4 cursor-pointer transition-colors"
+            onClick={() => navigate("/delivery/profile/withdrawals")}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center">
+                <Wallet size={16} />
+              </div>
+              <p className="ds-caption dark:text-gray-400">Earnings Wallet</p>
+            </div>
+            <p className="text-xl font-extrabold text-gray-900 dark:text-white">
+              ₹{(wallet.earningsWallet || 0).toLocaleString()}
+            </p>
+            <p className="text-[10px] font-bold text-blue-600 flex items-center gap-1 mt-1">
+              Withdraw <ArrowUpRight size={10} />
+            </p>
+          </Card>
+
+          <Card
+            className="bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 p-4 cursor-pointer transition-colors"
+            onClick={() => navigate("/delivery/cash-remittance")}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center">
+                <Banknote size={16} />
+              </div>
+              <p className="ds-caption dark:text-gray-400">Cash to Remit</p>
+            </div>
+            <p className="text-xl font-extrabold text-gray-900 dark:text-white">
+              ₹{(wallet.cashWallet || 0).toLocaleString()}
+            </p>
+            <div className="mt-2 h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  wallet.isOverCashLimit ? "bg-rose-500" : "bg-amber-400"
+                }`}
+                style={{ width: `${Math.min(wallet.cashLimitUsedPercent ?? 0, 100)}%` }}
+              />
+            </div>
+            <p className="text-[9px] font-bold text-gray-400 mt-1">
+              {wallet.cashLimitUsedPercent ?? 0}% of ₹{(wallet.cashLimit || 0).toLocaleString()} limit
+            </p>
+          </Card>
+        </div>
+
+        {wallet.isOverCashLimit && (
+          <div className="flex items-center gap-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-2xl px-4 py-3">
+            <AlertCircle size={18} className="text-rose-600 shrink-0" />
+            <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 flex-1">
+              Cash limit reached — transfer to admin before accepting new COD orders.
+            </p>
+            <Button
+              size="sm"
+              onClick={() => navigate("/delivery/cash-remittance")}
+              className="text-[10px] font-black uppercase px-3 py-1.5 h-auto rounded-full"
+            >
+              Transfer
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded-2xl px-4 py-3 border border-gray-100 dark:border-gray-700">
+          <p className="text-xs font-bold text-gray-500 dark:text-gray-400">Today's Cash Collected</p>
+          <p className="text-sm font-extrabold text-gray-900 dark:text-white">
+            ₹{(wallet.todayCashCollected || 0).toLocaleString()}
+          </p>
+        </div>
 
         {/* Current Trip — batched same-slot orders, nearest-first stops */}
         <AnimatePresence>

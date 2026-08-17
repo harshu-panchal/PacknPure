@@ -50,6 +50,12 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
 
     const socket = getOrderSocket(tokenGetter);
 
+    // Tracks whether the socket dropped since our last successful check —
+    // a disconnect/reconnect that resolves between poll ticks would otherwise
+    // look "connected" at poll time and skip fetching, silently losing any
+    // purchase_request:new event emitted during that gap.
+    let missedWhileDisconnected = false;
+
     const handleNewPR = (payload) => {
       if (!payload || !payload.purchaseRequestId) return;
 
@@ -68,13 +74,30 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
       showToast("Urgent Item Request Received!", "info");
     };
 
+    const handleDisconnect = () => {
+      missedWhileDisconnected = true;
+    };
+    const handleReconnect = () => {
+      if (missedWhileDisconnected) {
+        void fetchOpenPRs({ force: true });
+      }
+    };
+
     if (socket) {
       socket.on("purchase_request:new", handleNewPR);
+      socket.on("disconnect", handleDisconnect);
+      socket.on("connect", handleReconnect);
     }
 
-    // Active PR poll fallback (checks for open purchase requests on mount & every 8s)
+    // Active PR poll fallback (checks for open purchase requests on mount, then
+    // only re-checks over HTTP while the socket is disconnected (or was since
+    // the last check) — a healthy, never-interrupted socket already delivers
+    // "purchase_request:new" in real time, so polling on top of it just adds
+    // redundant load.
     let pollInterval = null;
-    const fetchOpenPRs = async () => {
+    const fetchOpenPRs = async ({ force = false } = {}) => {
+      if (!force && socket && socket.connected && !missedWhileDisconnected) return;
+      missedWhileDisconnected = false;
       try {
         const res = await sellerApi.getPurchaseRequests({ status: "created" });
         const list = res?.data?.result?.items || res?.data?.results || [];
@@ -126,11 +149,15 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
       }
     };
 
-    void fetchOpenPRs();
-    pollInterval = setInterval(fetchOpenPRs, 8000);
+    void fetchOpenPRs({ force: true });
+    pollInterval = setInterval(() => fetchOpenPRs(), 8000);
 
     return () => {
-      if (socket) socket.off("purchase_request:new", handleNewPR);
+      if (socket) {
+        socket.off("purchase_request:new", handleNewPR);
+        socket.off("disconnect", handleDisconnect);
+        socket.off("connect", handleReconnect);
+      }
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [isSeller, showToast]);

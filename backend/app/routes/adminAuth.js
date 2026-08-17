@@ -29,6 +29,8 @@ import {
     getRiderCashDetails,
     settleRiderCash,
     getCashSettlementHistory,
+    getPendingCashSettlements,
+    updateCashSettlementStatus,
     getUsers,
     getUserById,
     getSellers,
@@ -162,6 +164,8 @@ router.get("/delivery-cash", verifyToken, allowRoles("admin"), getDeliveryCashBa
 router.get("/rider-cash-details/:id", verifyToken, allowRoles("admin"), getRiderCashDetails);
 router.post("/settle-cash", verifyToken, allowRoles("admin"), settleRiderCash);
 router.get("/cash-history", verifyToken, allowRoles("admin"), getCashSettlementHistory);
+router.get("/cash-settlements/pending", verifyToken, allowRoles("admin"), getPendingCashSettlements);
+router.put("/cash-settlements/:id", verifyToken, allowRoles("admin"), updateCashSettlementStatus);
 router.get("/reports", verifyToken, allowRoles("admin"), getReports);
 
 // Seller Withdrawal Management

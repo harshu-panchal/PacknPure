@@ -40,6 +40,9 @@ const deliverySettingsSchema = new mongoose.Schema(
     expressMaxTime: { type: Number, default: 60, min: 1 }, // minutes
     expressTitle: { type: String, default: "Express Delivery", trim: true },
     expressCharge: { type: Number, default: 0, min: 0 },
+    // Distance (km) from the hub within which Express delivery fee is waived
+    // (express charge still always applies). null/unset = always free.
+    expressFreeDeliveryMaxDistanceKm: { type: Number, default: null, min: 0 },
 
     // Slot delivery configuration
     slotEnabled: { type: Boolean, default: true },

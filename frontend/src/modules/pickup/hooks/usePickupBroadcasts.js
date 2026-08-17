@@ -7,25 +7,19 @@ import {
   onPickupBroadcastWithdrawn,
 } from "@core/services/orderSocket";
 
-import orderAlertSound from "@/assets/order-alert.mp3";
-
 const POLL_MS = 15000;
 const getToken = () => localStorage.getItem("auth_pickup_partner");
-
-function playPickupAlert() {
-  try {
-    const audio = new Audio(orderAlertSound);
-    audio.volume = 1;
-    audio.play().catch(() => {});
-  } catch {
-    /* audio optional */
-  }
-}
 
 export function usePickupBroadcasts({ onAccepted } = {}) {
   const [broadcasts, setBroadcasts] = useState([]);
   const [acceptingId, setAcceptingId] = useState("");
   const mountedRef = useRef(true);
+  // Rejecting a broadcast is local-only — every online partner is offered
+  // the same broadcast simultaneously (first to accept wins), so "reject"
+  // just means "stop ringing on my device"; it must not affect other
+  // partners' copies. Dismissed ids are filtered out of every future poll
+  // until the request itself disappears (accepted elsewhere / expired).
+  const dismissedIdsRef = useRef(new Set());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -38,10 +32,18 @@ export function usePickupBroadcasts({ onAccepted } = {}) {
     try {
       const res = await pickupApi.getBroadcasts();
       const items = res?.data?.result?.items || [];
-      if (mountedRef.current) setBroadcasts(Array.isArray(items) ? items : []);
+      const filtered = (Array.isArray(items) ? items : []).filter(
+        (b) => !dismissedIdsRef.current.has(b.requestId),
+      );
+      if (mountedRef.current) setBroadcasts(filtered);
     } catch {
       /* silent — broadcasts are a best-effort surface, main assignments list is authoritative */
     }
+  }, []);
+
+  const dismissBroadcast = useCallback((requestId) => {
+    dismissedIdsRef.current.add(requestId);
+    setBroadcasts((prev) => prev.filter((b) => b.requestId !== requestId));
   }, []);
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export function usePickupBroadcasts({ onAccepted } = {}) {
 
   useEffect(() => {
     const offNew = onPickupBroadcast(getToken, (payload) => {
-      playPickupAlert();
+      if (dismissedIdsRef.current.has(payload.requestId)) return;
       setBroadcasts((prev) => {
         if (prev.some((b) => b.requestId === payload.requestId)) return prev;
         toast.info(`New pickup request: ${payload.vendorName || "a vendor"}`);
@@ -100,5 +102,5 @@ export function usePickupBroadcasts({ onAccepted } = {}) {
     [onAccepted, fetchBroadcasts],
   );
 
-  return { broadcasts, acceptingId, acceptBroadcast };
+  return { broadcasts, acceptingId, acceptBroadcast, dismissBroadcast };
 }

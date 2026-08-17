@@ -311,21 +311,28 @@ const CheckoutPage = () => {
 
   const isExpressMode = deliverySelection?.mode === "EXPRESS";
 
-  // When Express Delivery is selected and address is within limit range area (not out of range),
-  // standard delivery fee is waived (0) and only express delivery charges apply.
+  // Express charge always applies once Express is selected. Standard delivery
+  // fee is only waived when the customer is within the admin-configured
+  // free-delivery distance — beyond it, both delivery fee and express charge apply.
+  const isWithinExpressFreeRange = useMemo(() => {
+    const maxKm = deliveryModeOptions?.expressFreeDeliveryMaxDistanceKm;
+    if (maxKm === null || maxKm === undefined) return true;
+    return Number.isFinite(distanceKm) && distanceKm <= maxKm;
+  }, [deliveryModeOptions, distanceKm]);
+
   const effectiveDeliveryFee = useMemo(() => {
-    if (isExpressMode && !isOutOfRange) {
+    if (isExpressMode && isWithinExpressFreeRange) {
       return 0;
     }
     return deliveryFee;
-  }, [isExpressMode, isOutOfRange, deliveryFee]);
+  }, [isExpressMode, isWithinExpressFreeRange, deliveryFee]);
 
   const expressDeliveryCharge = useMemo(() => {
-    if (isExpressMode && !isOutOfRange) {
+    if (isExpressMode) {
       return Number(deliveryModeOptions?.expressCharge || 0);
     }
     return 0;
-  }, [isExpressMode, isOutOfRange, deliveryModeOptions]);
+  }, [isExpressMode, deliveryModeOptions]);
 
   const totalAmount =
     cartTotal - discountAmount + effectiveDeliveryFee + expressDeliveryCharge + platformFee;

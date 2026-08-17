@@ -264,7 +264,10 @@ export function useAssignmentDrafts(rows) {
           sellerReached,
           hubNavigating,
           hubNavStartedAt,
-          accepted: row.status === "pickup_assigned" ? accepted : true,
+          // pickup_assigned already means the partner is the accepted owner
+          // of this task (broadcast accept / auto-assign) — no separate
+          // local "accept" confirmation is needed anymore.
+          accepted: true,
           hubReached: row.status === "picked" ? hubReached : false,
           navigating: ["pickup_assigned", "picked"].includes(row.status)
             ? navigating

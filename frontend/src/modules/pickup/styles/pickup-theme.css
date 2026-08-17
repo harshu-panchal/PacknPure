@@ -1,11 +1,11 @@
 /* PacknPure Pickup Partner — Premium Design Tokens */
 
 .pickup-app {
-  --pickup-primary: #0f766e;
-  --pickup-primary-bright: #14b8a6;
-  --pickup-primary-dark: #0d5c56;
-  --pickup-primary-light: #f0fdfa;
-  --pickup-primary-soft: #ccfbf1;
+  --pickup-primary: #e23744;
+  --pickup-primary-bright: #ef4444;
+  --pickup-primary-dark: #c41e35;
+  --pickup-primary-light: #fef2f2;
+  --pickup-primary-soft: #ffe1e1;
   --pickup-accent: #d97706;
   --pickup-accent-soft: #fffbeb;
   --pickup-surface: #f1f5f9;
@@ -33,7 +33,7 @@
   --pickup-shadow-md: 0 8px 28px -8px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04);
   --pickup-shadow-lg: 0 20px 48px -16px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06);
   --pickup-shadow-nav: 0 12px 40px -8px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --pickup-shadow-glow: 0 8px 24px -6px rgba(15, 118, 110, 0.35);
+  --pickup-shadow-glow: 0 8px 24px -6px rgba(226, 55, 68, 0.35);
   --pickup-nav-h: 5.75rem;
   --pickup-safe-top: env(safe-area-inset-top, 0px);
   --pickup-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -53,7 +53,7 @@
   min-height: 100dvh;
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(20, 184, 166, 0.07), transparent 55%),
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(226, 55, 68, 0.07), transparent 55%),
     linear-gradient(180deg, #f8fafc 0%, var(--pickup-surface) 40%, #eef2f7 100%);
   padding-bottom: calc(var(--pickup-nav-h) + var(--pickup-safe-bottom) + 0.5rem);
 }

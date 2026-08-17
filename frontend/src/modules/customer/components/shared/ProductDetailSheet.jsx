@@ -20,26 +20,10 @@ import {
   applySelectedVariant,
 } from '@shared/utils/variantHelpers';
 import { getUnitLabel } from '@shared/constants/productUnits';
+import { cleanDescription } from '@shared/utils/productDisplay';
 
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1550989460-0adf9ea622e2?w=400&h=400&fit=crop';
-
-function cleanDescription(text) {
-  if (!text) return null;
-  const t = String(text);
-  if (t.trim().startsWith('{\\rtf') || t.includes('\\par')) {
-    return t
-      .replace(/\{\\[^}]*\}/g, '')
-      .replace(/\\[a-z]+\d*\s?/gi, '')
-      .replace(/[{}]/g, '')
-      .replace(/\\'/g, "'")
-      .replace(/\\n/g, ' ')
-      .replace(/\\r/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-  return t;
-}
 
 function formatInr(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
@@ -104,8 +88,8 @@ export function ProductImageGallery({ images, name, activeIndex, onSelect, fullF
           className={cn(
             "relative flex items-center justify-center overflow-hidden bg-white transition-all touch-pan-y select-none cursor-grab active:cursor-grabbing",
             fullFrame
-              ? "aspect-square sm:aspect-square w-full max-h-[350px] sm:max-h-[420px] md:max-h-[480px] lg:max-h-none"
-              : "aspect-square w-full max-w-[320px] sm:max-w-[380px] rounded-3xl border border-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-slate-900/5"
+              ? "aspect-square w-full max-h-[220px] xs:max-h-[280px] sm:max-h-[380px] md:max-h-[480px] lg:max-h-none"
+              : "aspect-square w-full max-w-[280px] sm:max-w-[380px] rounded-3xl border border-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-slate-900/5"
           )}
         >
           <AnimatePresence mode="wait">
@@ -198,8 +182,8 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
   const multi = variants.length > 1;
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="w-full max-w-full">
+      <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
           {multi ? 'Choose size / pack' : 'Pack details'}
         </p>
@@ -213,8 +197,8 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
       <div
         className={cn(
           multi
-            ? 'flex gap-2 overflow-x-auto py-1 scrollbar-hide -mx-1 px-1'
-            : 'grid grid-cols-1',
+            ? 'flex gap-2.5 overflow-x-auto py-2.5 px-1 scrollbar-hide touch-pan-x overscroll-x-contain'
+            : 'grid grid-cols-1 gap-2',
         )}
       >
         {variants.map((v) => {
@@ -233,36 +217,37 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
               disabled={!inStock}
               onClick={() => onSelect(key)}
               className={cn(
-                'relative shrink-0 rounded-xl border text-left transition-all',
-                multi ? 'min-w-[132px] px-3 py-2.5' : 'p-3.5',
+                'relative shrink-0 rounded-xl border text-left transition-all select-none',
+                multi ? 'w-[135px] sm:w-[155px] px-3 py-2.5' : 'w-full p-3.5',
                 active
-                  ? 'border-brand-600 bg-brand-50 shadow-sm ring-1 ring-brand-200'
+                  ? 'border-[#E23744] bg-rose-50/60 shadow-sm ring-1 ring-rose-200'
                   : inStock
                     ? 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                     : 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60',
               )}
             >
               {inCartQty > 0 ? (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white shadow">
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E23744] px-1 text-[10px] font-bold text-white shadow-md z-10">
                   {inCartQty}
                 </span>
               ) : null}
 
               <p
+                title={v.name}
                 className={cn(
-                  'text-sm font-bold leading-tight',
-                  active ? 'text-brand-700' : 'text-slate-900',
+                  'text-xs sm:text-sm font-bold leading-snug line-clamp-2',
+                  active ? 'text-[#E23744]' : 'text-slate-900',
                 )}
               >
                 {v.name}
               </p>
 
               {v.unit ? (
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500">{getUnitLabel(v.unit)}</p>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] font-medium text-slate-500">{getUnitLabel(v.unit)}</p>
               ) : null}
 
               <div className="mt-1.5 flex flex-wrap items-baseline gap-1.5">
-                <span className="text-sm font-black text-slate-900">{formatInr(sale)}</span>
+                <span className="text-xs sm:text-sm font-black text-slate-900">{formatInr(sale)}</span>
                 {mrp > sale && inStock ? (
                   <span className="text-[10px] font-semibold text-slate-400 line-through">
                     {formatInr(mrp)}
@@ -952,14 +937,14 @@ const ProductDetailSheet = () => {
             className="fixed bottom-0 left-0 right-0 z-[610] md:hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid max-h-[90vh] grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-3xl bg-white shadow-2xl">
-              <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-3">
+            <div className="grid max-h-[88vh] xs:max-h-[92vh] grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-3xl bg-white shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-3 border-b border-slate-100/80">
                 <div className="h-1.5 w-12 rounded-full bg-slate-200" />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={toggleWishlist}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50/50 hover:bg-slate-100"
                     aria-label="Wishlist"
                   >
                     <Heart
@@ -970,7 +955,7 @@ const ProductDetailSheet = () => {
                   <button
                     type="button"
                     onClick={share}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50/50 hover:bg-slate-100"
                     aria-label="Share"
                   >
                     <Share2 size={16} className="text-slate-500" />
@@ -978,7 +963,7 @@ const ProductDetailSheet = () => {
                   <button
                     type="button"
                     onClick={closeProduct}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm"
                     aria-label="Close"
                   >
                     <X size={18} className="text-slate-700" />
@@ -987,7 +972,7 @@ const ProductDetailSheet = () => {
               </div>
 
               <div
-                className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4"
+                className="min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
                 data-lenis-prevent
                 data-lenis-prevent-touch="true"
               >
@@ -1000,14 +985,14 @@ const ProductDetailSheet = () => {
                   />
                 </div>
 
-                <div className="mt-4">
+                <div>
                   {headerBadges}
-                  <h2 className="text-lg font-bold text-slate-900">{effectiveProduct?.name}</h2>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{effectiveProduct?.name}</h2>
                   {categoryLine ? (
-                    <p className="mt-1 text-sm text-slate-500">{categoryLine}</p>
+                    <p className="mt-1 text-xs text-slate-500">{categoryLine}</p>
                   ) : null}
 
-                  <div className="mt-4 space-y-4">
+                  <div className="mt-3 space-y-3">
                     {variantSection}
                     {aboutSection}
                   </div>

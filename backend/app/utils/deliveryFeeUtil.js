@@ -68,3 +68,38 @@ export async function calculateDeliveryFee(customerCoords) {
     };
   }
 }
+
+/**
+ * Applies Express delivery pricing rules to a pricing object in place.
+ *
+ * Express charge always applies once Express mode is selected (no minimum
+ * distance). Delivery fee is waived only when the customer's distance is
+ * within the admin-configured `expressFreeDeliveryMaxDistanceKm` (or when
+ * that limit is unset, meaning always free). Outside that range, the
+ * already-computed distance-based delivery fee is kept, so both charges apply.
+ *
+ * @param {Object} pricing - Must have `deliveryFee` and `distanceKm` set already.
+ * @param {string} deliveryMode - "EXPRESS" | "SLOT"
+ * @param {Object} delSettings - DeliverySettings document (or plain object with same shape)
+ * @returns {Object} the same pricing object, mutated
+ */
+export function applyExpressDeliveryCharge(pricing, deliveryMode, delSettings) {
+  if (deliveryMode !== "EXPRESS") {
+    pricing.expressCharge = 0;
+    return pricing;
+  }
+
+  pricing.expressCharge = Number(delSettings?.expressCharge || 0);
+
+  const maxKm = delSettings?.expressFreeDeliveryMaxDistanceKm;
+  const distanceKm = Number(pricing.distanceKm);
+  const withinFreeRange =
+    maxKm === null || maxKm === undefined || !Number.isFinite(distanceKm) || distanceKm <= maxKm;
+
+  if (withinFreeRange) {
+    pricing.deliveryFee = 0;
+  }
+  // else: keep the already-computed distance-based deliveryFee — both charges apply.
+
+  return pricing;
+}

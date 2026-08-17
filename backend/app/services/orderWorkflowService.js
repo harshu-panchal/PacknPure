@@ -37,6 +37,8 @@ import { distanceMeters } from "../utils/geoUtils.js";
 import { applyDeliveredSettlement } from "./orderSettlement.js";
 import { requireCanonicalOrderId } from "../utils/orderLookup.js";
 import { advanceTripOnOrderDelivered } from "./deliveryTripService.js";
+import { computeCashWalletBalance } from "./deliveryWalletService.js";
+import Delivery from "../models/delivery.js";
 
 const DELIVERY_SEARCH_MAX_ATTEMPTS = () =>
   parseInt(process.env.DELIVERY_SEARCH_MAX_ATTEMPTS || "3", 10);
@@ -388,7 +390,7 @@ export async function sellerRejectAtomic(sellerId, orderId) {
  * CREATED/SELLER_ACCEPTED -> DELIVERY_SEARCH without seller acceptance dependency.
  */
 export async function startHubDeliverySearchAtomic(orderId, { session = null } = {}) {
-  orderId = await requireCanonicalOrderId(orderId);
+  orderId = await requireCanonicalOrderId(orderId, { session });
   const now = new Date();
   const deliveryMs = await getDeliveryTimeoutMs();
   const actor = { role: "system" };
@@ -528,6 +530,28 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
       }
     } catch {
       /* idempotency optional if Redis unavailable */
+    }
+  }
+
+  // Cash-limit gate: a partner already holding (or about to exceed, once this
+  // order is delivered) their configured cash limit cannot take on another
+  // COD order — they must remit collected cash to admin first.
+  const pendingOrder = await Order.findOne({ orderId }).select("payment.method pricing.total").lean();
+  if (pendingOrder && isCodMethod(pendingOrder.payment?.method)) {
+    const [partner, cashWalletBalance] = await Promise.all([
+      Delivery.findById(deliveryOid).select("limit").lean(),
+      computeCashWalletBalance(deliveryOid),
+    ]);
+    const cashLimit = partner?.limit ?? 5000;
+    const incomingCash = Number(pendingOrder.pricing?.total) || 0;
+    if (cashWalletBalance + incomingCash > cashLimit) {
+      const err = new Error(
+        "Your cash-in-hand limit has been reached. Please transfer collected cash to admin before accepting new COD orders.",
+      );
+      err.statusCode = 403;
+      err.code = "CASH_LIMIT_EXCEEDED";
+      err.meta = { cashWalletBalance, cashLimit };
+      throw err;
     }
   }
 

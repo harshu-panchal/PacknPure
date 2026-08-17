@@ -40,6 +40,7 @@ export default function InAppNavigation() {
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [mapInstance, setMapInstance] = useState(null);
   const [rider, setRider] = useState(() => {
     const c = getCachedDeliveryPartnerLocation();
     return c ? { lat: c.lat, lng: c.lng } : null;
@@ -117,7 +118,7 @@ export default function InAppNavigation() {
   }, [routeData?.polyline, isLoaded]);
 
   useEffect(() => {
-    if (!isLoaded || !mapRef.current || !window.google?.maps) return undefined;
+    if (!isLoaded || !mapInstance || !window.google?.maps) return undefined;
     if (routePolylineRef.current) {
       routePolylineRef.current.setMap(null);
       routePolylineRef.current = null;
@@ -128,20 +129,19 @@ export default function InAppNavigation() {
       strokeColor: "#2563eb",
       strokeOpacity: 0.95,
       strokeWeight: 5,
-      map: mapRef.current,
+      map: mapInstance,
     });
     return () => {
       if (routePolylineRef.current) {
         routePolylineRef.current.setMap(null);
       }
     };
-  }, [decodedPath, isLoaded]);
+  }, [decodedPath, isLoaded, mapInstance]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !window.google || !rider) return;
-    map.panTo(rider);
-  }, [rider?.lat, rider?.lng]);
+    if (!mapInstance || !window.google || !rider) return;
+    mapInstance.panTo(rider);
+  }, [rider?.lat, rider?.lng, mapInstance]);
 
   const distanceText = formatDistance(
     Number(routeData?.distanceMeters ?? routeData?.distance),
@@ -189,6 +189,7 @@ export default function InAppNavigation() {
           zoom={16}
           onLoad={(map) => {
             mapRef.current = map;
+            setMapInstance(map);
           }}
           options={{
             disableDefaultUI: true,

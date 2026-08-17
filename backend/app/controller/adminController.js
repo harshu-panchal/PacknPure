@@ -679,7 +679,9 @@ export const getDeliveryCashBalances = async (req, res) => {
       {
         $project: {
           name: 1, phone: 1, avatar: 1, limit: { $ifNull: ["$limit", 5000] }, documents: 1,
-          currentCash: { $reduce: { input: { $filter: { input: "$allTransactions", as: "t", cond: { $in: ["$$t.type", ["Cash Collection", "Cash Settlement"]] } } }, initialValue: 0, in: { $cond: [{ $eq: ["$$this.type", "Cash Collection"] }, { $add: ["$$value", "$$this.amount"] }, { $subtract: ["$$value", { $abs: "$$this.amount" }] }] } } },
+          // Only Settled transactions move the wallet — a Pending remittance
+          // request must not reduce the displayed balance before admin approves it.
+          currentCash: { $reduce: { input: { $filter: { input: "$allTransactions", as: "t", cond: { $and: [{ $in: ["$$t.type", ["Cash Collection", "Cash Settlement"]] }, { $eq: ["$$t.status", "Settled"] }] } } }, initialValue: 0, in: { $cond: [{ $eq: ["$$this.type", "Cash Collection"] }, { $add: ["$$value", "$$this.amount"] }, { $subtract: ["$$value", { $abs: "$$this.amount" }] }] } } },
           pendingOrders: { $size: { $filter: { input: "$allOrders", as: "o", cond: { $and: [{ $in: ["$$o.status", ["confirmed", "packed", "picked_up", "out_for_delivery"]] }, { $in: ["$$o.payment.method", ["cash", "cod"]] }] } } } },
           totalOrders: { $size: { $filter: { input: "$allOrders", as: "o", cond: { $eq: ["$$o.status", "delivered"] } } } },
           lastSettlementTxn: { $arrayElemAt: [{ $sortArray: { input: { $filter: { input: "$allTransactions", as: "t", cond: { $eq: ["$$t.type", "Cash Settlement"] } } }, sortBy: { createdAt: -1 } } }, 0] },
@@ -702,7 +704,7 @@ export const getDeliveryCashBalances = async (req, res) => {
     const [aggregateResult, todayCollectedRes] = await Promise.all([
       Delivery.aggregate(ridersPipeline),
       Transaction.aggregate([
-        { $match: { type: "Cash Collection", createdAt: { $gte: startOfToday } } },
+        { $match: { type: "Cash Collection", status: "Settled", userModel: "Delivery", createdAt: { $gte: startOfToday } } },
         { $group: { _id: null, total: { $sum: "$amount" } } }
       ]),
     ]);
@@ -797,13 +799,78 @@ export const getRiderCashDetails = async (req, res) => {
 export const getCashSettlementHistory = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
-    const query = { userModel: "Delivery", type: "Cash Settlement" };
+    const query = { userModel: "Delivery", type: "Cash Settlement", status: { $in: ["Settled", "Failed"] } };
     const [history, total] = await Promise.all([
       Transaction.find(query).populate("user", "name").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Transaction.countDocuments(query),
     ]);
-    const mappedHistory = history.map((h) => ({ id: (h.reference || h._id).toString(), rider: h.user?.name || "Unknown Rider", amount: Math.abs(h.amount), date: h.createdAt, method: h.notes?.replace("Method: ", "") || "Cash Submission", status: "completed" }));
+    const mappedHistory = history.map((h) => ({ id: (h.reference || h._id).toString(), rider: h.user?.name || "Unknown Rider", amount: Math.abs(h.amount), date: h.createdAt, method: h.meta?.mode || h.notes?.replace("Method: ", "") || "Cash Submission", status: h.status }));
     return handleResponse(res, 200, "Settlement history fetched", { items: mappedHistory, page, limit, total, totalPages: Math.ceil(total / limit) || 1 });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   GET PENDING CASH REMITTANCES (partner-submitted, awaiting admin approval)
+================================ */
+export const getPendingCashSettlements = async (req, res) => {
+  try {
+    const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
+    const query = { userModel: "Delivery", type: "Cash Settlement", status: "Pending" };
+    const [items, total] = await Promise.all([
+      Transaction.find(query).populate("user", "name phone").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.countDocuments(query),
+    ]);
+    const mapped = items.map((t) => ({
+      id: t._id,
+      rider: t.user?.name || "Unknown Rider",
+      riderId: t.user?._id,
+      phone: t.user?.phone,
+      amount: Math.abs(t.amount),
+      mode: t.meta?.mode || "Cash",
+      requestedAt: t.createdAt,
+      reference: t.reference,
+    }));
+    return handleResponse(res, 200, "Pending remittances fetched", { items: mapped, page, limit, total, totalPages: Math.ceil(total / limit) || 1 });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   APPROVE / REJECT CASH REMITTANCE (partner-submitted)
+================================ */
+export const updateCashSettlementStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+    if (!["Settled", "Failed"].includes(status)) {
+      return handleResponse(res, 400, "Invalid status — must be Settled (approve) or Failed (reject)");
+    }
+    const transaction = await Transaction.findOne({ _id: id, type: "Cash Settlement" }).populate("user", "name");
+    if (!transaction) return handleResponse(res, 404, "Remittance request not found");
+    if (transaction.status !== "Pending") {
+      return handleResponse(res, 400, `This request was already ${transaction.status.toLowerCase()}`);
+    }
+
+    transaction.status = status;
+    if (reason) transaction.notes = `${transaction.notes || ""} | ${reason}`.trim();
+    await transaction.save();
+
+    await createNotificationBatch([{
+      recipient: transaction.user._id,
+      recipientModel: "Delivery",
+      title: status === "Settled" ? "Cash Transfer Approved" : "Cash Transfer Rejected",
+      message:
+        status === "Settled"
+          ? `Your transfer of ₹${Math.abs(transaction.amount)} has been confirmed by admin.`
+          : `Your transfer request of ₹${Math.abs(transaction.amount)} was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+      type: "payment",
+      data: { transactionId: transaction._id },
+    }]);
+
+    return handleResponse(res, 200, `Remittance ${status === "Settled" ? "approved" : "rejected"} successfully`, transaction);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

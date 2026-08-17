@@ -11,6 +11,7 @@ import { calculateAndValidatePricing, validatePricingConsistency } from "../serv
 import { executeCoreOrderFulfillment } from "../services/coreOrderService.js";
 import { buildDeliverySnapshot } from "../services/deliverySnapshotService.js";
 import DeliverySettings from "../models/deliverySettings.js";
+import { applyExpressDeliveryCharge } from "../utils/deliveryFeeUtil.js";
 dotenv.config();
 
 // Initialize Razorpay (reuse keys from env)
@@ -55,20 +56,20 @@ export const createRazorpayOrder = async (req, res) => {
         });
 
         // Add express charge if EXPRESS mode is selected
-        let expressCharge = 0;
         const resolvedMode = checkout.deliveryMode === "SLOT" ? "SLOT" : "EXPRESS";
+        const originalDeliveryFee = pricing.deliveryFee || 0;
         if (resolvedMode === "EXPRESS") {
             const delSettings = await DeliverySettings.getSingleton();
-            expressCharge = delSettings.expressCharge || 0;
-            // Subtract standard delivery fee if present so only express charge applies
-            if (pricing.deliveryFee > 0) {
-                pricing.total = Number((pricing.total - pricing.deliveryFee).toFixed(2));
-                pricing.deliveryFee = 0;
-            }
+            // Express charge always applies; delivery fee is only waived when
+            // within the admin-configured free-delivery distance.
+            applyExpressDeliveryCharge(pricing, resolvedMode, delSettings);
+        } else {
+            pricing.expressCharge = 0;
         }
 
-        pricing.expressCharge = expressCharge;
-        pricing.total = Number((pricing.total + expressCharge).toFixed(2));
+        pricing.total = Number(
+            (pricing.total - originalDeliveryFee + pricing.deliveryFee + pricing.expressCharge).toFixed(2)
+        );
 
         const amount = Math.round(pricing.total * 100); // paise
 
@@ -266,13 +267,13 @@ export const verifyPayment = async (req, res) => {
 
             if (intent.deliveryMode !== "SLOT") {
                 const delSettings = await DeliverySettings.getSingleton();
-                const expCharge = delSettings.expressCharge || 0;
-                if (recalculated.pricing.deliveryFee > 0) {
-                    recalculated.pricing.total = Number((recalculated.pricing.total - recalculated.pricing.deliveryFee).toFixed(2));
-                    recalculated.pricing.deliveryFee = 0;
-                }
-                recalculated.pricing.expressCharge = expCharge;
-                recalculated.pricing.total = Number((recalculated.pricing.total + expCharge).toFixed(2));
+                const originalDeliveryFee = recalculated.pricing.deliveryFee || 0;
+                // Express charge always applies; delivery fee is only waived when
+                // within the admin-configured free-delivery distance.
+                applyExpressDeliveryCharge(recalculated.pricing, "EXPRESS", delSettings);
+                recalculated.pricing.total = Number(
+                    (recalculated.pricing.total - originalDeliveryFee + recalculated.pricing.deliveryFee + recalculated.pricing.expressCharge).toFixed(2)
+                );
             }
 
             // Validate pricing consistency
@@ -308,7 +309,12 @@ export const verifyPayment = async (req, res) => {
         const { orderForResponse, hubMeta } = await executeCoreOrderFulfillment({
             customerId: intent.user,
             customer,
-            items: intent.cartSnapshot?.items || [],
+            // Mongoose subdocuments don't spread reliably ({...item} can drop fields
+            // like quantity) — convert to plain objects before they reach the item
+            // normalization/spread logic in executeCoreOrderFulfillment.
+            items: (intent.cartSnapshot?.items || []).map((item) =>
+                typeof item?.toObject === "function" ? item.toObject() : item
+            ),
             address: intent.address,
             payment: {
                 method: "online",

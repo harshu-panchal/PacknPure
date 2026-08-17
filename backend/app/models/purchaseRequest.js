@@ -150,6 +150,16 @@ const purchaseRequestSchema = new mongoose.Schema(
       default: "",
     },
     pickupAssignedAt: Date,
+    // Distinguishes a partner's own broadcast-accept tap from the timeout
+    // fallback (auto-assigns the best online partner when nobody responds
+    // in time) and admin/seller manual overrides — the seller-facing
+    // timeline uses this so "assigned" doesn't read as if the partner
+    // actively signed up when they may not even know about the task yet.
+    pickupAssignmentSource: {
+      type: String,
+      enum: ["partner_accepted", "auto_timeout", "admin_manual"],
+      default: null,
+    },
     pickupBroadcastExpiresAt: Date,
     receivedAtHubAt: Date,
     verifiedAt: Date,

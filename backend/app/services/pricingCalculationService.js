@@ -186,8 +186,10 @@ export async function calculateAndValidatePricing(params) {
   // 3. CALCULATE DELIVERY FEE
   let deliveryFee = 0;
   let isFreeDelivery = false;
+  let distanceKm = null;
   if (deliveryCoords && (deliveryCoords.lat || deliveryCoords.lng)) {
     const deliveryInfo = await calculateDeliveryFee(deliveryCoords);
+    distanceKm = deliveryInfo.distanceKm ?? null;
     
     if (deliveryInfo.isOutOfRange) {
       throw new Error("Delivery address is outside service area");
@@ -252,6 +254,7 @@ export async function calculateAndValidatePricing(params) {
     couponCode: couponCode?.toUpperCase() || null,
     walletUsed: Number(actualWalletUsed.toFixed(2)),
     deliveryFee: Number(deliveryFee.toFixed(2)),
+    distanceKm,
     platformFee: 0, // Can be added per business logic
     total: Number(total.toFixed(2)),
     pricingVersion: pricingHash,

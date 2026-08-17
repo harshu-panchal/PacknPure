@@ -45,6 +45,17 @@ const sanitizeSettingsPayload = (raw = {}) => {
     if (!Number.isFinite(v) || v < 0) throw new Error("expressCharge must be a non-negative number");
     payload.expressCharge = v;
   }
+  if (raw.expressFreeDeliveryMaxDistanceKm !== undefined) {
+    if (raw.expressFreeDeliveryMaxDistanceKm === null || raw.expressFreeDeliveryMaxDistanceKm === "") {
+      payload.expressFreeDeliveryMaxDistanceKm = null;
+    } else {
+      const v = Number(raw.expressFreeDeliveryMaxDistanceKm);
+      if (!Number.isFinite(v) || v < 0) {
+        throw new Error("expressFreeDeliveryMaxDistanceKm must be a non-negative number");
+      }
+      payload.expressFreeDeliveryMaxDistanceKm = v;
+    }
+  }
 
   if (raw.availableDays && typeof raw.availableDays === "object") {
     for (const day of DAY_KEYS) {
@@ -269,6 +280,7 @@ export const getAvailableDeliveryModes = async (req, res) => {
       expressMaxTime: settings.expressMaxTime,
       expressTitle: settings.expressTitle,
       expressCharge: settings.expressCharge ?? 0,
+      expressFreeDeliveryMaxDistanceKm: settings.expressFreeDeliveryMaxDistanceKm ?? null,
       slotTitle: settings.slotTitle,
       availableDays,
       slots,

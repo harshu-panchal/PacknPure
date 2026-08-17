@@ -12,6 +12,8 @@ import {
   getDeliveryEarnings,
   getMyDeliveryOrders,
   requestWithdrawal,
+  requestCashRemittance,
+  getDeliveryWalletSummary,
   updateDeliveryLocation,
   generateDeliveryOtp,
   validateDeliveryOtp,
@@ -79,6 +81,8 @@ router.post("/complete", ...deliveryOps, (req, res) => {
   return updateOrderStatus(req, res);
 });
 router.post("/request-withdrawal", ...deliveryOnly, requestWithdrawal);
+router.post("/cash/remit", ...deliveryOnly, requestCashRemittance);
+router.get("/wallet-summary", ...deliveryOnly, getDeliveryWalletSummary);
 router.post("/location", ...deliveryOps, updateDeliveryLocation);
 router.post(
   "/orders/:orderId/generate-otp",

@@ -5,6 +5,24 @@
 export const PRODUCT_IMAGE_PLACEHOLDER =
   'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&h=400&fit=crop';
 
+/** Clean RTF tags, HTML artifacts, and extra whitespace from product descriptions cleanly */
+export function cleanDescription(text) {
+  if (!text) return null;
+  let t = String(text).trim();
+  if (t.startsWith('{\\rtf') || t.includes('\\par') || t.includes('\\b ') || t.includes('\\b0')) {
+    t = t
+      .replace(/\{\\[^}]*\}/g, '')
+      .replace(/\\([a-zA-Z]{1,10})(-?\d+)?(?=[^a-zA-Z]|$)\s?/g, '')
+      .replace(/[{}]/g, '')
+      .replace(/\\'/g, "'")
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+  }
+  return t || null;
+}
+
 /** Resolve a usable image URL (absolute Cloudinary, relative upload path, or placeholder). */
 export function resolveProductImageUrl(product) {
   if (!product || typeof product !== 'object') return PRODUCT_IMAGE_PLACEHOLDER;

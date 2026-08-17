@@ -59,10 +59,10 @@ const PickupOtpInput = ({
           className={cn(
             "h-12 w-10 min-w-0 flex-1 max-w-[50px] rounded-2xl bg-slate-50/90 text-center text-lg font-black text-slate-900",
             "outline-none ring-1 ring-slate-200/80 shadow-[var(--pickup-shadow-xs)] transition-all duration-200",
-            "focus:bg-white focus:ring-2 focus:ring-teal-500 focus:shadow-[0_0_0_4px_rgba(20,184,166,0.14)]",
+            "focus:bg-white focus:ring-2 focus:ring-red-500 focus:shadow-[0_0_0_4px_rgba(226,55,68,0.14)]",
             "sm:h-14 sm:w-12 sm:max-w-[56px] sm:text-xl",
             disabled && "opacity-50",
-            d.trim() && "ring-teal-200 bg-teal-50/40",
+            d.trim() && "ring-red-200 bg-red-50/40",
           )}
           aria-label={`Digit ${i + 1}`}
         />

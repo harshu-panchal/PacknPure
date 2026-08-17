@@ -17,6 +17,8 @@ import {
   markIncomingOrderHandled,
 } from "../utils/deliveryHandledOrders";
 import { saveDeliveryPartnerLocation } from "../utils/deliveryLastLocation";
+import Modal from "@shared/components/ui/Modal";
+import { Wallet, AlertTriangle } from "lucide-react";
 
 import orderAlertSound from "@/assets/order-alert.mp3";
 
@@ -95,6 +97,7 @@ const DeliveryLayout = () => {
   const [availableOrdersCount, setAvailableOrdersCount] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
   const acceptInFlightRef = useRef(false);
+  const [cashLimitBlock, setCashLimitBlock] = useState(null); // { cashWalletBalance, cashLimit } | null
 
   useEffect(() => {
     activeOrderRef.current = activeOrder;
@@ -409,13 +412,22 @@ const DeliveryLayout = () => {
       const msg =
         error.response?.data?.message ||
         (typeof error.response?.data === "string" ? error.response.data : null);
-      toast.error(msg || "Failed to accept order");
-      // Keep modal open on failure so rider can retry or reject — unless another rider took it
-      if (
-        error.response?.status === 409 ||
-        /already|expired|not available|no longer open/i.test(String(msg || ""))
-      ) {
+      const result = error.response?.data?.result;
+      if (result?.code === "CASH_LIMIT_EXCEEDED") {
+        setCashLimitBlock({
+          cashWalletBalance: result.cashWalletBalance ?? 0,
+          cashLimit: result.cashLimit ?? 0,
+        });
         setActiveOrder(null);
+      } else {
+        toast.error(msg || "Failed to accept order");
+        // Keep modal open on failure so rider can retry or reject — unless another rider took it
+        if (
+          error.response?.status === 409 ||
+          /already|expired|not available|no longer open/i.test(String(msg || ""))
+        ) {
+          setActiveOrder(null);
+        }
       }
     } finally {
       acceptInFlightRef.current = false;
@@ -425,6 +437,46 @@ const DeliveryLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-gray-100 dark:border-gray-800 transition-colors">
+      {/* Cash-limit block popup — fires when accepting a COD order would push
+          the partner's Cash Collection Wallet at/over their configured limit. */}
+      <Modal
+        isOpen={!!cashLimitBlock}
+        onClose={() => setCashLimitBlock(null)}
+        title="Cash Limit Reached"
+        size="sm"
+      >
+        {cashLimitBlock && (
+          <div className="space-y-5 py-2">
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="h-16 w-16 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
+                <AlertTriangle size={28} />
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300 font-medium leading-relaxed">
+                You're holding <span className="font-black text-gray-900 dark:text-white">₹{cashLimitBlock.cashWalletBalance.toLocaleString()}</span> in
+                collected cash, at or above your ₹{cashLimitBlock.cashLimit.toLocaleString()} limit. Transfer cash to admin before accepting new COD orders.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCashLimitBlock(null);
+                navigate("/delivery/cash-remittance");
+              }}
+              className="w-full py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+            >
+              <Wallet size={16} /> Transfer Money to Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => setCashLimitBlock(null)}
+              className="w-full py-3 text-gray-400 font-bold text-xs uppercase tracking-widest"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+      </Modal>
+
       {/* App-style heads-up notification — slides from top like native delivery apps */}
       {typeof document !== "undefined" &&
         createPortal(

@@ -18,6 +18,7 @@ import SafetyPrivacy from "../pages/profile/SafetyPrivacy";
 import Settings from "../pages/profile/Settings";
 import HelpSupport from "../pages/profile/HelpSupport";
 import Withdrawals from "../pages/profile/Withdrawals";
+import CashRemittance from "../pages/profile/CashRemittance";
 import Notifications from "../pages/Notifications";
 
 const DeliveryRoutes = () => {
@@ -43,6 +44,7 @@ const DeliveryRoutes = () => {
         <Route path="profile/settings" element={<Settings />} />
         <Route path="profile/help-support" element={<HelpSupport />} />
         <Route path="profile/withdrawals" element={<Withdrawals />} />
+        <Route path="cash-remittance" element={<CashRemittance />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="/" element={<Navigate to="dashboard" replace />} />
       </Route>

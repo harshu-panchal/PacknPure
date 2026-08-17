@@ -18,6 +18,7 @@ import { getSlaDeadline } from "./settingsService.js";
 import {
   markOrderInventoryReserved,
   markOrderProcurementRequiredHub,
+  markOrderProcurementRequired,
   setOrderLegacyStatus,
 } from "./workflowFacade.js";
 import ProcurementSession from "../models/procurementSession.js";
@@ -26,7 +27,7 @@ import { executeRollbackEvent } from "./transactionEngine.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "./orderSocketEmitter.js";
 import User from "../models/customer.js";
 import DeliverySettings from "../models/deliverySettings.js";
-import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
+import { calculateDeliveryFee, applyExpressDeliveryCharge } from "../utils/deliveryFeeUtil.js";
 import { 
   findOrderVariant, 
   formatOrderVariantSlot, 
@@ -217,15 +218,14 @@ export const executeCoreOrderFulfillment = async ({
         validatedPricing.deliveryFee = 0;
       }
 
-      let expressCharge = 0;
       if (deliveryMode === "EXPRESS") {
         const delSettings = await DeliverySettings.getSingleton();
-        expressCharge = delSettings.expressCharge || 0;
-        // When Express delivery is selected and customer is within limit range area (not out of range),
-        // standard delivery fee is waived so only express charge applies.
-        validatedPricing.deliveryFee = 0;
+        // Express charge always applies; delivery fee is only waived when the
+        // customer is within the admin-configured free-delivery distance.
+        applyExpressDeliveryCharge(validatedPricing, deliveryMode, delSettings);
+      } else {
+        validatedPricing.expressCharge = 0;
       }
-      validatedPricing.expressCharge = expressCharge;
 
       let totalItemGst = 0;
       let trueSubtotal = 0;
@@ -276,7 +276,8 @@ export const executeCoreOrderFulfillment = async ({
 
     // 6. Hub Fulfillment Planning
     const hubPlan = await planHubFulfillment(orderItems);
-    
+    console.info(`[HUB_DEBUG] orderId=${orderId} paymentMethod=${payment?.method} fullyAvailable=${hubPlan.fullyAvailable} shortages=${hubPlan.shortages.length} shortageVendors=${JSON.stringify(hubPlan.shortages.map(s => s.vendorId))}`);
+
     const itemAllocations = new Map();
     for (const alloc of hubPlan.allocations) {
        itemAllocations.set(alloc.productId + (alloc.variantId || ""), alloc.reserveQty);
@@ -382,16 +383,30 @@ export const executeCoreOrderFulfillment = async ({
       throw new Error(procurementErr.message || "Unable to procure items for this order.");
     }
 
+    console.info(`[HUB_DEBUG] orderId=${orderId} paymentMethod=${payment?.method} purchaseRequestsCreated=${purchaseRequests.length} prVendorIds=${JSON.stringify(purchaseRequests.map(pr => pr?.vendorId?.toString?.() || pr?.vendorId || null))}`);
     if (purchaseRequests.length > 0) {
       const sessionIdFromPr = purchaseRequests.find((pr) => pr?.procurementSessionId)?.procurementSessionId || null;
       if (sessionIdFromPr) {
         newOrder.procurementSessionId = sessionIdFromPr;
       }
       await notifyAndEmitPurchaseRequests(purchaseRequests, orderId);
+      console.info(`[HUB_DEBUG] orderId=${orderId} notifyAndEmitPurchaseRequests completed`);
     }
 
     if (hubPlan.shortages.length > 0) {
       markOrderProcurementRequiredHub(newOrder);
+      // hubStatus above only drives internal hub dashboards — workflowStatus
+      // (and the legacy `status` it stays synced to) is what the customer
+      // and admin actually see, so it must also leave CREATED here or this
+      // order shows "Pending" forever no matter how far the linked
+      // PurchaseRequest progresses.
+      if (newOrder.workflowVersion >= 2) {
+        try {
+          markOrderProcurementRequired(newOrder, { actor: { role: "system" } });
+        } catch (err) {
+          console.warn("[createOrder] workflow transition to PROCUREMENT_REQUIRED failed:", err.message);
+        }
+      }
     } else {
       markOrderInventoryReserved(newOrder);
     }
@@ -471,6 +486,7 @@ export const executeCoreOrderFulfillment = async ({
       hubPlan.shortages.length === 0 &&
       purchaseRequests.length === 0 &&
       !newOrder.procurementRequired;
+    console.info(`[HUB_DEBUG] orderId=${orderId} paymentMethod=${payment?.method} resolvedMode=${resolvedMode} shortages=${hubPlan.shortages.length} purchaseRequests=${purchaseRequests.length} procurementRequired=${newOrder.procurementRequired} shouldStartDeliverySearch=${shouldStartDeliverySearch}`);
     if (shouldStartDeliverySearch) {
       try {
         const dispatched = await startHubDeliverySearchAtomic(newOrder.orderId, {

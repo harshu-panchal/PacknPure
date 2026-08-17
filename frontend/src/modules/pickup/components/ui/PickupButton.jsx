@@ -3,7 +3,7 @@ import { cn } from "../../utils/cn";
 
 const variants = {
   primary:
-    "bg-gradient-to-b from-teal-500 to-teal-700 text-white shadow-[var(--pickup-shadow-glow)] hover:from-teal-400 hover:to-teal-600 active:scale-[0.97] active:shadow-md",
+    "bg-gradient-to-b from-[#E23744] to-[#C41E35] text-white shadow-[var(--pickup-shadow-glow)] hover:from-[#d32f3f] hover:to-[#b3192e] active:scale-[0.97] active:shadow-md",
   secondary:
     "bg-white text-slate-700 border border-slate-200/90 shadow-[var(--pickup-shadow-xs)] hover:bg-slate-50 hover:border-slate-300 active:scale-[0.97]",
   ghost:

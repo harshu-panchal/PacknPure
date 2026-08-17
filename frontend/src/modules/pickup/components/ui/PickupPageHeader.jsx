@@ -20,7 +20,7 @@ const PickupPageHeader = ({
     <div className="pickup-safe-top pickup-safe-x mx-auto flex max-w-2xl items-center justify-between gap-3 py-3.5 sm:py-4">
       <div className="flex min-w-0 items-center gap-3.5">
         {Icon && (
-          <div className="pickup-ring-live flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-[var(--pickup-shadow-glow)]">
+          <div className="pickup-ring-live flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#E23744] to-[#C41E35] text-white shadow-[var(--pickup-shadow-glow)]">
             <Icon size={20} strokeWidth={2.25} />
           </div>
         )}
@@ -29,7 +29,7 @@ const PickupPageHeader = ({
             {title}
           </h1>
           {subtitle && (
-            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-teal-700/70">
+            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-red-700/70">
               {subtitle}
             </p>
           )}

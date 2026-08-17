@@ -66,9 +66,6 @@ export function deriveWorkflowPhase(assignment, ui = {}) {
   const status = assignment?.status;
   const navigating = Boolean(ui.navigating);
   const hubReached = Boolean(ui.hubReached);
-  const progressed = hasBackendProgress(assignment, ui);
-  // Treat as accepted if UI flag set OR backend already progressed (refresh restore).
-  const accepted = Boolean(ui.accepted) || progressed;
 
   if (status === "hub_delivered") return WORKFLOW_PHASE.COMPLETED;
 
@@ -83,8 +80,10 @@ export function deriveWorkflowPhase(assignment, ui = {}) {
 
   if (status !== "pickup_assigned") return WORKFLOW_PHASE.COMPLETED;
 
-  if (!accepted) return WORKFLOW_PHASE.PENDING_ACCEPT;
-
+  // Reaching "pickup_assigned" already means the partner accepted the
+  // broadcast (or was assigned) on the backend — there is no separate
+  // real acceptance left to confirm, so skip straight to the next step
+  // instead of asking them to "Accept" a second, purely local time.
   const reached = Boolean(
     assignment.reachedSellerAt ||
       assignment.pickupProof?.reachedSellerAt ||

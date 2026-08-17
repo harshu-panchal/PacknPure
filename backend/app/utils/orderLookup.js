@@ -47,15 +47,17 @@ export function orderMatchQueryFlexible(routeParam) {
   };
 }
 
-export async function resolveCanonicalOrderId(routeParam) {
+export async function resolveCanonicalOrderId(routeParam, { session = null } = {}) {
   const q = orderMatchQueryFromRouteParam(routeParam);
   if (!q) return null;
-  const doc = await Order.findOne(q).select("orderId").lean();
+  let query = Order.findOne(q).select("orderId");
+  if (session) query = query.session(session);
+  const doc = await query.lean();
   return doc?.orderId ?? null;
 }
 
-export async function requireCanonicalOrderId(routeParam) {
-  const rid = await resolveCanonicalOrderId(routeParam);
+export async function requireCanonicalOrderId(routeParam, { session = null } = {}) {
+  const rid = await resolveCanonicalOrderId(routeParam, { session });
   if (!rid) {
     const err = new Error("Order not found");
     err.statusCode = 404;

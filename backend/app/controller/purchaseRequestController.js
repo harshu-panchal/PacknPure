@@ -47,7 +47,11 @@ import {
   buildPrLineKey,
   normalizePrLine,
 } from "../services/purchaseRequestService.js";
-import { markOrderReadyForPacking, persistOrder } from "../services/workflowFacade.js";
+import {
+  markOrderReadyForPacking,
+  markOrderProcurementCompleted,
+  persistOrder,
+} from "../services/workflowFacade.js";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const PICKUP_BROADCAST_TIMEOUT_MS = () =>
@@ -166,7 +170,7 @@ const pickBestPickupPartner = async (hubId = DEFAULT_HUB_ID) => {
   return sorted[0] || null;
 };
 
-const assignPickupToRequest = async (doc, partner) => {
+const assignPickupToRequest = async (doc, partner, source = "admin_manual") => {
   const eligibleItems = (doc.items || []).filter(isPickupEligibleLine);
   if (eligibleItems.length === 0) {
     throw new Error("No accepted product lines are eligible for pickup assignment");
@@ -174,6 +178,7 @@ const assignPickupToRequest = async (doc, partner) => {
 
   doc.pickupPartnerId = partner._id;
   doc.pickupPartnerName = String(partner.name || "").trim();
+  doc.pickupAssignmentSource = source;
   // OTP is generated only after parcel photos (generateAssignmentPickupOtp).
   // Creating OTP here skipped the photos step in the partner app.
   doc.pickupOtpCode = undefined;
@@ -229,6 +234,34 @@ const assignPickupToRequest = async (doc, partner) => {
   }
 
   return null;
+};
+
+/**
+ * A seller accepting (fully or partially) a purchase request is the
+ * customer-visible "confirmed" moment for a hub-shortage order — advance
+ * the parent Order's workflow so it stops showing "Pending" once that
+ * happens. Chains through PROCUREMENT_REQUIRED first for orders placed
+ * before that transition existed (otherwise CREATED -> PROCUREMENT_COMPLETED
+ * is not a valid edge and would throw); safe to call once per accepted
+ * line since a no-op (already-COMPLETED) transition is a valid same-state
+ * edge, not an error.
+ */
+const advanceOrderOnSellerAcceptance = async (orderId) => {
+  if (!orderId) return;
+  try {
+    const order = await Order.findById(orderId);
+    if (!order || Number(order.workflowVersion) < 2) return;
+    if (order.workflowStatus === WORKFLOW_STATUS.CREATED) {
+      const { markOrderProcurementRequired } = await import("../services/workflowFacade.js");
+      markOrderProcurementRequired(order, { actor: { role: "system" } });
+    }
+    if (order.workflowStatus === WORKFLOW_STATUS.PROCUREMENT_REQUIRED) {
+      markOrderProcurementCompleted(order, { actor: { role: "seller" } });
+    }
+    await persistOrder(order);
+  } catch (err) {
+    console.warn("[advanceOrderOnSellerAcceptance] failed:", err.message);
+  }
 };
 
 const findPrLine = (pr, productId, variantId = null) => {
@@ -395,6 +428,7 @@ const acceptPickupBroadcast = async (partnerId, requestId) => {
       $set: {
         pickupPartnerId: partner._id,
         pickupPartnerName: String(partner.name || "").trim(),
+        pickupAssignmentSource: "partner_accepted",
         status: "pickup_assigned",
         pickupAssignedAt: now,
       },
@@ -463,7 +497,7 @@ export const processPickupBroadcastTimeoutJob = async ({ requestId }) => {
 
   const bestPartner = await pickBestPickupPartner(pr.hubId);
   if (bestPartner) {
-    await assignPickupToRequest(pr, bestPartner);
+    await assignPickupToRequest(pr, bestPartner, "auto_timeout");
   } else {
     pr.status = "exception";
     pr.exceptionReason = "No pickup partners available";
@@ -1733,6 +1767,7 @@ export const verifyInward = async (req, res) => {
       if (allDone) {
         markOrderReadyForPacking(parentOrder);
         await persistOrder(parentOrder);
+        console.info(`[HUB_DEBUG] orderId=${parentOrder.orderId} verifyInward allDone=true verified=${verified} workflowVersion=${parentOrder.workflowVersion} hubFlowEnabled=${parentOrder.hubFlowEnabled} deliveryMode=${parentOrder.deliveryMode} inventoryReady=${isOrderInventoryReadyForDelivery(parentOrder)}`);
         if (
           verified &&
           parentOrder.workflowVersion >= 2 &&
@@ -1742,6 +1777,7 @@ export const verifyInward = async (req, res) => {
         ) {
           try {
             await startHubDeliverySearchAtomic(parentOrder.orderId);
+            console.info(`[HUB_DEBUG] orderId=${parentOrder.orderId} verifyInward auto-dispatch to delivery search SUCCEEDED`);
           } catch (e) {
             console.warn(
               `[verifyInward] auto dispatch skipped for ${parentOrder.orderId}:`,
@@ -1901,6 +1937,10 @@ export const respondSellerPurchaseRequest = async (req, res) => {
 
       syncPrAggregateStatus(pr, { notes, rejectionReason, sellerId });
       await savePurchaseRequest(pr);
+
+      if (["accepted", "partial"].includes(updatedLine.lineStatus)) {
+        await advanceOrderOnSellerAcceptance(pr.orderId);
+      }
 
       const allocId = updatedLine.allocationId || pr.allocationId;
       if (pr.procurementSessionId && allocId) {
@@ -2131,6 +2171,7 @@ export const respondSellerPurchaseRequest = async (req, res) => {
     }
 
     if (responseStatus === "accepted" || responseStatus === "partial") {
+      await advanceOrderOnSellerAcceptance(pr.orderId);
       try {
         await broadcastPickupForRequest(pr);
       } catch (assignErr) {

@@ -59,6 +59,9 @@ export const deliveryApi = {
   updateNotificationPreferences: notificationsApi.updatePreferences,
   requestWithdrawal: (data) =>
     axiosInstance.post("/delivery/request-withdrawal", data),
+  requestCashRemittance: (data) =>
+    axiosInstance.post("/delivery/cash/remit", data),
+  getWalletSummary: () => axiosInstance.get("/delivery/wallet-summary"),
   updateOrderStatus: (orderId, data) =>
     axiosInstance.put(`/orders/status/${orderId}`, data),
   updateReturnStatus: (orderId, data) =>

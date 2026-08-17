@@ -3,8 +3,8 @@ import NotificationCenter from "@core/components/notifications/NotificationCente
 import { sellerApi } from "../services/sellerApi";
 
 const Notifications = () => (
-  <div className="p-4 sm:p-8 bg-slate-50/50 min-h-screen font-['Outfit',_sans-serif]">
-    <div className="mx-auto max-w-6xl min-w-0">
+  <div className="px-2 py-4 sm:p-6 md:p-8 pb-24 md:pb-12 bg-slate-50/50 min-h-screen font-['Outfit',_sans-serif] w-full overflow-x-hidden">
+    <div className="mx-auto max-w-6xl w-full min-w-0">
       <NotificationCenter
         api={sellerApi}
         title="Notifications"

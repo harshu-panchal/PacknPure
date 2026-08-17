@@ -91,9 +91,9 @@ const Auth = () => {
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 via-white to-teal-50/40 px-4 py-8 pickup-safe-top">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 via-white to-red-50/40 px-4 py-8 pickup-safe-top">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-teal-200/40 blur-[90px]" />
+        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-red-200/30 blur-[90px]" />
         <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/50 blur-[70px]" />
       </div>
 
@@ -105,13 +105,13 @@ const Auth = () => {
       >
         <div className="overflow-hidden rounded-[1.75rem] border border-white/90 bg-white/95 p-6 shadow-[var(--pickup-shadow-lg)] backdrop-blur-sm sm:rounded-[2rem] sm:p-8">
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-800 text-white shadow-[var(--pickup-shadow-glow)] sm:h-20 sm:w-20 sm:rounded-3xl">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#E23744] to-[#C41E35] text-white shadow-[var(--pickup-shadow-glow)] sm:h-20 sm:w-20 sm:rounded-3xl">
               <Package size={32} aria-hidden />
             </div>
             <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
               Pickup Partner
             </h1>
-            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-teal-700/60">
+            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-red-700/70">
               PacknPure Logistics
             </p>
           </div>
@@ -209,7 +209,7 @@ const Auth = () => {
                     type="button"
                     onClick={handleSendOtp}
                     disabled={loading || resendIn > 0}
-                    className="min-h-[40px] text-[10px] font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-teal-600 disabled:opacity-50"
+                    className="min-h-[40px] text-[10px] font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
                   >
                     {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
                   </button>

@@ -100,9 +100,21 @@ export function buildPrTimeline(doc = {}, extras = {}) {
     notes: doc.vendorReadyNotes || "",
   });
 
+  const pickupAssignmentSource = doc.pickupAssignmentSource || null;
+  const pickupAssignedLabel =
+    pickupAssignmentSource === "auto_timeout"
+      ? "Pickup auto-assigned (no response to broadcast)"
+      : pickupAssignmentSource === "admin_manual"
+        ? "Pickup partner assigned manually"
+        : "Pickup partner assigned";
+  const pickupAssignedNotes =
+    pickupAssignmentSource === "auto_timeout"
+      ? "No pickup partner accepted the broadcast in time — the best available partner was auto-assigned and may not have seen it yet."
+      : "";
+
   push(
     "pickup_assigned",
-    "Pickup partner assigned",
+    pickupAssignedLabel,
     doc.pickupAssignedAt ||
       (doc.pickupPartnerId && !["created"].includes(String(doc.status))
         ? doc.updatedAt
@@ -113,6 +125,7 @@ export function buildPrTimeline(doc = {}, extras = {}) {
         doc.pickupPartnerName ||
         extras.pickupPartnerName ||
         "",
+      notes: pickupAssignedNotes,
     },
   );
 

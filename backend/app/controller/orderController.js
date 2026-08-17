@@ -1730,7 +1730,10 @@ export const acceptOrder = async (req, res) => {
           updated,
         );
       } catch (e) {
-        return handleResponse(res, e.statusCode || 500, e.message);
+        return handleResponse(res, e.statusCode || 500, e.message, {
+          code: e.code || undefined,
+          ...(e.meta || {}),
+        });
       }
     }
 

@@ -10,6 +10,7 @@ import { customerApi } from '../services/customerApi';
 import { useLocation as useAppLocation } from '../context/LocationContext';
 import { ProductImageGallery } from '../components/shared/ProductDetailSheet';
 import { getUnitLabel } from '@shared/constants/productUnits';
+import { cleanDescription } from '@shared/utils/productDisplay';
 import {
   resolveVariantKey,
   getVariantId,
@@ -71,8 +72,8 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
   const multi = variants.length > 1;
 
   return (
-    <div className="flex flex-col max-w-full xl:inline-flex">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="w-full max-w-full">
+      <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
           {multi ? 'Choose size / pack' : 'Pack details'}
         </p>
@@ -86,8 +87,8 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
       <div
         className={cn(
           multi
-            ? 'flex gap-2 overflow-x-auto py-1 scrollbar-hide -mx-1 px-1'
-            : 'grid grid-cols-1',
+            ? 'flex gap-2.5 overflow-x-auto py-2.5 px-1 scrollbar-hide touch-pan-x overscroll-x-contain'
+            : 'grid grid-cols-1 gap-2',
         )}
       >
         {variants.map((v) => {
@@ -106,36 +107,37 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
               disabled={!inStock}
               onClick={() => onSelect(key)}
               className={cn(
-                'relative shrink-0 rounded-xl border text-left transition-all',
-                multi ? 'min-w-[132px] px-3 py-2.5' : 'p-3.5',
+                'relative shrink-0 rounded-xl border text-left transition-all select-none',
+                multi ? 'w-[135px] sm:w-[155px] px-3 py-2.5' : 'w-full p-3.5',
                 active
-                  ? 'border-brand-600 bg-brand-50 shadow-sm ring-1 ring-brand-200'
+                  ? 'border-[#E23744] bg-rose-50/60 shadow-sm ring-1 ring-rose-200'
                   : inStock
                     ? 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                     : 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60',
               )}
             >
               {inCartQty > 0 ? (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white shadow">
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E23744] px-1 text-[10px] font-bold text-white shadow-md z-10">
                   {inCartQty}
                 </span>
               ) : null}
 
               <p
+                title={v.name}
                 className={cn(
-                  'text-sm font-bold leading-tight',
-                  active ? 'text-brand-700' : 'text-slate-900',
+                  'text-xs sm:text-sm font-bold leading-snug line-clamp-2',
+                  active ? 'text-[#E23744]' : 'text-slate-900',
                 )}
               >
                 {v.name}
               </p>
 
               {v.unit ? (
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500">{getUnitLabel(v.unit)}</p>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] font-medium text-slate-500">{getUnitLabel(v.unit)}</p>
               ) : null}
 
               <div className="mt-1.5 flex flex-wrap items-baseline gap-1.5">
-                <span className="text-sm font-black text-slate-900">{formatInr(sale)}</span>
+                <span className="text-xs sm:text-sm font-black text-slate-900">{formatInr(sale)}</span>
                 {mrp > sale && inStock ? (
                   <span className="text-[10px] font-semibold text-slate-400 line-through">
                     {formatInr(mrp)}
@@ -566,7 +568,7 @@ const ProductDetailPage = () => {
                     <div className="flex flex-col xl:flex-row gap-12 xl:gap-16 items-start justify-between w-full">
                         <div className="flex-1 space-y-6 md:space-y-8 min-w-0 w-full">
                             <div>
-                                <div className="flex items-center gap-3 mb-4">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
                             <span className="bg-[#E23744]/10 text-[#E23744] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border border-[#E23744]/20">
                                 {effectiveProduct.categoryId?.name || effectiveProduct.category || 'Product'}
                             </span>
@@ -583,16 +585,16 @@ const ProductDetailPage = () => {
                             ) : null}
                         </div>
 
-                        <h1 className="text-3xl md:text-4xl font-black text-slate-800 leading-tight mb-3">
+                        <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-800 leading-tight mb-2 sm:mb-3">
                             {effectiveProduct.name}
                         </h1>
 
-                        <div className="flex items-baseline gap-4 mb-5">
-                            <span className="text-4xl font-black text-[#E23744]">₹{effectiveProduct.salePrice || effectiveProduct.price}</span>
+                        <div className="flex items-baseline gap-3 sm:gap-4 mb-4 sm:mb-5 flex-wrap">
+                            <span className="text-2xl sm:text-3xl md:text-4xl font-black text-[#E23744]">₹{effectiveProduct.salePrice || effectiveProduct.price}</span>
                             {effectiveProduct.salePrice > 0 && effectiveProduct.salePrice < effectiveProduct.price && (
                                 <>
-                                    <span className="text-lg text-slate-400 line-through font-bold">₹{effectiveProduct.price}</span>
-                                    <span className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-lg font-black uppercase">
+                                    <span className="text-sm sm:text-lg text-slate-400 line-through font-bold">₹{effectiveProduct.price}</span>
+                                    <span className="text-[10px] sm:text-xs bg-red-50 text-red-500 px-2 py-1 rounded-lg font-black uppercase">
                                         {Math.round(((effectiveProduct.price - effectiveProduct.salePrice) / effectiveProduct.price) * 100)}% OFF
                                     </span>
                                 </>
@@ -600,7 +602,7 @@ const ProductDetailPage = () => {
                         </div>
 
                         {hasVariants && (
-                            <div className="mb-6">
+                            <div className="mb-5 sm:mb-6">
                                 <VariantPicker
                                     variants={variants}
                                     selectedKey={selectedVariantKey}
@@ -610,8 +612,8 @@ const ProductDetailPage = () => {
                             </div>
                         )}
 
-                        <p className="text-slate-600 text-lg leading-relaxed mb-6 font-medium max-w-2xl">
-                            {effectiveProduct.description || effectiveProduct.masterProductId?.description || "No description available for this item."}
+                        <p className="whitespace-pre-line text-sm sm:text-base leading-relaxed mb-6 font-medium text-slate-600 max-w-2xl px-0.5 break-words">
+                            {cleanDescription(effectiveProduct.description || effectiveProduct.masterProductId?.description) || "No description available for this item."}
                         </p>
                     </div>
                 </div>
@@ -621,10 +623,10 @@ const ProductDetailPage = () => {
             </div>
 
                 {/* Order Controls */}
-                <div className="flex flex-col sm:flex-row items-center gap-6 p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-6 bg-slate-50 rounded-2xl sm:rounded-[2.5rem] border border-slate-100">
                         {quantity > 0 ? (
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <div className="flex items-center bg-[#E23744] text-white rounded-2xl h-16 w-full sm:w-auto px-2 shadow-xl shadow-rose-100">
+                            <div className="flex flex-col xs:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                                <div className="flex items-center justify-between bg-[#E23744] text-white rounded-2xl h-14 sm:h-16 w-full xs:w-auto px-2 shadow-xl shadow-rose-100">
                                     <button
                                         onClick={() => {
                                             if (quantity === 1) {
@@ -633,9 +635,9 @@ const ProductDetailPage = () => {
                                                 updateQuantity(productId, -1, selectedVariantId);
                                             }
                                         }}
-                                        className="w-12 h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
+                                        className="w-10 sm:w-12 h-10 sm:h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
                                     >
-                                        {quantity === 1 ? <Trash2 size={22} strokeWidth={2.5} /> : <Minus size={24} strokeWidth={3} />}
+                                        {quantity === 1 ? <Trash2 size={20} strokeWidth={2.5} /> : <Minus size={22} strokeWidth={3} />}
                                     </button>
                                     <input
                                         type="number"
@@ -648,36 +650,36 @@ const ProductDetailPage = () => {
                                                 setInputValue(String(quantity));
                                             }
                                         }}
-                                        className="w-16 bg-transparent text-center font-black text-xl border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none text-white placeholder-white/50"
+                                        className="w-12 sm:w-16 bg-transparent text-center font-black text-lg sm:text-xl border-none outline-none [-moz-appearance:_textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none text-white placeholder-white/50"
                                     />
                                     <button
                                         onClick={() => updateQuantity(productId, 1, selectedVariantId, product)}
-                                        className="w-12 h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
+                                        className="w-10 sm:w-12 h-10 sm:h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
                                     >
-                                        <Plus size={24} strokeWidth={3} />
+                                        <Plus size={22} strokeWidth={3} />
                                     </button>
                                 </div>
                                 <Link
                                     to="/cart"
                                     style={{ backgroundColor: "#E23744" }}
-                                    className="flex h-16 w-full sm:w-auto min-w-[180px] items-center gap-3 text-white px-3 pr-4 rounded-2xl shadow-xl shadow-rose-100 hover:scale-[1.02] active:scale-95 transition-all group border border-white/10 relative overflow-hidden"
+                                    className="flex h-14 sm:h-16 w-full xs:w-auto min-w-[150px] items-center gap-3 text-white px-3 pr-4 rounded-2xl shadow-xl shadow-rose-100 hover:scale-[1.02] active:scale-95 transition-all group border border-white/10 relative overflow-hidden"
                                 >
                                     <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
                                         <div className="absolute inset-y-0 left-[-40%] w-[40%] bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg] animate-[shimmer_2s_infinite]" />
                                     </div>
-                                    <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden">
+                                    <div className="h-9 sm:h-10 w-9 sm:w-10 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden">
                                         {cart && cart.length > 0 ? (
                                             <img src={cart[0].image || cart[0].mainImage || images[0]} alt="Cart" className="w-full h-full object-contain p-1" />
                                         ) : (
-                                            <ShoppingBag size={20} className="text-[#E23744]" />
+                                            <ShoppingBag size={18} className="text-[#E23744]" />
                                         )}
                                     </div>
                                     <div className="flex-1 flex flex-col justify-center min-w-0 text-left">
-                                        <h4 className="text-sm font-black leading-tight uppercase">View cart</h4>
-                                        <p className="text-[10px] font-bold opacity-90 leading-tight">{cartCount} {cartCount === 1 ? 'item' : 'items'}</p>
+                                        <h4 className="text-xs sm:text-sm font-black leading-tight uppercase">View cart</h4>
+                                        <p className="text-[9px] sm:text-[10px] font-bold opacity-90 leading-tight">{cartCount} {cartCount === 1 ? 'item' : 'items'}</p>
                                     </div>
-                                    <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                                        <ChevronRight size={20} strokeWidth={3} className="text-white" />
+                                    <div className="h-7 sm:h-8 w-7 sm:w-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                                        <ChevronRight size={18} strokeWidth={3} className="text-white" />
                                     </div>
                                 </Link>
                             </div>
@@ -687,9 +689,9 @@ const ProductDetailPage = () => {
                                     addToCart({ ...effectiveProduct, selectedVariantId });
                                     showToast(`${effectiveProduct.name} added to cart`, 'success');
                                 }}
-                                className="h-16 w-full sm:w-64 bg-[#E23744] hover:bg-[#C41E35] text-white text-lg font-black rounded-2xl shadow-xl shadow-rose-100 transition-all hover:-translate-y-1"
+                                className="h-14 sm:h-16 w-full sm:w-64 bg-[#E23744] hover:bg-[#C41E35] text-white text-base sm:text-lg font-black rounded-2xl shadow-xl shadow-rose-100 transition-all hover:-translate-y-1"
                             >
-                                <Plus className="mr-2" size={24} strokeWidth={3} /> ADD TO CART
+                                <Plus className="mr-2" size={22} strokeWidth={3} /> ADD TO CART
                             </Button>
                         )}
 
@@ -700,11 +702,11 @@ const ProductDetailPage = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
                         {productDetails.map((detail, idx) => (
-                            <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-100 text-center shadow-sm">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{detail.label}</p>
-                                <p className="text-sm font-black text-slate-800">{detail.value}</p>
+                            <div key={idx} className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 text-center shadow-sm">
+                                <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 sm:mb-1">{detail.label}</p>
+                                <p className="text-xs sm:text-sm font-black text-slate-800 truncate">{detail.value}</p>
                             </div>
                         ))}
                     </div>

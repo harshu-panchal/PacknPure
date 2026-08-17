@@ -1,13 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Clipboard } from "lucide-react";
 import Lottie from "lottie-react";
 import { useCart } from "../context/CartContext";
+import { useLocation as useAppLocation } from "../context/LocationContext";
+import { useAuth } from "../../../core/context/AuthContext";
 import { cartKey } from "@/shared/utils/variantHelpers";
 import { BRAND_COLOR } from "../constants/brandTheme";
 import CheckoutCartItemRow from "../components/checkout/CheckoutCartItemRow";
 import DeliveryModeSelector from "../components/checkout/DeliveryModeSelector";
 import { useDeliveryMode } from "../hooks/useDeliveryMode";
+import { customerApi } from "../services/customerApi";
 import emptyBoxAnimation from "../../../assets/lottie/Empty box.json";
 
 function formatInr(value) {
@@ -24,11 +27,57 @@ export default function CartPage() {
     selectExpress,
     selectSlot,
   } = useDeliveryMode();
+  const { currentLocation } = useAppLocation();
+  const { isAuthenticated } = useAuth();
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [cart],
   );
+
+  // Real delivery-fee preview: mirrors the same distance-based calculation
+  // used at checkout, so the cart bill isn't misleading before the customer
+  // even gets there. Final authoritative pricing is always recalculated
+  // server-side at checkout/payment regardless of what's shown here.
+  const [deliveryFeeInfo, setDeliveryFeeInfo] = useState(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const lat = currentLocation?.latitude;
+    const lng = currentLocation?.longitude;
+    if (typeof lat !== "number" || typeof lng !== "number") return;
+    let cancelled = false;
+    customerApi
+      .getDeliveryFee(lat, lng)
+      .then(({ data }) => {
+        if (!cancelled && data?.success) setDeliveryFeeInfo(data.result);
+      })
+      .catch(() => {
+        /* keep prior estimate on failure */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentLocation?.latitude, currentLocation?.longitude]);
+
+  const isExpressMode = deliverySelection?.mode === "EXPRESS";
+
+  const rawDeliveryFee = deliveryFeeInfo?.deliveryFee ?? 20;
+  const freeDeliveryThreshold = deliveryFeeInfo?.freeDeliveryThreshold ?? 500;
+  const distanceKm = deliveryFeeInfo?.distanceKm;
+  const baseDeliveryFee =
+    cartTotal >= freeDeliveryThreshold ? 0 : rawDeliveryFee;
+
+  const isWithinExpressFreeRange = useMemo(() => {
+    const maxKm = deliveryModeOptions?.expressFreeDeliveryMaxDistanceKm;
+    if (maxKm === null || maxKm === undefined) return true;
+    return Number.isFinite(distanceKm) && distanceKm <= maxKm;
+  }, [deliveryModeOptions, distanceKm]);
+
+  const expressCharge =
+    isExpressMode ? Number(deliveryModeOptions?.expressCharge || 0) : 0;
+  const effectiveDeliveryFee =
+    isExpressMode && isWithinExpressFreeRange ? 0 : baseDeliveryFee;
+  const grandTotal = cartTotal + effectiveDeliveryFee + expressCharge;
 
   if (cart.length === 0) {
     return (
@@ -116,11 +165,21 @@ export default function CartPage() {
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Delivery</span>
-                  <span className="font-semibold text-emerald-600">FREE</span>
+                  {effectiveDeliveryFee > 0 ? (
+                    <span className="font-semibold text-slate-900">{formatInr(effectiveDeliveryFee)}</span>
+                  ) : (
+                    <span className="font-semibold text-emerald-600">FREE</span>
+                  )}
                 </div>
+                {expressCharge > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Express charge</span>
+                    <span className="font-semibold text-slate-900">{formatInr(expressCharge)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t border-slate-100 pt-3 text-base font-bold text-slate-900">
                   <span>Grand total</span>
-                  <span>{formatInr(cartTotal)}</span>
+                  <span>{formatInr(grandTotal)}</span>
                 </div>
               </div>
               <button

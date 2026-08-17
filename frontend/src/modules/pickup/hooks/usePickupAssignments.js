@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { pickupApi } from "../services/pickupApi";
 import { getApiErrorMessage } from "../utils/assignmentUtils";
+import { onPickupAssigned } from "@core/services/orderSocket";
+import orderAlertSound from "@/assets/order-alert.mp3";
 
 const DEFAULT_POLL_MS = 15000;
+const getToken = () => localStorage.getItem("auth_pickup_partner");
+
+function playAssignmentAlert() {
+  try {
+    const audio = new Audio(orderAlertSound);
+    audio.volume = 1;
+    audio.play().catch(() => {});
+  } catch {
+    /* audio optional */
+  }
+}
 
 export function usePickupAssignments(statusFilter = "active", pollMs = DEFAULT_POLL_MS) {
   const [rows, setRows] = useState([]);
@@ -81,6 +95,21 @@ export function usePickupAssignments(statusFilter = "active", pollMs = DEFAULT_P
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [fetchAssignments, pollMs]);
+
+  // Direct assignment (admin manual assign, or the broadcast-timeout
+  // auto-assign fallback) never goes through the broadcast accept flow, so
+  // the partner would otherwise only learn about it on the next silent poll
+  // (up to `pollMs` later) via a quiet toast — easy to miss if the app isn't
+  // in focus. Mirror the same loud alert used for live broadcasts and
+  // refresh immediately instead of waiting for the next tick.
+  useEffect(() => {
+    const off = onPickupAssigned(getToken, (payload) => {
+      playAssignmentAlert();
+      toast.info(`New pickup assigned: ${payload?.productSummary || "task"}`, { duration: 8000 });
+      fetchAssignments({ silent: true, force: true }).catch(() => {});
+    });
+    return off;
+  }, [fetchAssignments]);
 
   const stats = {
     assigned: rows.filter((r) => r.status === "pickup_assigned").length,

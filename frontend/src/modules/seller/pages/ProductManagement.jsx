@@ -414,17 +414,12 @@ const ProductManagement = () => {
       );
       return;
     }
-    setFormData(
-      item
-        ? productToSellerForm(item)
-        : {
-          ...EMPTY_SELLER_PRODUCT_FORM,
-          variants: [{ ...EMPTY_SELLER_PRODUCT_FORM.variants[0], id: Date.now() }],
-        },
-    );
-    setEditingItem(item || null);
-    setModalTab(item && isCatalogLinkedListing(item) ? "variants" : "general");
-    setIsProductModalOpen(true);
+    if (item) {
+      const id = item._id || item.id;
+      navigate(`/seller/products/edit/${id}`, { state: { editingItem: item } });
+    } else {
+      navigate("/seller/products/add");
+    }
   };
 
   const formSummary = useMemo(() => {
@@ -649,7 +644,11 @@ const ProductManagement = () => {
                 {filteredProducts.map((p) => (
                   <tr key={p._id || p.id} className="hover:bg-slate-50 transition-colors group border-b border-slate-200 last:border-b-0">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
+                      <div
+                        onClick={() => openEditModal(p)}
+                        className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity"
+                        title="Click to edit product"
+                      >
                         <div className="h-16 w-16 rounded-xl overflow-hidden bg-slate-100 ring-1 ring-slate-200">
                           <img src={p.mainImage || p.galleryImages?.[0] || "https://images.unsplash.com/photo-1550989460-0adf9ea622e2"} alt={p.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" />
                         </div>

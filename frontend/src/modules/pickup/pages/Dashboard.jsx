@@ -19,10 +19,10 @@ import {
   StatsSkeleton,
 } from "../components/ui";
 import { usePickupAssignments } from "../hooks/usePickupAssignments";
-import { usePickupBroadcasts } from "../hooks/usePickupBroadcasts";
 import { useLiveLocation } from "../hooks/useLiveLocation";
 import { usePickupNotifications } from "../hooks/usePickupNotifications";
 import { usePickupAlertContext } from "../context/PickupAlertContext";
+import { usePickupBroadcastContext } from "../context/PickupBroadcastContext";
 import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import {
   useAssignmentDrafts,
@@ -67,9 +67,18 @@ const Dashboard = () => {
   const { rows, loading, refreshing, error, stats, fetchAssignments } =
     usePickupAssignments(statusFilter);
 
-  const { broadcasts, acceptingId, acceptBroadcast } = usePickupBroadcasts({
-    onAccepted: () => fetchAssignments({ silent: true, force: true }),
-  });
+  const {
+    broadcasts,
+    acceptingId,
+    acceptBroadcast: acceptBroadcastShared,
+  } = usePickupBroadcastContext();
+  const acceptBroadcast = useCallback(
+    async (requestId) => {
+      await acceptBroadcastShared(requestId);
+      fetchAssignments({ silent: true, force: true });
+    },
+    [acceptBroadcastShared, fetchAssignments],
+  );
 
   const { alerts, unreadCount, markAllRead } = usePickupNotifications(rows);
   React.useEffect(() => {

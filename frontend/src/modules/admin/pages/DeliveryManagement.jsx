@@ -85,6 +85,7 @@ const DeliveryManagement = () => {
     expressMaxTime: 60,
     expressTitle: "Express Delivery",
     expressCharge: 0,
+    expressFreeDeliveryMaxDistanceKm: "",
     slotTitle: "Slot Delivery",
     availableDays: DAYS.reduce((acc, d) => ({ ...acc, [d.key]: true }), {}),
   });
@@ -114,6 +115,10 @@ const DeliveryManagement = () => {
           expressMaxTime: s.expressMaxTime ?? 60,
           expressTitle: s.expressTitle || "Express Delivery",
           expressCharge: s.expressCharge ?? 0,
+          expressFreeDeliveryMaxDistanceKm:
+            s.expressFreeDeliveryMaxDistanceKm === null || s.expressFreeDeliveryMaxDistanceKm === undefined
+              ? ""
+              : s.expressFreeDeliveryMaxDistanceKm,
           slotTitle: s.slotTitle || "Slot Delivery",
           availableDays: DAYS.reduce(
             (acc, d) => ({ ...acc, [d.key]: s.availableDays?.[d.key] !== false }),
@@ -150,6 +155,12 @@ const DeliveryManagement = () => {
         expressMaxTime: Number(settings.expressMaxTime),
         expressTitle: settings.expressTitle,
         expressCharge: Number(settings.expressCharge || 0),
+        expressFreeDeliveryMaxDistanceKm:
+          settings.expressFreeDeliveryMaxDistanceKm === "" ||
+          settings.expressFreeDeliveryMaxDistanceKm === null ||
+          settings.expressFreeDeliveryMaxDistanceKm === undefined
+            ? null
+            : Number(settings.expressFreeDeliveryMaxDistanceKm),
         slotTitle: settings.slotTitle,
         availableDays: settings.availableDays,
       });
@@ -384,6 +395,27 @@ const DeliveryManagement = () => {
                 placeholder="0"
                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
               />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Free Delivery Max Distance (km)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                value={settings.expressFreeDeliveryMaxDistanceKm}
+                onChange={(e) =>
+                  setSettings((prev) => ({ ...prev, expressFreeDeliveryMaxDistanceKm: e.target.value }))
+                }
+                placeholder="Leave blank for always free"
+                className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
+              />
+              <p className="text-[11px] text-slate-400 mt-1.5 font-medium">
+                Express charge always applies. Standard delivery fee is waived only within this
+                distance from the hub — beyond it, both delivery fee and express charge apply.
+              </p>
             </div>
 
             <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-4 py-3 font-medium">

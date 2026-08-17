@@ -16,7 +16,7 @@ import {
   HiOutlinePlus,
   HiOutlineSquaresPlus,
 } from "react-icons/hi2";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/core/context/AuthContext";
@@ -26,14 +26,21 @@ import { sellerApi } from "../services/sellerApi";
 import { HiOutlineExclamationCircle } from "react-icons/hi2";
 import VariantGstFields from "@shared/components/VariantGstFields";
 import { useGstRates } from "@shared/hooks/useGstRates";
+import { productToSellerForm } from "../utils/sellerProductForm";
 
 
 const AddProduct = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isVerified = user?.isVerified;
   const [modalTab, setModalTab] = useState("general");
   const [isSaving, setIsSaving] = useState(false);
+
+  const stateItem = location.state?.editingItem;
+  const editMatch = location.pathname.match(/\/seller\/products\/edit\/([^/]+)/);
+  const editId = editMatch ? editMatch[1] : (stateItem?._id || stateItem?.id || null);
+  const isEditMode = Boolean(editId);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -67,6 +74,26 @@ const AddProduct = () => {
       },
     ],
   });
+
+  useEffect(() => {
+    if (stateItem) {
+      setFormData(productToSellerForm(stateItem));
+    } else if (editId) {
+      const fetchProduct = async () => {
+        try {
+          const res = await sellerApi.getProducts({ limit: 100 });
+          const items = res.data?.result?.items || res.data?.results || [];
+          const found = items.find((p) => (p._id || p.id) === editId);
+          if (found) {
+            setFormData(productToSellerForm(found));
+          }
+        } catch (err) {
+          toast.error("Failed to load product details");
+        }
+      };
+      fetchProduct();
+    }
+  }, [editId, stateItem]);
 
   const gstRates = useGstRates();
 
@@ -200,8 +227,13 @@ const AddProduct = () => {
         data.append('keepGalleryImages', JSON.stringify(keepGalleryImages));
       }
       
-      await sellerApi.createProduct(data);
-      toast.success("Product saved successfully!");
+      if (isEditMode && editId) {
+        await sellerApi.updateProduct(editId, data);
+        toast.success("Product updated successfully!");
+      } else {
+        await sellerApi.createProduct(data);
+        toast.success("Product saved successfully!");
+      }
       navigate("/seller/products");
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to save product");
@@ -348,10 +380,10 @@ const AddProduct = () => {
             {isSaving ? (
               <>
                 <HiOutlineArrowPath className="mr-2 h-5 w-5 animate-spin" />
-                Publishing...
+                {isEditMode ? "Updating..." : "Publishing..."}
               </>
             ) : (
-              "Save & Publish"
+              isEditMode ? "Save & Update" : "Save & Publish"
             )}
           </Button>
         </div>

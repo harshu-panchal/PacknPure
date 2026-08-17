@@ -4,6 +4,7 @@ import { LayoutGrid, User, Bell } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "../../utils/cn";
 import PickupAlertsSheet from "../PickupAlertsSheet";
+import PickupBroadcastAlertModal from "../PickupBroadcastAlertModal";
 import { usePickupAlertContext } from "../../context/PickupAlertContext";
 
 const PickupLayout = ({ children }) => {
@@ -24,6 +25,7 @@ const PickupLayout = ({ children }) => {
 
   return (
     <div className="pickup-app pickup-page flex min-h-[100dvh] flex-col overflow-x-hidden">
+      <PickupBroadcastAlertModal />
       <main className="flex-1">{children}</main>
 
       <nav

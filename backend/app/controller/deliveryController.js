@@ -15,6 +15,11 @@ import {
   maybeRecordGpsSnapshot,
 } from "../services/deliveryAuditService.js";
 import { advanceTripOnOrderDelivered } from "../services/deliveryTripService.js";
+import {
+  computeEarningsWalletBalance,
+  computeCashWalletBalance,
+  getDeliveryWalletSummary as buildDeliveryWalletSummary,
+} from "../services/deliveryWalletService.js";
 
 const LOC_MIN_INTERVAL_MS = () =>
   parseInt(process.env.LOCATION_MIN_INTERVAL_MS || "3000", 10);
@@ -279,9 +284,10 @@ export const getMyDeliveryOrders = async (req, res) => {
 };
 
 /* ===============================
-   REQUEST WITHDRAWAL (Delivery)
+   REQUEST WITHDRAWAL (Delivery — Earnings Wallet)
 ================================ */
 export const requestWithdrawal = async (req, res) => {
+    const session = await mongoose.startSession();
     try {
         const deliveryBoyId = req.user.id;
         const { amount } = req.body;
@@ -290,34 +296,106 @@ export const requestWithdrawal = async (req, res) => {
             return handleResponse(res, 400, "Please enter a valid amount");
         }
 
-        // 1. Calculate current available balance
-        const transactions = await Transaction.find({ user: deliveryBoyId, userModel: 'Delivery' });
+        let withdrawal;
+        await session.withTransaction(async () => {
+            // Earnings wallet only — cash collected from customers is admin's
+            // money and must never be withdrawable as if it were a payout.
+            const availableBalance = await computeEarningsWalletBalance(deliveryBoyId, {
+                includePending: true,
+                session,
+            });
 
-        const settledBalance = transactions
-            .filter(t => t.status === 'Settled')
-            .reduce((acc, t) => acc + t.amount, 0);
+            if (amount > availableBalance) {
+                const err = new Error(`Insufficient balance. Available: ₹${availableBalance}`);
+                err.statusCode = 400;
+                throw err;
+            }
 
-        const pendingPayouts = transactions
-            .filter(t => (t.status === 'Pending' || t.status === 'Processing') && t.type === 'Withdrawal')
-            .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-
-        const availableBalance = settledBalance - pendingPayouts;
-
-        if (amount > availableBalance) {
-            return handleResponse(res, 400, `Insufficient balance. Available: ₹${availableBalance}`);
-        }
-
-        // 2. Create Withdrawal Transaction
-        const withdrawal = await Transaction.create({
-            user: deliveryBoyId,
-            userModel: "Delivery",
-            type: "Withdrawal",
-            amount: -Math.abs(amount),
-            status: "Pending",
-            reference: `WDR-DL-${Date.now()}`
+            const created = await Transaction.create(
+                [
+                    {
+                        user: deliveryBoyId,
+                        userModel: "Delivery",
+                        type: "Withdrawal",
+                        amount: -Math.abs(amount),
+                        status: "Pending",
+                        reference: `WDR-DL-${Date.now()}-${deliveryBoyId}`,
+                    },
+                ],
+                { session },
+            );
+            withdrawal = created[0];
         });
 
         return handleResponse(res, 201, "Withdrawal request submitted successfully", withdrawal);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    } finally {
+        session.endSession();
+    }
+};
+
+/* ===============================
+   REQUEST CASH REMITTANCE (Delivery — Cash Collection Wallet -> Admin)
+================================ */
+export const requestCashRemittance = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const deliveryBoyId = req.user.id;
+        const { amount, mode } = req.body;
+
+        if (!amount || amount <= 0) {
+            return handleResponse(res, 400, "Please enter a valid amount");
+        }
+        const normalizedMode = mode === "Online" ? "Online" : "Cash";
+
+        let remittance;
+        await session.withTransaction(async () => {
+            const availableToRemit = await computeCashWalletBalance(deliveryBoyId, {
+                includePending: true,
+                session,
+            });
+
+            if (amount > availableToRemit) {
+                const err = new Error(`Amount exceeds your cash collection balance. Available: ₹${availableToRemit}`);
+                err.statusCode = 400;
+                throw err;
+            }
+
+            const created = await Transaction.create(
+                [
+                    {
+                        user: deliveryBoyId,
+                        userModel: "Delivery",
+                        type: "Cash Settlement",
+                        amount: -Math.abs(amount),
+                        status: "Pending",
+                        reference: `CSH-REQ-${Date.now()}-${deliveryBoyId}`,
+                        meta: { mode: normalizedMode, initiatedBy: "delivery" },
+                        notes: `Method: ${normalizedMode}`,
+                    },
+                ],
+                { session },
+            );
+            remittance = created[0];
+        });
+
+        return handleResponse(res, 201, "Transfer request submitted successfully. Waiting for admin approval.", remittance);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    } finally {
+        session.endSession();
+    }
+};
+
+/* ===============================
+   GET WALLET SUMMARY (Delivery — both wallets, today's cash, limit progress)
+================================ */
+export const getDeliveryWalletSummary = async (req, res) => {
+    try {
+        const deliveryBoyId = req.user.id;
+        const summary = await buildDeliveryWalletSummary(deliveryBoyId);
+        return handleResponse(res, 200, "Wallet summary fetched", summary);
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }
