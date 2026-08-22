@@ -142,18 +142,18 @@ const AdminAuth = () => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[#0F172A] p-4 lg:p-6 font-['Outfit',_sans-serif] overflow-hidden relative">
+        <div className="flex min-h-screen items-center justify-center bg-[#0F172A] p-3 sm:p-4 lg:p-6 font-['Outfit',_sans-serif] overflow-hidden relative">
             {/* Background Decorative Elements */}
-            <div className="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse"></div>
-            <div className="absolute bottom-[-10%] right-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[100px] animate-pulse"></div>
+            <div className="absolute top-[-10%] left-[-5%] w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse pointer-events-none"></div>
+            <div className="absolute bottom-[-10%] right-[-5%] w-[250px] sm:w-[500px] h-[250px] sm:h-[500px] bg-blue-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none"></div>
 
             <motion.div
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="relative w-full max-w-6xl min-h-[700px] bg-white rounded-[48px] shadow-[0_50px_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col md:flex-row border border-white/10"
+                className="relative w-full max-w-6xl min-h-0 sm:min-h-[700px] bg-white rounded-3xl md:rounded-[48px] shadow-[0_50px_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col md:flex-row border border-white/10 my-4 sm:my-8"
             >
                 {/* Form Section */}
-                <div className="w-full md:w-1/2 p-10 lg:p-20 flex flex-col justify-center relative z-10 bg-white">
+                <div className="w-full md:w-1/2 p-6 sm:p-10 lg:p-20 flex flex-col justify-center relative z-10 bg-white">
                     <div className="max-w-md mx-auto w-full">
                         <div className="flex items-center gap-3 mb-12">
                             <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center shadow-lg">

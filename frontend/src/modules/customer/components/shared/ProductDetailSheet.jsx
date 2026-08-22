@@ -197,7 +197,7 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
       <div
         className={cn(
           multi
-            ? 'flex gap-2.5 overflow-x-auto py-2.5 px-1 scrollbar-hide touch-pan-x overscroll-x-contain'
+            ? 'flex flex-wrap sm:flex-nowrap gap-2.5 overflow-x-auto py-2.5 px-1 scrollbar-hide touch-pan-x overscroll-x-contain'
             : 'grid grid-cols-1 gap-2',
         )}
       >
@@ -217,17 +217,17 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
               disabled={!inStock}
               onClick={() => onSelect(key)}
               className={cn(
-                'relative shrink-0 rounded-xl border text-left transition-all select-none',
-                multi ? 'w-[135px] sm:w-[155px] px-3 py-2.5' : 'w-full p-3.5',
+                'relative shrink-0 rounded-2xl border text-left transition-all select-none',
+                multi ? 'min-w-[145px] max-w-full flex-1 sm:flex-none sm:w-[165px] px-3.5 py-3' : 'w-full p-4',
                 active
-                  ? 'border-[#E23744] bg-rose-50/60 shadow-sm ring-1 ring-rose-200'
+                  ? 'border-[#E23744] bg-rose-50/60 shadow-md ring-2 ring-rose-500/20'
                   : inStock
-                    ? 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                    ? 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 shadow-sm'
                     : 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60',
               )}
             >
               {inCartQty > 0 ? (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E23744] px-1 text-[10px] font-bold text-white shadow-md z-10">
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E23744] px-1 text-[10px] font-bold text-white shadow-md z-10">
                   {inCartQty}
                 </span>
               ) : null}
@@ -235,7 +235,7 @@ function VariantPicker({ variants, selectedKey, onSelect, variantCartMap }) {
               <p
                 title={v.name}
                 className={cn(
-                  'text-xs sm:text-sm font-bold leading-snug line-clamp-2',
+                  'text-xs sm:text-sm font-bold leading-snug break-words',
                   active ? 'text-[#E23744]' : 'text-slate-900',
                 )}
               >
@@ -826,22 +826,22 @@ const ProductDetailSheet = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 24 }}
             transition={{ type: 'spring', damping: 28, stiffness: 360 }}
-            className="fixed inset-0 z-[610] hidden items-center justify-center p-6 md:flex pointer-events-none"
+            className="fixed inset-0 z-[610] hidden items-center justify-center p-4 lg:p-8 md:flex pointer-events-none"
           >
             <div
-              className="pointer-events-auto flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+              className="pointer-events-auto flex max-h-[92vh] w-[94vw] max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_25px_80px_rgba(0,0,0,0.35)] border border-slate-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="grid min-h-0 flex-1 grid-cols-2">
-                <div className="relative border-r border-slate-100 bg-slate-50">
+              <div className="grid min-h-0 flex-1 grid-cols-12">
+                <div className="relative border-r border-slate-100 bg-slate-50/70 col-span-5 flex flex-col justify-center p-4 lg:p-6">
                   <div className="absolute left-4 top-4 z-10">
                     <button
                       type="button"
                       onClick={closeProduct}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-md hover:bg-slate-50 transition-all border border-slate-100"
                       aria-label="Close"
                     >
-                      <X size={18} className="text-slate-700" />
+                      <X size={20} className="text-slate-700" />
                     </button>
                   </div>
                   <ProductImageGallery
@@ -852,15 +852,15 @@ const ProductDetailSheet = () => {
                   />
                 </div>
 
-                <div className="flex min-h-0 flex-col">
-                  <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-6">
+                <div className="flex min-h-0 flex-col col-span-7">
+                  <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-6 lg:p-7 bg-white">
                     <div className="min-w-0">
                       {headerBadges}
-                      <h2 className="line-clamp-2 text-xl font-bold text-slate-900">
+                      <h2 className="line-clamp-2 text-xl lg:text-2xl font-bold text-slate-900 leading-snug">
                         {effectiveProduct?.name}
                       </h2>
                       {categoryLine ? (
-                        <p className="mt-1 text-sm text-slate-500">{categoryLine}</p>
+                        <p className="mt-1 text-sm text-slate-500 font-medium">{categoryLine}</p>
                       ) : null}
                       {!hasVariants && (effectiveProduct?.variantLabel || effectiveProduct?.unit) ? (
                         <p className="mt-1 text-sm font-semibold text-brand-600">
@@ -875,7 +875,7 @@ const ProductDetailSheet = () => {
                       <button
                         type="button"
                         onClick={share}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm"
                         aria-label="Share"
                       >
                         <Share2 size={18} className="text-slate-700" />
@@ -884,7 +884,7 @@ const ProductDetailSheet = () => {
                         type="button"
                         onClick={toggleWishlist}
                         className={cn(
-                          'flex h-10 w-10 items-center justify-center rounded-lg border',
+                          'flex h-10 w-10 items-center justify-center rounded-xl border transition-colors shadow-sm',
                           isWishlisted
                             ? 'border-brand-200 bg-brand-50 text-brand-700'
                             : 'border-slate-200 hover:bg-slate-50',
@@ -902,7 +902,7 @@ const ProductDetailSheet = () => {
                   </div>
 
                   <div
-                    className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6"
+                    className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6 lg:p-7"
                     data-lenis-prevent
                     data-lenis-prevent-touch="true"
                   >

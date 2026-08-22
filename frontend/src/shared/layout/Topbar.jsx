@@ -176,10 +176,10 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
     return (
         <header
             className={cn(
-                "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-2 overflow-hidden",
+                "bg-white/90 backdrop-blur-xl border-b border-gray-100/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] transition-all duration-300 gap-1.5 sm:gap-2 overflow-hidden",
                 usesShellChrome
-                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-3 sm:px-4 md:h-16 md:pt-0 md:px-6"
-                    : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-4 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
+                    ? "sticky top-0 z-shell-topbar h-[calc(var(--shell-header-h)+var(--safe-top))] pt-[var(--safe-top)] px-2.5 sm:px-4 md:h-16 md:pt-0 md:px-6"
+                    : "fixed top-0 left-0 right-0 md:left-56 h-[calc(var(--shell-header-h-md)+var(--safe-top))] pt-[var(--safe-top)] px-3 md:px-6 md:pt-0 md:h-16 z-shell-topbar"
             )}
         >
             <div className="flex items-center flex-1 min-w-0 mr-1 sm:mr-3 overflow-hidden">
@@ -195,16 +195,16 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                 </button>
 
                 <form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-0 max-w-full md:max-w-[400px] group">
-                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300 pointer-events-none" />
+                    <HiOutlineSearch className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300 pointer-events-none" />
                     <input
                         type="search"
-                        placeholder={isSeller ? "Search products..." : "Search..."}
+                        placeholder="Search..."
                         aria-label="Search"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onFocus={() => setShowSearchSuggestions(true)}
                         onBlur={() => setShowSearchSuggestions(false)}
-                        className="w-full min-w-0 pl-10 pr-3 sm:pr-4 py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
+                        className="w-full min-w-0 pl-8 sm:pl-10 pr-2.5 sm:pr-4 py-1.5 sm:py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none truncate"
                     />
                     
                     {(role === 'admin' || isSeller) && showSearchSuggestions && searchQuery.trim() && (
@@ -239,7 +239,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                 </form>
             </div>
 
-            <div className="flex items-center gap-0.5 sm:gap-2 md:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2 md:gap-3 flex-shrink-0">
                 <div className="relative flex-shrink-0" ref={notificationRef}>
                     <button
                         type="button"
@@ -247,7 +247,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                         aria-label="Notifications"
                         aria-expanded={showNotifications}
                         className={cn(
-                            "touch-target inline-flex items-center justify-center hover:bg-primary/5 text-gray-500 hover:text-primary rounded-xl transition-all duration-300 relative group",
+                            "h-9 w-9 sm:h-10 sm:w-10 inline-flex items-center justify-center hover:bg-primary/5 text-gray-500 hover:text-primary rounded-xl transition-all duration-300 relative group flex-shrink-0",
                             showNotifications && "bg-primary/5 text-primary"
                         )}
                     >
@@ -288,7 +288,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                     }}
                     className="inline-flex items-center gap-2 p-1 md:pr-3 hover:bg-gray-50 rounded-xl transition-all duration-300 group ring-1 ring-transparent hover:ring-gray-100 shadow-sm hover:shadow-md h-9 max-h-9 overflow-hidden flex-shrink-0"
                 >
-                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform flex-shrink-0">
+                    <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform flex-shrink-0">
                         {user?.name?.[0] || 'A'}
                     </div>
                     {/* Mobile: avatar only — long names must not expand/overlap the header */}
@@ -306,7 +306,7 @@ const Topbar = ({ onMenuClick, isMobileNavOpen = false }) => {
                     type="button"
                     onClick={handleLogout}
                     aria-label="Sign out"
-                    className="touch-target inline-flex items-center justify-center gap-1.5 px-1.5 sm:px-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50 flex-shrink-0"
+                    className="h-9 w-9 sm:w-auto sm:h-10 inline-flex items-center justify-center gap-1.5 px-2 sm:px-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300 font-bold text-xs shadow-sm hover:shadow-rose-100/50 flex-shrink-0"
                 >
                     <HiOutlineLogout className="h-4 w-4 flex-shrink-0" />
                     <span className="hidden lg:inline">Sign Out</span>

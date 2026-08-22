@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
+import { sendSmsOtp, verifySmsOtp } from "../services/otpService.js";
 import Joi from "joi";
 
 const signupSchema = Joi.object({
@@ -83,7 +84,6 @@ export const signupDelivery = async (req, res) => {
             name, phone, vehicleType, email, address, vehicleNumber, drivingLicenseNumber,
             aadharNumber, panNumber, accountHolder, accountNumber, ifsc,
             documents: { aadhar: aadharUrl, pan: panUrl, drivingLicense: dlUrl, profileImage: photoUrl },
-            otp, otpExpiry: Date.now() + 5 * 60 * 1000,
         };
 
         if (!delivery) {
@@ -93,17 +93,12 @@ export const signupDelivery = async (req, res) => {
             await delivery.save();
         }
 
-        console.log("-------------------");
-        console.log("Delivery Signup Request Received");
-        console.log("Data:", { name, phone, vehicleType, email });
-        if (useRealSMS()) {
-            console.log("Generated OTP (real SMS mode):", otp);
-        } else {
-            console.log("OTP (mock mode): use 1234");
-        }
-        console.log("-------------------");
+        const smsResult = await sendSmsOtp(phone, "Delivery");
 
-        return handleResponse(res, 200, "OTP sent successfully");
+        return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
+            sessionId: smsResult.sessionId,
+            otp: smsResult.otp,
+        });
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }
@@ -126,23 +121,12 @@ export const loginDelivery = async (req, res) => {
             return handleResponse(res, 400, "Delivery partner not found. Please signup first.");
         }
 
-        const otp = generateOTP();
+        const smsResult = await sendSmsOtp(phone, "Delivery");
 
-        delivery.otp = otp;
-        delivery.otpExpiry = Date.now() + 5 * 60 * 1000;
-        await delivery.save();
-
-        console.log("-------------------");
-        console.log("Delivery Login Request Received");
-        console.log("Phone:", phone);
-        if (useRealSMS()) {
-            console.log("Generated OTP (real SMS mode):", otp);
-        } else {
-            console.log("OTP (mock mode): use 1234");
-        }
-        console.log("-------------------");
-
-        return handleResponse(res, 200, "OTP sent successfully");
+        return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
+            sessionId: smsResult.sessionId,
+            otp: smsResult.otp,
+        });
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }
@@ -159,13 +143,23 @@ export const verifyDeliveryOTP = async (req, res) => {
             return handleResponse(res, 400, "Phone and OTP are required");
         }
 
-        const delivery = await Delivery.findOne({
-            phone,
-            otp,
-            otpExpiry: { $gt: Date.now() },
-        });
+        const delivery = await Delivery.findOne({ phone }).select("+otp +otpExpiry");
 
         if (!delivery) {
+            return handleResponse(res, 400, "Delivery partner not found");
+        }
+
+        let isOtpValid = await verifySmsOtp(phone, otp, "Delivery");
+
+        // Fallback check for legacy delivery.otp field
+        if (!isOtpValid && delivery.otp && delivery.otpExpiry) {
+            const expired = delivery.otpExpiry.getTime() <= Date.now();
+            if (delivery.otp === otp && !expired) {
+                isOtpValid = true;
+            }
+        }
+
+        if (!isOtpValid) {
             return handleResponse(res, 400, "Invalid or expired OTP");
         }
 

@@ -3,6 +3,7 @@ import Transaction from "../models/transaction.js";
 import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
+import { sendSmsOtp, verifySmsOtp } from "../services/otpService.js";
 import { normalizePhone, isValidIndianPhone } from "../utils/phone.js";
 import {
     SUSPENDED_MESSAGE,
@@ -109,31 +110,24 @@ export const sendCustomerOtp = async (req, res) => {
             return handleResponse(res, 400, "Enter a valid 10-digit mobile number");
         }
 
-        const otp = generateOTP();
-        const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
-
-        let customer = await Customer.findOne({ phone }).select("+otp +otpExpiry");
+        let customer = await Customer.findOne({ phone });
         let isNewUser = false;
 
         if (!customer) {
             customer = await Customer.create({
                 phone,
                 role: "customer",
-                otp,
-                otpExpiry,
             });
             isNewUser = true;
-        } else {
-            customer.otp = otp;
-            customer.otpExpiry = otpExpiry;
-            await customer.save();
         }
 
-        logOtpDev(isNewUser ? "New user" : "Login", otp);
+        const smsResult = await sendSmsOtp(phone, "Customer");
 
-        return handleResponse(res, 200, "OTP sent successfully", {
+        return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
             isNewUser,
             phone,
+            sessionId: smsResult.sessionId,
+            otp: smsResult.otp,
         });
     } catch (error) {
         if (error?.code === 11000) {
@@ -161,13 +155,21 @@ export const verifyCustomerOTP = async (req, res) => {
         const customer = await Customer.findOne({ phone }).select("+otp +otpExpiry");
 
         if (!customer) {
-            return handleResponse(res, 400, "Invalid or expired OTP");
+            return handleResponse(res, 400, "Customer account not found");
         }
 
-        const expired = !customer.otpExpiry || customer.otpExpiry.getTime() <= Date.now();
-        const otpMatch = customer.otp === otp;
+        // Verify OTP via SMS India Hub service
+        let isOtpValid = await verifySmsOtp(phone, otp, "Customer");
 
-        if (!otpMatch || expired) {
+        // Fallback check for legacy customer.otp field
+        if (!isOtpValid && customer.otp && customer.otpExpiry) {
+            const expired = customer.otpExpiry.getTime() <= Date.now();
+            if (customer.otp === otp && !expired) {
+                isOtpValid = true;
+            }
+        }
+
+        if (!isOtpValid) {
             return handleResponse(res, 400, "Invalid or expired OTP");
         }
 

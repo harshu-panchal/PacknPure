@@ -1418,7 +1418,9 @@ export const receiveAtHub = async (req, res) => {
     pr.receivedAtHubAt = new Date();
     await savePurchaseRequest(pr);
 
-    // Trace: Create a SETTLED transaction immediately upon receipt to credit their wallet
+    // Create a PENDING transaction upon receipt; verifyInward later upgrades it to
+    // Settled (QA pass) or Failed (QA reject) — must stay Pending here, or the
+    // status-based lookup in verifyInward never finds it and creates a duplicate.
     try {
       let totalValue = normalized.reduce((acc, item) => acc + (item.acceptedQty * item.purchaseUnitCost), 0);
       if (totalValue > 0) {
@@ -1428,14 +1430,14 @@ export const receiveAtHub = async (req, res) => {
           order: pr.orderId || undefined,
           type: "Supply Earning",
           amount: totalValue,
-          status: "Settled", // Settled immediately upon hub receipt
+          status: "Pending", // Settled only once QA verification passes (see verifyInward)
           reference: `PR-REC-${pr.requestId}`,
           meta: {
             purchaseRequestId: pr._id,
             receivedAt: new Date(),
           }
         });
-        console.log(`[Trace] Created Settled Supply Earning for Seller ${pr.vendorId}: ₹${totalValue}`);
+        console.log(`[Trace] Created Pending Supply Earning for Seller ${pr.vendorId}: ₹${totalValue}`);
       }
     } catch (txnErr) {
       console.error("[receiveAtHub] Transaction creation failed:", txnErr.message);

@@ -67,14 +67,14 @@
   --z-base: 0;
   --z-dropdown: 100;
   --z-sticky: 200;
-  --z-backdrop: 300;
-  --z-drawer: 400;
-  --z-sidebar: 400;
-  --z-topbar: 500;
-  --z-bottom-nav: 500;
-  --z-popover: 600;
-  --z-modal: 700;
-  --z-toast: 800;
+  --z-topbar: 300;
+  --z-bottom-nav: 300;
+  --z-sidebar: 350;
+  --z-backdrop: 600;
+  --z-drawer: 700;
+  --z-popover: 800;
+  --z-modal: 900;
+  --z-toast: 1000;
 }
 
 body {

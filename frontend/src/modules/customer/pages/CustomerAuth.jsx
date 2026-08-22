@@ -21,7 +21,7 @@ const CustomerAuth = () => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand-50 via-white to-white p-4">
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand-50 via-white to-white p-4 relative overflow-hidden">
             <div className="relative w-full max-w-[420px] rounded-2xl border border-slate-100 bg-white px-6 pb-8 pt-14 shadow-xl">
                 <button
                     type="button"

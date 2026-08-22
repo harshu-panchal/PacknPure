@@ -229,8 +229,8 @@ const ProductManagement = () => {
 
   const filteredProducts = useMemo(() => {
     const term = debouncedSearchTerm.trim().toLowerCase();
-    const min = priceMin ? Number(priceMin) : null;
-    const max = priceMax ? Number(priceMax) : null;
+    const min = priceMin !== "" ? Number(priceMin) : null;
+    const max = priceMax !== "" ? Number(priceMax) : null;
 
     return safeProducts.filter((p) => {
       const variantSkus = Array.isArray(p.variants)
@@ -238,8 +238,14 @@ const ProductManagement = () => {
         : [];
       const skuCandidate = (p.sku || "").toString().toLowerCase() || (variantSkus.length > 0 ? variantSkus[0] : "");
 
-      const matchesSearch = !term || p.name.toLowerCase().includes(term) || (!!skuCandidate && skuCandidate.includes(term));
-      const matchesCategory = filterCategory === "all" || (p.categoryId?._id || p.categoryId) === filterCategory || (p.subcategoryId?._id || p.subcategoryId) === filterCategory;
+      const matchesSearch = !term || (p.name || "").toLowerCase().includes(term) || (!!skuCandidate && skuCandidate.includes(term));
+
+      const catIdStr = String(p.categoryId?._id || p.categoryId || "");
+      const subCatIdStr = String(p.subcategoryId?._id || p.subcategoryId || "");
+      const matchesCategory =
+        filterCategory === "all" ||
+        catIdStr === String(filterCategory) ||
+        subCatIdStr === String(filterCategory);
 
       let matchesStatus = filterStatus === "All";
       if (filterStatus === "Active") matchesStatus = p.status === "active";
@@ -247,7 +253,9 @@ const ProductManagement = () => {
       if (filterStatus === "Out of Stock") matchesStatus = catalogStockOf(p) === 0;
 
       let matchesPrice = true;
-      const effectivePrice = Number(p.salePrice ?? p.price ?? 0);
+      const vPrices = variantPricesList(p).map((r) => r.display).filter((n) => typeof n === "number" && !Number.isNaN(n));
+      const effectivePrice = vPrices.length > 0 ? Math.min(...vPrices) : Number(p.salePrice ?? p.price ?? 0);
+
       if (min !== null && !Number.isNaN(min)) matchesPrice = matchesPrice && effectivePrice >= min;
       if (max !== null && !Number.isNaN(max)) matchesPrice = matchesPrice && effectivePrice <= max;
 
@@ -528,37 +536,159 @@ const ProductManagement = () => {
 
       {/* Toolbox */}
       <BlurFade delay={0.25}>
-        <Card className="relative z-30 border-none shadow-sm ring-1 ring-slate-100 p-3 bg-white/60 backdrop-blur-xl">
+        <Card className="relative z-30 border-none shadow-sm ring-1 ring-slate-100 p-3.5 sm:p-4 bg-white/80 backdrop-blur-xl rounded-2xl">
           <div className="flex flex-col lg:flex-row gap-3 items-center">
-            <div className="relative flex-1 group w-full">
-              <HiOutlineMagnifyingGlass className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600 group-focus-within:text-primary transition-all" />
-              <input type="text" value={searchTerm} onChange={(e) => {
-                setSearchTerm(e.target.value);
-                const next = new URLSearchParams(searchParams);
-                if (e.target.value) next.set("q", e.target.value); else next.delete("q");
-                setSearchParams(next);
-              }} placeholder="Search by name or SKU..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-100/50 border-none rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/5 transition-all outline-none" />
+            {/* Search Input */}
+            <div className="relative flex-1 group w-full min-w-0">
+              <HiOutlineMagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  const next = new URLSearchParams(searchParams);
+                  if (e.target.value) next.set("q", e.target.value); else next.delete("q");
+                  setSearchParams(next);
+                }}
+                placeholder="Search by name or SKU..."
+                className="w-full pl-10 pr-9 py-2.5 bg-slate-100/70 border border-slate-200/60 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/30 transition-all outline-none"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm("");
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("q");
+                    setSearchParams(next);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
+                >
+                  <HiOutlineXMark className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-            <div className="relative flex gap-2 shrink-0 w-full lg:w-auto">
-              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-                className="flex-1 lg:flex-none px-4 py-2.5 bg-white ring-1 ring-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none appearance-none cursor-pointer">
-                <option value="all">All Categories</option>
-                {categories.map((h) => (
-                  <optgroup key={h._id || h.id} label={h.name}>
-                    <option value={h._id || h.id}>All {h.name}</option>
-                    {(h.children || []).map((sc) => (
-                      <option key={sc._id || sc.id} value={sc._id || sc.id}>{sc.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <button onClick={() => setIsFilterOpen((prev) => !prev)}
-                className="flex items-center space-x-2 px-4 py-2.5 bg-white ring-1 ring-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all">
-                <HiOutlineFunnel className="h-4 w-4" /> <span>Filters</span>
+
+            {/* Filter Dropdowns & Actions */}
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full lg:w-auto min-w-0 shrink-0">
+              {/* Category Select */}
+              <div className="relative flex-1 sm:w-52 md:w-60 min-w-0">
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="w-full min-w-0 pl-3.5 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none cursor-pointer appearance-none truncate focus:ring-2 focus:ring-primary/10 focus:border-primary/30 shadow-sm"
+                >
+                  <option value="all">All Categories</option>
+                  {categories.map((h) => (
+                    <optgroup key={h._id || h.id} label={h.name}>
+                      <option value={h._id || h.id}>All {h.name}</option>
+                      {(h.children || []).map((sc) => (
+                        <option key={sc._id || sc.id} value={sc._id || sc.id}>
+                          {sc.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <HiOutlineChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rotate-90 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Advanced Filter Button */}
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen((prev) => !prev)}
+                className={cn(
+                  "w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm shrink-0",
+                  (isFilterOpen || filterStatus !== "All" || priceMin || priceMax) && "border-primary/40 bg-primary/5 text-primary font-bold"
+                )}
+              >
+                <HiOutlineFunnel className="h-4 w-4" />
+                <span>Filters</span>
+                {(filterStatus !== "All" || priceMin || priceMax) && (
+                  <span className="h-2 w-2 rounded-full bg-primary" />
+                )}
               </button>
             </div>
           </div>
+
+          {/* In-Flow Collapsible Filter Panel */}
+          <AnimatePresence>
+            {isFilterOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden border-t border-slate-100 mt-3 pt-3 flex flex-col gap-4"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Advanced Filters</span>
+                  {(filterStatus !== "All" || priceMin || priceMax || filterCategory !== "all" || searchTerm) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterCategory("all");
+                        setFilterStatus("All");
+                        setPriceMin("");
+                        setPriceMax("");
+                        setSearchTerm("");
+                        const next = new URLSearchParams(searchParams);
+                        next.delete("q");
+                        setSearchParams(next);
+                      }}
+                      className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline"
+                    >
+                      Reset All Filters
+                    </button>
+                  )}
+                </div>
+
+                {/* Stock Status Filter */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Stock Status</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {["All", "Active", "Low Stock", "Out of Stock"].map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setFilterStatus(st)}
+                        className={cn(
+                          "px-3 py-2 rounded-xl text-xs font-semibold transition-all text-center border",
+                          filterStatus === st
+                            ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                        )}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price Range Filter */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Price Range (₹)</label>
+                  <div className="flex items-center gap-2 max-w-md">
+                    <input
+                      type="number"
+                      placeholder="Min Price"
+                      value={priceMin}
+                      onChange={(e) => setPriceMin(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:border-primary/30"
+                    />
+                    <span className="text-slate-400 text-xs font-bold">-</span>
+                    <input
+                      type="number"
+                      placeholder="Max Price"
+                      value={priceMax}
+                      onChange={(e) => setPriceMax(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:border-primary/30"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </Card>
       </BlurFade>
 

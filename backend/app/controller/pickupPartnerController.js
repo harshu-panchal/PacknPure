@@ -18,20 +18,13 @@ async function resolvePickupPartnerId(user) {
 import { savePurchaseRequest, isPickupEligibleLine, buildItemKey, releaseAllocationSellerStock } from "../services/purchaseRequestService.js";
 import { getPickupOtpTimeoutMinutes } from "../services/settingsService.js";
 import getPagination from "../utils/pagination.js";
-import { generateOTP, useRealSMS } from "../utils/otp.js";
+import { sendSmsOtp, verifySmsOtp } from "../services/otpService.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
-const PICKUP_AUTH_DEV_OTP = "1234";
-const isPickupAuthDevMode = () => process.env.NODE_ENV !== "production";
-
-const generatePickupLoginOtp = () => {
-  if (isPickupAuthDevMode()) return PICKUP_AUTH_DEV_OTP;
-  return generateOTP();
-};
 const PICKUP_RADIUS_M = Math.max(50, Number(process.env.PICKUP_PARTNER_VENDOR_RADIUS_METERS || 1000000));
 const HUB_RADIUS_M = Math.max(50, Number(process.env.PICKUP_PARTNER_HUB_RADIUS_METERS || 1000000));
 
@@ -239,25 +232,17 @@ export const sendPickupPartnerLoginOtp = async (req, res) => {
       return handleResponse(res, 400, "phone is required");
     }
 
-    const partner = await PickupPartner.findOne({ phone: String(phone).trim() }).select("+otp +otpExpiry");
+    const partner = await PickupPartner.findOne({ phone: String(phone).trim() });
     if (!partner || !partner.isActive || !partner.isVerified) {
       return handleResponse(res, 404, "Pickup partner not found or inactive");
     }
 
-    const otp = generatePickupLoginOtp();
-    partner.otp = otp;
-    partner.otpExpiry = new Date(Date.now() + (await getPickupOtpTimeoutMinutes()) * 60 * 1000);
-    await partner.save();
+    const smsResult = await sendSmsOtp(phone, "PickupPartner");
 
-    if (isPickupAuthDevMode()) {
-      console.log("Pickup Partner OTP (dev mode): use 1234 — SMS skipped");
-    } else if (useRealSMS()) {
-      console.log("Pickup Partner OTP (real SMS mode):", otp);
-    } else {
-      console.log("Pickup Partner OTP (mock mode): use 1234");
-    }
-
-    return handleResponse(res, 200, "OTP sent successfully");
+    return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
+      sessionId: smsResult.sessionId,
+      otp: smsResult.otp,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -271,22 +256,24 @@ export const verifyPickupPartnerOtp = async (req, res) => {
     }
 
     const normalizedOtp = String(otp).trim();
-    if (isPickupAuthDevMode() && normalizedOtp !== PICKUP_AUTH_DEV_OTP) {
-      return handleResponse(res, 400, "Invalid OTP");
+
+    const partner = await PickupPartner.findOne({ phone: String(phone).trim() }).select("+otp +otpExpiry");
+    if (!partner) {
+      return handleResponse(res, 400, "Invalid or expired OTP");
     }
 
-    const partner = await PickupPartner.findOne({
-      phone: String(phone).trim(),
-      otp: normalizedOtp,
-      otpExpiry: { $gt: new Date() },
-    }).select("+otp +otpExpiry");
+    let isOtpValid = await verifySmsOtp(phone, normalizedOtp, "PickupPartner");
 
-    if (!partner) {
-      return handleResponse(
-        res,
-        400,
-        isPickupAuthDevMode() ? "Invalid OTP" : "Invalid or expired OTP",
-      );
+    // Fallback check for legacy partner.otp field (pre-SMS-India-Hub records)
+    if (!isOtpValid && partner.otp && partner.otpExpiry) {
+      const expired = partner.otpExpiry.getTime() <= Date.now();
+      if (partner.otp === normalizedOtp && !expired) {
+        isOtpValid = true;
+      }
+    }
+
+    if (!isOtpValid) {
+      return handleResponse(res, 400, "Invalid or expired OTP");
     }
 
     partner.otp = undefined;

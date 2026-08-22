@@ -375,21 +375,21 @@ const DeliveryAuth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F4FF] flex flex-col items-center justify-center p-5 font-['Outfit',_sans-serif]">
+    <div className="min-h-screen bg-[#F0F4FF] flex flex-col items-center justify-center p-4 sm:p-5 font-['Outfit',_sans-serif] relative overflow-hidden">
       {/* Background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -left-32 w-80 h-80 bg-indigo-200/40 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-200/30 rounded-full blur-3xl" />
+        <div className="absolute -top-32 -left-32 w-60 sm:w-80 h-60 sm:h-80 bg-indigo-200/40 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 w-72 sm:w-96 h-72 sm:h-96 bg-purple-200/30 rounded-full blur-3xl" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-[420px] relative z-10"
+        className="w-full max-w-[420px] relative z-10 my-2 sm:my-4"
       >
         {/* Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-[2.5rem] shadow-[0_24px_60px_rgba(99,102,241,0.1)] border border-indigo-50 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-3xl sm:rounded-[2.5rem] shadow-[0_24px_60px_rgba(99,102,241,0.1)] border border-indigo-50 overflow-hidden">
 
           {/* Header with Lottie */}
           <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 flex flex-col items-center relative">

@@ -2,6 +2,7 @@ import Admin from "../models/admin.js";
 import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
+import { sendSmsOtp, verifySmsOtp } from "../services/otpService.js";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 
@@ -143,10 +144,22 @@ export const forgotPasswordOtp = async (req, res) => {
         admin.otpExpiry = otpExpiry;
         await admin.save();
 
+        const phone = admin.phone || req.body?.phone;
+        let smsResult = null;
+        if (phone) {
+            try {
+                smsResult = await sendSmsOtp(phone, "Admin");
+            } catch (err) {
+                console.warn("[Admin SMS] Failed to send SMS:", err.message);
+            }
+        }
+
         logOtpDev("Admin Forgot Password", otp);
 
-        return handleResponse(res, 200, "OTP sent successfully", {
+        return handleResponse(res, 200, smsResult?.message || "OTP sent successfully", {
             email,
+            phone: phone || undefined,
+            sessionId: smsResult?.sessionId,
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);
@@ -158,7 +171,7 @@ export const forgotPasswordOtp = async (req, res) => {
 ================================ */
 export const resetPasswordWithOtp = async (req, res) => {
     try {
-        let { email, otp, newPassword } = req.body;
+        let { email, phone, otp, newPassword } = req.body;
 
         if (!email || !otp) {
             return handleResponse(res, 400, "Email and OTP are required");
@@ -177,10 +190,21 @@ export const resetPasswordWithOtp = async (req, res) => {
             return handleResponse(res, 400, "Invalid or expired OTP");
         }
 
-        const expired = !admin.otpExpiry || admin.otpExpiry.getTime() <= Date.now();
-        const otpMatch = admin.otp === otp;
+        let isOtpValid = false;
+        const targetPhone = phone || admin.phone;
+        if (targetPhone) {
+            isOtpValid = await verifySmsOtp(targetPhone, otp, "Admin");
+        }
 
-        if (!otpMatch || expired) {
+        // Fallback check for admin.otp field
+        if (!isOtpValid && admin.otp && admin.otpExpiry) {
+            const expired = admin.otpExpiry.getTime() <= Date.now();
+            if (admin.otp === otp && !expired) {
+                isOtpValid = true;
+            }
+        }
+
+        if (!isOtpValid) {
             return handleResponse(res, 400, "Invalid or expired OTP");
         }
 

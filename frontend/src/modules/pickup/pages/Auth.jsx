@@ -91,7 +91,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-gradient-to-b from-slate-50 via-white to-red-50/40 px-4 py-8 pickup-safe-top">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-50 via-white to-red-50/40 px-4 py-8 pickup-safe-top">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-red-200/30 blur-[90px]" />
         <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/50 blur-[70px]" />

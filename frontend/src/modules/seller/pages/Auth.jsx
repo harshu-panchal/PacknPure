@@ -321,13 +321,13 @@ const Auth = () => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-4 lg:p-6 font-['Outfit',_sans-serif] relative">
+        <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-3 sm:p-4 lg:p-6 font-['Outfit',_sans-serif] relative overflow-hidden">
             {/* Animated Background Orbs */}
-            <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-200/30 rounded-full blur-[120px] animate-pulse"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-emerald-100/30 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+            <div className="absolute top-[-10%] left-[-10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-indigo-200/30 rounded-full blur-[120px] animate-pulse pointer-events-none"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[350px] sm:w-[600px] h-[350px] sm:h-[600px] bg-emerald-100/30 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }}></div>
 
             <div
-                className="w-full max-w-6xl bg-white rounded-[40px] shadow-[0_32px_120px_rgba(0,0,0,0.08)] flex flex-col md:flex-row relative z-10 border border-white my-10 min-h-0 sm:min-h-[600px]"
+                className="w-full max-w-6xl bg-white rounded-3xl md:rounded-[40px] shadow-[0_32px_120px_rgba(0,0,0,0.08)] flex flex-col md:flex-row relative z-10 border border-white my-4 sm:my-10 min-h-0 sm:min-h-[600px] overflow-hidden"
             >
                 {/* Left Side: Form Section */}
                 <div className="w-full md:w-1/2 p-4 sm:p-8 lg:p-16 flex flex-col bg-white relative z-20">

@@ -67,8 +67,22 @@ const DashboardLayout = ({ children, navItems, title }) => {
   useEffect(() => {
     if (!isMobileNavOpen) return undefined;
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // iOS Safari ignores `overflow: hidden` on body for scroll locking — pinning
+    // the body via `position: fixed` is the reliable cross-browser technique.
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const previousStyles = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
 
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -78,7 +92,12 @@ const DashboardLayout = ({ children, navItems, title }) => {
 
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      body.style.position = previousStyles.position;
+      body.style.top = previousStyles.top;
+      body.style.left = previousStyles.left;
+      body.style.right = previousStyles.right;
+      body.style.width = previousStyles.width;
+      window.scrollTo(0, scrollY);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [isMobileNavOpen]);

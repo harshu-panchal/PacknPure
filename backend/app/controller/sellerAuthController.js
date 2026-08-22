@@ -4,6 +4,7 @@ import handleResponse from "../utils/helper.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import Admin from "../models/admin.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
+import { sendSmsOtp, verifySmsOtp } from "../services/otpService.js";
 import { normalizePhone, isValidIndianPhone } from "../utils/phone.js";
 import { createNotificationBatch } from "../services/notificationService.js";
 
@@ -184,17 +185,12 @@ export const forgotPasswordOtp = async (req, res) => {
             return handleResponse(res, 403, "Your account is suspended. Please contact support.");
         }
 
-        const otp = generateOTP();
-        const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
+        const smsResult = await sendSmsOtp(phone, "Seller");
 
-        seller.otp = otp;
-        seller.otpExpiry = otpExpiry;
-        await seller.save();
-
-        logOtpDev("Seller Forgot Password", otp);
-
-        return handleResponse(res, 200, "OTP sent successfully", {
+        return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
             phone,
+            sessionId: smsResult.sessionId,
+            otp: smsResult.otp,
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);
@@ -221,13 +217,20 @@ export const resetPasswordWithOtp = async (req, res) => {
         const seller = await Seller.findOne({ phone }).select("+otp +otpExpiry +password");
 
         if (!seller) {
-            return handleResponse(res, 400, "Invalid or expired OTP");
+            return handleResponse(res, 404, "Seller not found");
         }
 
-        const expired = !seller.otpExpiry || seller.otpExpiry.getTime() <= Date.now();
-        const otpMatch = seller.otp === otp;
+        let isOtpValid = await verifySmsOtp(phone, otp, "Seller");
 
-        if (!otpMatch || expired) {
+        // Fallback check for legacy seller.otp field
+        if (!isOtpValid && seller.otp && seller.otpExpiry) {
+            const expired = seller.otpExpiry.getTime() <= Date.now();
+            if (seller.otp === otp && !expired) {
+                isOtpValid = true;
+            }
+        }
+
+        if (!isOtpValid) {
             return handleResponse(res, 400, "Invalid or expired OTP");
         }
 
