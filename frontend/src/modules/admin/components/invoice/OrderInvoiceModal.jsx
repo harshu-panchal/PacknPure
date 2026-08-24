@@ -69,7 +69,7 @@ export default function OrderInvoiceModal({ isOpen, onClose, order }) {
       >
         <div className="admin-invoice-toolbar no-print">
           <div className="admin-invoice-toolbar-header">
-            <h2>Invoice · #{order.orderId || order._id}</h2>
+            <h2>Invoice · #{order.displayOrderNumber || order.orderId || order._id}</h2>
           </div>
           <div className="admin-invoice-toolbar-actions">
             <button

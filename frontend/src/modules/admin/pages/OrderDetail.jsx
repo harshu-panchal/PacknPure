@@ -138,7 +138,7 @@ const OrderDetail = () => {
                     </button>
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Order #{order.orderId}</h1>
+                            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Order #{order.displayOrderNumber || order.orderId}</h1>
                             <div className="relative inline-block w-44">
                                 <select
                                     value={order.status}

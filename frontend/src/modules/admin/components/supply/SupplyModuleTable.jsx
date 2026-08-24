@@ -68,12 +68,30 @@ const SupplyModuleTable = ({
 
       {stats.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {stats.map((stat) => (
-            <div key={stat.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs font-medium text-slate-500">{stat.label}</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{stat.value}</p>
-            </div>
-          ))}
+          {stats.map((stat) => {
+            const clickable = typeof stat.onClick === "function";
+            return (
+              <div
+                key={stat.label}
+                onClick={clickable ? stat.onClick : undefined}
+                role={clickable ? "button" : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                onKeyDown={
+                  clickable
+                    ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); stat.onClick(); } }
+                    : undefined
+                }
+                className={cn(
+                  "rounded-xl border bg-white p-4 shadow-sm transition-all",
+                  clickable && "cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
+                  stat.active ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200",
+                )}
+              >
+                <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{stat.value}</p>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 

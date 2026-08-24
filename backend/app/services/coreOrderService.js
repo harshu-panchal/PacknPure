@@ -34,6 +34,7 @@ import {
   resolveOrderItemPrice 
 } from "../utils/orderItemHelpers.js";
 import { buildDeliverySnapshot } from "./deliverySnapshotService.js";
+import { generateOrderNumber } from "./orderNumberService.js";
 
 const ORDER_CART_POPULATE = "name mainImage price salePrice gstRate gstEnabled variants purchasePrice";
 
@@ -84,6 +85,12 @@ export const executeCoreOrderFulfillment = async ({
 
     // 1. Generate unique Order ID
     const orderId = `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+    // Short, sequential, source-prefixed display number (e.g. HUBORD0001).
+    // Every order created through this core fulfillment path (COD + online
+    // payment checkout) is a "hub" order for numbering purposes.
+    const { displayOrderNumber, sequenceNumber, orderNumberSource } =
+      await generateOrderNumber("hub", session);
 
     // 2. Map items if provided, or fetch from cart if not
     let orderItems = items;
@@ -311,6 +318,9 @@ export const executeCoreOrderFulfillment = async ({
     // 8. Create Order Document
     const newOrder = new Order({
       orderId,
+      displayOrderNumber,
+      orderSequenceNumber: sequenceNumber,
+      orderNumberSource,
       customer: customerId,
       seller: null,
       items: orderItems,

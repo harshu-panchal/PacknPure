@@ -41,6 +41,7 @@ import {
     getCodCustomers,
     updateCustomerCodPolicy,
     updateCustomerAccountStatus,
+    creditCustomerWallet,
     approveSeller,
     rejectSeller,
     approveSellerPos,
@@ -107,6 +108,7 @@ router.get("/users", verifyToken, allowRoles("admin"), getUsers);
 router.get("/users/:id", verifyToken, allowRoles("admin"), getUserById);
 router.get("/users-cod", verifyToken, allowRoles("admin"), getCodCustomers);
 router.patch("/users/:id/cod-policy", verifyToken, allowRoles("admin"), updateCustomerCodPolicy);
+router.post("/users/:id/wallet-credit", verifyToken, allowRoles("admin"), creditCustomerWallet);
 router.patch("/users/:id/status", verifyToken, allowRoles("admin"), updateCustomerAccountStatus);
 router.get("/sellers", verifyToken, allowRoles("admin"), getSellers);
 router.get("/sellers/:id", verifyToken, allowRoles("admin"), getSellerById);

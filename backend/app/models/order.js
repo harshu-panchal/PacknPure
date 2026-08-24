@@ -26,6 +26,28 @@ const orderSchema = new mongoose.Schema(
       default: "ONLINE",
       index: true,
     },
+    // Short, sequential, source-prefixed order number (e.g. "HUBORD0001") shown
+    // to admins instead of the long orderId. orderId above remains the
+    // internal primary lookup key — this is a separate display-only field.
+    displayOrderNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    // Raw value from the single global counter that produced displayOrderNumber.
+    orderSequenceNumber: {
+      type: Number,
+      index: true,
+    },
+    // Which numbering bucket produced displayOrderNumber's prefix (hub/seller/pos).
+    // Distinct from `orderSource` above, which tracks the broader sales channel
+    // (ONLINE/POS/ADMIN/etc.) and is used elsewhere — this only drives numbering.
+    orderNumberSource: {
+      type: String,
+      enum: ["hub", "seller", "pos"],
+      index: true,
+    },
     posDetails: {
       posTerminalId: {
         type: mongoose.Schema.Types.ObjectId,

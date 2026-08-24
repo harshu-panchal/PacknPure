@@ -29,6 +29,8 @@ const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
   { value: "scooter", label: "Scooter" },
   { value: "cycle", label: "Cycle" },
+  { value: "auto", label: "Auto" },
+  { value: "pickup_rickshaw", label: "Pickup Rickshaw" },
 ];
 
 const PATTERNS = {
@@ -152,23 +154,23 @@ const DeliveryAuth = () => {
           toast.error("DL Number mismatch. Make sure you typed the exact number from the photo.");
         }
       } else if (type === "pan") {
-        targetNumber = signupPanNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
+        targetNumber = signupVehicleNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
         const normalizedTarget = normalize(targetNumber);
 
-        const panKeywords = ["permanent", "account", "income", "tax", "department", "india", "signature", "card", "govt"];
-        const hasPanKeywords = panKeywords.some(k => rawText.includes(k));
+        const rcKeywords = ["registration", "certificate", "vehicle", "chassis", "engine", "rto", "motor", "transport"];
+        const hasRcKeywords = rcKeywords.some(k => rawText.includes(k));
 
         isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
           (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
 
-        if (isMatch || (hasPanKeywords && isMatch)) {
+        if (isMatch || (hasRcKeywords && isMatch)) {
           setPanVerified(true);
           setPanFile(file);
-          toast.success("PAN Card Verified!");
+          toast.success("RC Book Verified!");
         } else {
           setPanVerified(false);
           setPanFile(null);
-          toast.error("PAN mismatch. Photo must be clear and show the PAN number.");
+          toast.error("RC Book mismatch. Photo must be clear and show the vehicle registration number.");
         }
       } else if (type === "aadhar") {
         targetNumber = signupAadharNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -215,8 +217,8 @@ const DeliveryAuth = () => {
       // performOCR(file, "pan"); // Bypassing OCR validation
       setPanFile(file);
       setPanVerified(true);
-      toast.success("PAN Card Accepted!");
-    } else { 
+      toast.success("RC Book Accepted!");
+    } else {
       setPanFile(null); 
       setPanVerified(null); 
     }
@@ -812,7 +814,7 @@ const DeliveryAuth = () => {
 
                             {[
                               { label: "Aadhar Card (Front/Back)", state: aadharFile, setter: setAadharFile, id: "aadhar" },
-                              { label: "PAN Card (Optional)", state: panFile, setter: setPanFile, id: "pan" },
+                              { label: "RC Book (Optional)", state: panFile, setter: setPanFile, id: "pan" },
                               { label: "Driving License", state: dlFile, setter: setDlFile, id: "dl" },
                             ].map((doc) => (
                               <div key={doc.id} className="relative">
@@ -821,6 +823,7 @@ const DeliveryAuth = () => {
                                   id={doc.id}
                                   className="hidden"
                                   accept="image/*"
+                                  capture="environment"
                                   onChange={(e) => {
                                     const file = e.target.files[0];
                                     if (doc.id === "dl") handleDLUpload(file);
@@ -898,13 +901,13 @@ const DeliveryAuth = () => {
                                   </div>
                                 )}
 
-                                {/* OCR Progress & Badge for PAN */}
+                                {/* OCR Progress & Badge for RC Book */}
                                 {doc.id === "pan" && (
                                   <div className="mt-2 px-1">
                                     {(isScanning && doc.state === null) && (
                                       <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1">
                                         <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-indigo-500">
-                                          <span>AI Scanning PAN...</span>
+                                          <span>AI Scanning RC Book...</span>
                                           <span>{ocrProgress}%</span>
                                         </div>
                                         <div className="h-1.5 w-full bg-indigo-50 rounded-full overflow-hidden">
@@ -920,14 +923,14 @@ const DeliveryAuth = () => {
                                     {!isScanning && panVerified === true && (
                                       <div className="flex items-center gap-1.5 text-emerald-600 animate-in zoom-in-95 duration-300">
                                         <CheckCircle className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-black uppercase tracking-wider">AI Verified: Valid PAN Found</span>
+                                        <span className="text-[10px] font-black uppercase tracking-wider">AI Verified: Valid RC Book Found</span>
                                       </div>
                                     )}
 
                                     {!isScanning && panVerified === false && (
                                       <div className="flex items-center gap-1.5 text-rose-500 animate-in shake duration-500">
                                         <XCircle className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-500">AI Warning: PAN Match Failed</span>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-500">AI Warning: RC Book Match Failed</span>
                                       </div>
                                     )}
                                   </div>
@@ -984,7 +987,7 @@ const DeliveryAuth = () => {
                             </button>
                             <button
                               onClick={handleSendOtp}
-                              disabled={loading || !photoFile || dlVerified !== true || (signupPanNumber.trim() ? panVerified !== true : false) || aadharVerified !== true}
+                              disabled={loading || !photoFile || dlVerified !== true || aadharVerified !== true}
                               className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {loading ? (

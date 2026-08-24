@@ -281,7 +281,7 @@ const DeliveryPartnerProfile = () => {
                                                 <tr key={order._id} className="hover:bg-slate-50/50 transition-colors">
                                                     <td className="px-6 py-4">
                                                         <span className="text-xs font-bold text-indigo-600">
-                                                            #{order.orderId.slice(-8).toUpperCase()}
+                                                            #{order.displayOrderNumber || order.orderId.slice(-8).toUpperCase()}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">

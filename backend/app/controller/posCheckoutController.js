@@ -12,6 +12,7 @@ import dotenv from "dotenv";
 import PosSession from "../models/posSession.js";
 import Product from "../models/product.js";
 import { getPosProviders } from "../services/posProviders/index.js";
+import { generateOrderNumber } from "../services/orderNumberService.js";
 
 dotenv.config();
 
@@ -162,9 +163,18 @@ export const processPosCheckout = async (req, res) => {
     const invoiceNumber = await generateInvoiceNumber(session);
     const orderId = `POS${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
+    // A seller operating the shared POS terminal gets a "seller" numbered
+    // order; a hub/admin cashier gets a "pos" numbered order.
+    const numberSource = req.user.role === "seller" ? "seller" : "pos";
+    const { displayOrderNumber, sequenceNumber, orderNumberSource } =
+      await generateOrderNumber(numberSource, session);
+
     // 3. Create Order Payload
     const newOrder = new Order({
       orderId,
+      displayOrderNumber,
+      orderSequenceNumber: sequenceNumber,
+      orderNumberSource,
       receiptNumber,
       invoiceNumber,
       orderSource: "POS",

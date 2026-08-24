@@ -3,6 +3,7 @@ import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import PageHeader from '@shared/components/ui/PageHeader';
 import StatCard from '@shared/components/ui/StatCard';
+import Modal from '@shared/components/ui/Modal';
 import {
     Users,
     Search,
@@ -18,6 +19,7 @@ import {
     Ban,
     CheckCircle2,
     UserX,
+    Wallet,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -48,6 +50,12 @@ const CustomerManagement = () => {
     const [loading, setLoading] = useState(true);
     const [codUpdatingId, setCodUpdatingId] = useState('');
     const [accountUpdatingId, setAccountUpdatingId] = useState('');
+
+    const [creditCustomer, setCreditCustomer] = useState(null);
+    const [creditAmount, setCreditAmount] = useState('');
+    const [creditReason, setCreditReason] = useState('');
+    const [creditIsPromotional, setCreditIsPromotional] = useState(false);
+    const [creditSubmitting, setCreditSubmitting] = useState(false);
 
     useEffect(() => {
         fetchCustomers(1);
@@ -149,6 +157,39 @@ const CustomerManagement = () => {
             toast.error(error?.response?.data?.message || 'Failed to update account status');
         } finally {
             setAccountUpdatingId('');
+        }
+    };
+
+    const openCreditModal = (customer) => {
+        setCreditCustomer(customer);
+        setCreditAmount('');
+        setCreditReason('');
+        setCreditIsPromotional(false);
+    };
+
+    const handleSubmitCredit = async () => {
+        const amount = Number(creditAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            toast.error('Enter a valid amount greater than 0');
+            return;
+        }
+        try {
+            setCreditSubmitting(true);
+            await adminApi.creditCustomerWallet(creditCustomer.id, {
+                amount,
+                reason: creditReason.trim() || undefined,
+                isPromotional: creditIsPromotional,
+            });
+            toast.success(
+                `₹${amount.toLocaleString()} ${creditIsPromotional ? 'promotional credit' : 'credit'} added to ${creditCustomer.name}'s wallet`,
+            );
+            setCreditCustomer(null);
+            await fetchCustomers(page);
+        } catch (error) {
+            console.error('Failed to credit wallet:', error);
+            toast.error(error?.response?.data?.message || 'Failed to credit wallet');
+        } finally {
+            setCreditSubmitting(false);
         }
     };
 
@@ -397,6 +438,13 @@ const CustomerManagement = () => {
                                                         <Ban className="ds-icon-sm" />
                                                     )}
                                                 </button>
+                                                <button
+                                                    onClick={() => openCreditModal(cust)}
+                                                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"
+                                                    title="Credit wallet"
+                                                >
+                                                    <Wallet className="ds-icon-sm" />
+                                                </button>
                                                 <button className="p-2 bg-gray-50 text-gray-400 rounded-lg hover:bg-gray-900 hover:text-white transition-all">
                                                     <MoreVertical className="ds-icon-sm" />
                                                 </button>
@@ -423,6 +471,61 @@ const CustomerManagement = () => {
                     />
                 </div>
             </Card>
+
+            <Modal
+                isOpen={!!creditCustomer}
+                onClose={() => setCreditCustomer(null)}
+                title={`Credit Wallet${creditCustomer ? ` • ${creditCustomer.name}` : ''}`}
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-2">Amount (₹)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            value={creditAmount}
+                            onChange={(e) => setCreditAmount(e.target.value)}
+                            placeholder="e.g. 100"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-2">Reason (optional)</label>
+                        <input
+                            type="text"
+                            value={creditReason}
+                            onChange={(e) => setCreditReason(e.target.value)}
+                            placeholder="e.g. Compensation for delayed order"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-sm font-semibold outline-none"
+                        />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={creditIsPromotional}
+                            onChange={(e) => setCreditIsPromotional(e.target.checked)}
+                            className="h-4 w-4 rounded"
+                        />
+                        Promotional balance (marketing/campaign credit)
+                    </label>
+
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            onClick={() => setCreditCustomer(null)}
+                            className="px-4 py-2 rounded-xl bg-white ring-1 ring-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmitCredit}
+                            disabled={creditSubmitting || !creditAmount}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {creditSubmitting ? 'Crediting…' : 'Credit Wallet'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

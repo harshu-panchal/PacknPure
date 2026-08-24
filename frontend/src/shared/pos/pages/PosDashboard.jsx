@@ -17,6 +17,17 @@ export default function PosDashboard() {
     const navigate = useNavigate();
     const { role: posRole } = usePosEngine();
 
+    // Hub Inventory / Procurement / Low Stock don't have their own pages under
+    // /pos — they link out to the real admin/seller pages that already exist,
+    // which differ per role (there's no /admin/pos/inventory etc. route at all,
+    // which is why these links previously fell through to the catch-all
+    // redirect back to the dashboard).
+    const hubInventoryPath = posRole === 'seller' ? '/seller/inventory' : '/admin/hub-inventory';
+    const procurementPath = posRole === 'seller' ? '/seller/procurement' : '/admin/purchase-requests';
+    const lowStockPath = posRole === 'seller'
+        ? '/seller/inventory?status=Low%20Stock'
+        : '/admin/hub-inventory?filter=low_stock';
+
     const [stats, setStats] = useState(null);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
 
@@ -30,7 +41,9 @@ export default function PosDashboard() {
             setIsLoadingStats(true);
             const { data } = await posApi.getDashboardStats();
             if (data.success) {
-                setStats(data.data);
+                // Backend wraps the payload under `result` (see handleResponse
+                // helper) — it never sends a `data` key, so this was always undefined.
+                setStats(data.result);
             }
         } catch (error) {
             console.error("Failed to load POS dashboard stats", error);
@@ -166,9 +179,9 @@ export default function PosDashboard() {
                     title="Low Stock Alerts" 
                     value={isLoadingStats ? '...' : stats?.inventory?.lowStockAlerts || 0} 
                     icon={AlertTriangle} 
-                    color="red" 
-                    subtitle="Requires immediate procurement" 
-                    action={() => navigate(`/${posRole}/pos/low-stock`)} 
+                    color="red"
+                    subtitle="Requires immediate procurement"
+                    action={() => navigate(lowStockPath)}
                 />
             </div>
 
@@ -180,17 +193,17 @@ export default function PosDashboard() {
                         Quick Access
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <QuickLink 
-                            title="Hub Inventory" 
-                            desc="View total available stock" 
-                            icon={Boxes} 
-                            onClick={() => navigate(`/${posRole}/pos/inventory`)} 
+                        <QuickLink
+                            title="Hub Inventory"
+                            desc="View total available stock"
+                            icon={Boxes}
+                            onClick={() => navigate(hubInventoryPath)}
                         />
-                        <QuickLink 
-                            title="Procurement Status" 
-                            desc="Track vendor stock requests" 
-                            icon={PackageSearch} 
-                            onClick={() => navigate(`/${posRole}/pos/procurement`)} 
+                        <QuickLink
+                            title="Procurement Status"
+                            desc="Track vendor stock requests"
+                            icon={PackageSearch}
+                            onClick={() => navigate(procurementPath)}
                         />
                         <QuickLink 
                             title="Current POS Orders" 

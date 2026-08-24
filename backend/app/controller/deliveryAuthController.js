@@ -15,7 +15,7 @@ const signupSchema = Joi.object({
         "string.pattern.base": "Please provide a valid 10-digit Indian phone number",
     }),
     email: Joi.string().trim().lowercase().email().required(),
-    vehicleType: Joi.string().valid("bike", "scooter", "cycle").required(),
+    vehicleType: Joi.string().valid("bike", "scooter", "cycle", "auto", "pickup_rickshaw").required(),
     address: Joi.string().trim().min(10).required(),
     vehicleNumber: Joi.string().trim().uppercase().required(),
     drivingLicenseNumber: Joi.string().trim().uppercase().required(),

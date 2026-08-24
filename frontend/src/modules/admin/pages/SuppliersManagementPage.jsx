@@ -226,6 +226,8 @@ const SuppliersManagementPage = () => {
       if (filterStatus === "inactive") matchesStatus = !s.isActive;
       if (filterStatus === "verified") matchesStatus = s.isVerified;
       if (filterStatus === "pending") matchesStatus = !s.isVerified;
+      if (filterStatus === "geoMapped") matchesStatus = s.hasGeo;
+      if (filterStatus === "elite") matchesStatus = s.rating >= 4.5;
 
       const matchesRevenue = s.revenue >= (Number(advancedFilters.minRevenue) || 0);
       const matchesRating = s.rating >= (Number(advancedFilters.minRating) || 0);
@@ -233,6 +235,15 @@ const SuppliersManagementPage = () => {
       return matchesSearch && matchesCategory && matchesStatus && matchesRevenue && matchesRating;
     });
   }, [tabFiltered, searchTerm, filterCategory, filterStatus, advancedFilters]);
+
+  // Stat cards set filterStatus, but the "verified"/"pending" tab above
+  // (URL-driven) filters the same data on an overlapping dimension — reset it
+  // to "all" first so e.g. clicking "Pending Approval" while on the
+  // "Verified" tab doesn't silently produce a contradictory empty result.
+  const applyStatFilter = (value) => {
+    if (activeTab !== "all") navigate("/admin/suppliers");
+    setFilterStatus(value);
+  };
 
   const stats = useMemo(() => {
     const active = suppliers.filter((s) => s.isActive).length;
@@ -502,19 +513,30 @@ const SuppliersManagementPage = () => {
         />
       </div>
 
-      {/* Stats */}
+      {/* Stats — cards with a filterValue are shortcut filters onto the table below */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Suppliers", val: stats.total, icon: HiOutlineBuildingOffice2, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Active Accounts", val: stats.active, icon: HiOutlineCheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Pending Approval", val: stats.pending, icon: HiOutlineClock, color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Geo Mapped", val: stats.geoMapped, icon: HiOutlineMapPin, color: "text-violet-600", bg: "bg-violet-50" },
-          { label: "Elite Rated (4.5+)", val: stats.elite, icon: HiOutlineStar, color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Total Suppliers", val: stats.total, icon: HiOutlineBuildingOffice2, color: "text-blue-600", bg: "bg-blue-50", filterValue: "all" },
+          { label: "Active Accounts", val: stats.active, icon: HiOutlineCheckCircle, color: "text-emerald-600", bg: "bg-emerald-50", filterValue: "active" },
+          { label: "Pending Approval", val: stats.pending, icon: HiOutlineClock, color: "text-amber-600", bg: "bg-amber-50", filterValue: "pending" },
+          { label: "Geo Mapped", val: stats.geoMapped, icon: HiOutlineMapPin, color: "text-violet-600", bg: "bg-violet-50", filterValue: "geoMapped" },
+          { label: "Elite Rated (4.5+)", val: stats.elite, icon: HiOutlineStar, color: "text-amber-600", bg: "bg-amber-50", filterValue: "elite" },
           { label: "Procurement Orders", val: stats.totalOrders.toLocaleString(), icon: HiOutlineArrowTrendingUp, color: "text-indigo-600", bg: "bg-indigo-50" },
           { label: "Supply Revenue", val: `₹${(stats.totalRevenue / 100000).toFixed(1)}L`, icon: HiOutlineCheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Verified Partners", val: stats.verified, icon: HiOutlineCheck, color: "text-sky-600", bg: "bg-sky-50" },
+          { label: "Verified Partners", val: stats.verified, icon: HiOutlineCheck, color: "text-sky-600", bg: "bg-sky-50", filterValue: "verified" },
         ].map((stat, i) => (
-          <Card key={i} className="border-none shadow-sm ring-1 ring-slate-100 p-4 group">
+          <Card
+            key={i}
+            onClick={stat.filterValue ? () => applyStatFilter(stat.filterValue) : undefined}
+            role={stat.filterValue ? "button" : undefined}
+            tabIndex={stat.filterValue ? 0 : undefined}
+            onKeyDown={stat.filterValue ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyStatFilter(stat.filterValue); } } : undefined}
+            className={cn(
+              "border-none shadow-sm p-4 group transition-all",
+              stat.filterValue && "cursor-pointer hover:shadow-md active:scale-[0.98]",
+              stat.filterValue && filterStatus === stat.filterValue ? "ring-2 ring-primary/60" : "ring-1 ring-slate-100",
+            )}
+          >
             <div className="flex items-center gap-3">
               <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center", stat.bg, stat.color)}>
                 <stat.icon className="h-5 w-5" />
@@ -563,6 +585,8 @@ const SuppliersManagementPage = () => {
               <option value="pending">Pending</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+              <option value="geoMapped">Geo Mapped</option>
+              <option value="elite">Elite Rated (4.5+)</option>
             </select>
             <div className="relative">
               <button

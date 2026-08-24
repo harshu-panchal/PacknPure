@@ -339,7 +339,11 @@ const ProductManagement = () => {
                     params.category = filterCategory;
                 }
             }
-            if (filterStatus !== 'all') params.status = filterStatus;
+            if (filterStatus === 'low_stock' || filterStatus === 'out_of_stock') {
+                params.stockStatus = filterStatus;
+            } else if (filterStatus !== 'all') {
+                params.status = filterStatus;
+            }
             params.ownerType = activeTab === 'master' ? 'admin' : 'seller';
             if (filterSellerId && activeTab === 'seller') params.sellerId = filterSellerId;
             if (filterSellerReview && activeTab === 'seller') params.sellerReviewPending = 'true';
@@ -998,15 +1002,25 @@ const ProductManagement = () => {
                 </div>
             )}
 
-            {/* Quick Stats */}
+            {/* Quick Stats — each card is a shortcut filter onto the table below */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                    { label: 'All Items', val: stats.total, icon: HiOutlineCube, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                    { label: 'Active Items', val: stats.active, icon: HiOutlineCheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Low Stock', val: stats.lowStock, icon: HiOutlineExclamationCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
-                    { label: 'Out of Stock', val: stats.outOfStock, icon: HiOutlineArchiveBox, color: 'text-rose-600', bg: 'bg-rose-50' }
+                    { label: 'All Items', val: stats.total, icon: HiOutlineCube, color: 'text-indigo-600', bg: 'bg-indigo-50', filterValue: 'all' },
+                    { label: 'Active Items', val: stats.active, icon: HiOutlineCheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', filterValue: 'active' },
+                    { label: 'Low Stock', val: stats.lowStock, icon: HiOutlineExclamationCircle, color: 'text-amber-600', bg: 'bg-amber-50', filterValue: 'low_stock' },
+                    { label: 'Out of Stock', val: stats.outOfStock, icon: HiOutlineArchiveBox, color: 'text-rose-600', bg: 'bg-rose-50', filterValue: 'out_of_stock' }
                 ].map((stat, i) => (
-                    <Card key={i} className="border-none shadow-sm ring-1 ring-slate-100 p-4 relative overflow-hidden group">
+                    <Card
+                        key={i}
+                        onClick={() => setFilterStatus(stat.filterValue)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilterStatus(stat.filterValue); } }}
+                        className={cn(
+                            "border-none shadow-sm p-4 relative overflow-hidden group cursor-pointer transition-all hover:shadow-md active:scale-[0.98]",
+                            filterStatus === stat.filterValue ? "ring-2 ring-primary/60" : "ring-1 ring-slate-100",
+                        )}
+                    >
                         <div className="flex items-center gap-3">
                             <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 duration-300", stat.bg, stat.color)}>
                                 <stat.icon className="h-5 w-5" />
@@ -1062,7 +1076,9 @@ const ProductManagement = () => {
                                     filterStatus === 'active' ? "bg-emerald-500 text-white shadow-md shadow-emerald-100" :
                                         filterStatus === 'inactive' ? "bg-amber-500 text-white shadow-md shadow-amber-100" :
                                             filterStatus === 'rejected' ? "bg-rose-500 text-white shadow-md shadow-rose-100" :
-                                                "bg-white ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50"
+                                                filterStatus === 'low_stock' ? "bg-amber-500 text-white shadow-md shadow-amber-100" :
+                                                    filterStatus === 'out_of_stock' ? "bg-rose-500 text-white shadow-md shadow-rose-100" :
+                                                        "bg-white ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50"
                             )}
                         >
                             <HiOutlineFunnel className="h-4 w-4" />
@@ -1071,7 +1087,9 @@ const ProductManagement = () => {
                                     filterStatus === 'active' ? 'ONLY LIVE' :
                                         filterStatus === 'inactive' ? 'ONLY DRAFT' :
                                             filterStatus === 'rejected' ? 'ONLY REJECTED' :
-                                                'SHOW ALL'}
+                                                filterStatus === 'low_stock' ? 'ONLY LOW STOCK' :
+                                                    filterStatus === 'out_of_stock' ? 'ONLY OUT OF STOCK' :
+                                                        'SHOW ALL'}
                             </span>
                         </button>
                         {activeTab === 'seller' && (

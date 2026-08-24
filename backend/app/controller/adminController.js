@@ -36,9 +36,8 @@ export const getAdminStats = async (req, res) => {
   try {
     // 1. Basic Counts
     const [
-      totalCustomers, 
-      totalSellers, 
-      totalRiders, 
+      totalCustomers,
+      totalSellers,
       totalOrders,
       newOrderCount,
       allCategoryCount,
@@ -46,14 +45,15 @@ export const getAdminStats = async (req, res) => {
     ] = await Promise.all([
         User.countDocuments({ role: { $in: ["user", "customer"] } }),
         Seller.countDocuments(),
-        Delivery.countDocuments(),
         Order.countDocuments(),
         Order.countDocuments({ status: "pending" }),
         Category.countDocuments(),
         Seller.countDocuments({ isVerified: false })
       ]);
 
-    const totalUsers = totalCustomers + totalSellers + totalRiders;
+    // "Total Users" tile deep-links to /admin/customers, so it must match that
+    // page's "Total Customers" count rather than also folding in sellers/riders.
+    const totalUsers = totalCustomers;
     const activeSellers = totalSellers - inactiveSellerCount;
 
     // 2. Revenue calculation
@@ -151,6 +151,7 @@ export const getAdminStats = async (req, res) => {
       revenueHistory,
       recentOrders: recentOrders.map((o) => ({
         id: o.orderId,
+        displayOrderNumber: o.displayOrderNumber || null,
         customer: o.customer?.name || "Guest",
         statusText: o.status,
         status:
@@ -1187,6 +1188,49 @@ export const updateCustomerCodPolicy = async (req, res) => {
     if (codCancelCount !== undefined && Number.isFinite(Number(codCancelCount))) customer.codCancelCount = Math.max(0, Math.floor(Number(codCancelCount)));
     await customer.save();
     return handleResponse(res, 200, "Customer COD policy updated", { _id: customer._id, codBlocked: customer.codBlocked, codCancelCount: customer.codCancelCount, codBlockedAt: customer.codBlockedAt || null });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   CREDIT CUSTOMER WALLET (Admin)
+   Covers manual goodwill/compensation credits and promotional balance top-ups.
+================================ */
+export const creditCustomerWallet = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason, isPromotional } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(id)) return handleResponse(res, 400, "Invalid customer id");
+
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return handleResponse(res, 400, "amount must be a positive number");
+    }
+
+    const customer = await User.findById(id);
+    if (!customer || !["user", "customer"].includes(String(customer.role || ""))) {
+      return handleResponse(res, 404, "Customer not found");
+    }
+
+    customer.walletBalance = Number(customer.walletBalance || 0) + parsedAmount;
+    await customer.save();
+
+    const type = isPromotional ? "Promotional Credit" : "Wallet Credit";
+    await Transaction.create({
+      user: customer._id,
+      userModel: "User",
+      type,
+      amount: parsedAmount,
+      status: "Settled",
+      reference: `ADM-${isPromotional ? "PROMO" : "CREDIT"}-${customer._id}-${Date.now()}`,
+      meta: { creditedBy: req.user?.id, reason: reason || undefined },
+    });
+
+    return handleResponse(res, 200, "Wallet credited successfully", {
+      _id: customer._id,
+      walletBalance: customer.walletBalance,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

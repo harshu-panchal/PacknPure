@@ -56,7 +56,7 @@ function SubcategoryButton({ sub, active, onClick, variant = 'mobile' }) {
               : 'bg-slate-50 shadow-sm opacity-80 hover:opacity-100 hover:shadow-md hover:-translate-y-0.5',
           )}
         >
-          <img src={sub.icon} alt="" className="h-full w-full object-contain drop-shadow-sm" loading="lazy" />
+          <img src={sub.icon} alt="" className="h-full w-full object-cover drop-shadow-sm" loading="lazy" />
         </span>
         <span 
           className={cn(
@@ -89,7 +89,7 @@ function SubcategoryButton({ sub, active, onClick, variant = 'mobile' }) {
             : 'bg-slate-50 shadow-sm opacity-80 hover:opacity-100 hover:shadow-md hover:-translate-y-0.5',
         )}
       >
-        <img src={sub.icon} alt="" className="h-full w-full object-contain drop-shadow-sm" loading="lazy" />
+        <img src={sub.icon} alt="" className="h-full w-full object-cover drop-shadow-sm" loading="lazy" />
       </span>
       <span
         className={cn(

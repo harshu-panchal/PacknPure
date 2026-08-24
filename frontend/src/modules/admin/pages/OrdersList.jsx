@@ -24,7 +24,8 @@ import {
     Clock,
     CheckCircle2,
     XCircle,
-    Route
+    Route,
+    Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -33,6 +34,71 @@ import {
     adminRouteMatchesOrder,
 } from '@/shared/utils/orderStatus';
 import OrderTabs from '../components/OrderTabs';
+
+const DATE_RANGE_OPTIONS = ['All Time', 'Today', 'This Week', 'This Month', 'Last 30 Days'];
+
+// Shared by the on-screen table filter and the export — so exported rows
+// always match exactly what's visible with the current date range applied.
+const orderMatchesDateRange = (createdAt, dateRange) => {
+    if (!dateRange || dateRange === 'All Time') return true;
+    const created = createdAt ? new Date(createdAt) : null;
+    if (!created || Number.isNaN(created.getTime())) return true;
+
+    const now = new Date();
+    if (dateRange === 'Today') {
+        return created.toDateString() === now.toDateString();
+    }
+    if (dateRange === 'This Week') {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        return created >= startOfWeek;
+    }
+    if (dateRange === 'This Month') {
+        return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+    }
+    if (dateRange === 'Last 30 Days') {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(now.getDate() - 30);
+        return created >= thirtyDaysAgo;
+    }
+    return true;
+};
+
+const ORDER_EXPORT_COLUMNS = [
+    { key: 'orderNumber', label: 'Order Number' },
+    { key: 'customer', label: 'Customer' },
+    { key: 'seller', label: 'Seller' },
+    { key: 'items', label: 'Items' },
+    { key: 'amount', label: 'Amount (INR)' },
+    { key: 'status', label: 'Status' },
+    { key: 'payment', label: 'Payment' },
+    { key: 'deliveryMode', label: 'Delivery Mode' },
+    { key: 'date', label: 'Date' },
+];
+
+const csvEscape = (value) => {
+    const str = String(value ?? '');
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+};
+
+const buildOrdersCsv = (rows) => {
+    const header = ORDER_EXPORT_COLUMNS.map((c) => csvEscape(c.label)).join(',');
+    const lines = rows.map((row) => ORDER_EXPORT_COLUMNS.map((c) => csvEscape(row[c.key])).join(','));
+    return [header, ...lines].join('\r\n');
+};
+
+const downloadCsv = (csv, filename) => {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
 
 const OrdersList = () => {
     const { status = 'all' } = useParams();
@@ -62,6 +128,7 @@ const OrdersList = () => {
     const [batchRiderId, setBatchRiderId] = useState("");
 
     const [slotOnly, setSlotOnly] = useState(false);
+    const [expressOnly, setExpressOnly] = useState(false);
     const [activeStatModal, setActiveStatModal] = useState(null);
 
     const fetchOrders = async (requestedPage = 1) => {
@@ -87,6 +154,7 @@ const OrdersList = () => {
 
                     return {
                         id: o.orderId,
+                        displayOrderNumber: o.displayOrderNumber || null,
                         _id: o._id,
                         customer: o.customer?.name || 'Unknown',
                         seller: o.seller?.shopName || 'Unknown',
@@ -98,6 +166,7 @@ const OrdersList = () => {
                         workflowVersion: o.workflowVersion,
                         returnStatus: o.returnStatus,
                         deliveryBoyId: o.deliveryBoy?._id || o.deliveryBoy || null,
+                        createdAt: o.createdAt || null,
                         date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
                         payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
                         // Slot booking (vs express) — drives the "Slot" badge/filter/grouping below
@@ -171,18 +240,26 @@ const OrdersList = () => {
         return safeOrders.filter(order => {
             const matchesSearch =
                 order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (order.displayOrderNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 order.seller.toLowerCase().includes(searchTerm.toLowerCase());
 
             const matchesStatus = adminRouteMatchesOrder(status, order);
             const matchesSlot = !slotOnly || order.deliveryMode === 'SLOT';
+            const matchesExpress = !expressOnly || order.deliveryMode === 'EXPRESS';
+            const matchesDateRange = orderMatchesDateRange(order.createdAt, dateRange);
 
-            return matchesSearch && matchesStatus && matchesSlot;
+            return matchesSearch && matchesStatus && matchesSlot && matchesExpress && matchesDateRange;
         });
-    }, [safeOrders, searchTerm, status, slotOnly]);
+    }, [safeOrders, searchTerm, status, slotOnly, expressOnly, dateRange]);
 
     const slotOrderCount = useMemo(
         () => safeOrders.filter((o) => o.deliveryMode === 'SLOT').length,
+        [safeOrders],
+    );
+
+    const expressOrderCount = useMemo(
+        () => safeOrders.filter((o) => o.deliveryMode === 'EXPRESS').length,
         [safeOrders],
     );
 
@@ -211,8 +288,65 @@ const OrdersList = () => {
         }
     };
 
-    const handleExport = () => {
-        showToast('Exporting order data archive...', 'info');
+    const handleExport = async () => {
+        showToast('Preparing export…', 'info');
+        try {
+            // Pull every order matching the current status tab — not just the
+            // on-screen page — then apply the same search/express/slot/date
+            // filters the table uses, so the CSV matches what's displayed.
+            let allOrders = [];
+            let fetchPage = 1;
+            let totalPages = 1;
+            do {
+                const params = { page: fetchPage, limit: 100 };
+                if (status !== 'all') params.status = status;
+                const response = await adminApi.getOrders(params);
+                const payload = response.data?.result || {};
+                const items = Array.isArray(payload.items) ? payload.items : [];
+                allOrders = allOrders.concat(items);
+                totalPages = payload.totalPages || 1;
+                fetchPage += 1;
+            } while (fetchPage <= totalPages && fetchPage <= 50);
+
+            const term = searchTerm.toLowerCase();
+            const rows = allOrders
+                .filter((o) => {
+                    const mode = o.deliveryMode || 'EXPRESS';
+                    if (expressOnly && mode !== 'EXPRESS') return false;
+                    if (slotOnly && mode !== 'SLOT') return false;
+                    if (!orderMatchesDateRange(o.createdAt, dateRange)) return false;
+                    if (term) {
+                        const haystack = [o.orderId, o.displayOrderNumber, o.customer?.name, o.seller?.shopName]
+                            .filter(Boolean)
+                            .join(' ')
+                            .toLowerCase();
+                        if (!haystack.includes(term)) return false;
+                    }
+                    return true;
+                })
+                .map((o) => ({
+                    orderNumber: o.displayOrderNumber || o.orderId,
+                    customer: o.customer?.name || 'Unknown',
+                    seller: o.seller?.shopName || 'Unknown',
+                    items: o.items?.length || 0,
+                    amount: o.pricing?.total || 0,
+                    status: getLegacyStatusFromOrder(o),
+                    payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
+                    deliveryMode: o.deliveryMode || 'EXPRESS',
+                    date: o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : '',
+                }));
+
+            if (rows.length === 0) {
+                showToast('No orders match the current filters', 'error');
+                return;
+            }
+
+            const csv = buildOrdersCsv(rows);
+            downloadCsv(csv, `orders-export-${new Date().toISOString().slice(0, 10)}.csv`);
+            showToast(`Exported ${rows.length} orders`, 'success');
+        } catch (e) {
+            showToast('Failed to export orders', 'error');
+        }
     };
 
     const openAssignModal = async (order) => {
@@ -374,10 +508,19 @@ const OrdersList = () => {
                         EXPORT
                     </button>
                     <div className="h-10 w-px bg-slate-200 mx-1 hidden lg:block" />
-                    <button className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">
-                        <Calendar className="h-4 w-4 text-emerald-500" />
-                        {dateRange}
-                    </button>
+                    <div className="relative group">
+                        <select
+                            value={dateRange}
+                            onChange={(e) => setDateRange(e.target.value)}
+                            className="appearance-none pl-10 pr-8 py-3 bg-white ring-1 ring-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-fuchsia-500/10 transition-all cursor-pointer shadow-sm"
+                        >
+                            {DATE_RANGE_OPTIONS.map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500 pointer-events-none" />
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                    </div>
                 </div>
             </div>
 
@@ -424,6 +567,19 @@ const OrdersList = () => {
                         />
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setExpressOnly((v) => !v)}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+                                expressOnly
+                                    ? "bg-red-600 text-white shadow-sm"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            )}
+                            title="Show only express-delivery orders"
+                        >
+                            <Zap className="h-4 w-4" />
+                            Express Orders ({expressOrderCount})
+                        </button>
                         <button
                             onClick={() => setSlotOnly((v) => !v)}
                             className={cn(
@@ -496,7 +652,7 @@ const OrdersList = () => {
                                             </div>
                                             <div>
                                                 <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                                                    #{order.id}
+                                                    #{order.displayOrderNumber || order.id}
                                                     <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all text-slate-400" />
                                                 </h4>
                                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -628,7 +784,7 @@ const OrdersList = () => {
                     setAssignOpen(false);
                     setAssignOrder(null);
                 }}
-                title={`Assign Delivery Partner${assignOrder?.id ? ` • #${assignOrder.id}` : ""}`}
+                title={`Assign Delivery Partner${assignOrder?.id ? ` • #${assignOrder.displayOrderNumber || assignOrder.id}` : ""}`}
             >
                 <div className="space-y-4">
                     <div>
@@ -845,7 +1001,7 @@ const OrdersList = () => {
                                             const margin = o.amount > 0 ? ((o.earning / o.amount) * 100).toFixed(1) : '0';
                                             return (
                                                 <tr key={o.id} className="hover:bg-slate-50">
-                                                    <td className="p-3 font-bold text-slate-900">#{o.id}</td>
+                                                    <td className="p-3 font-bold text-slate-900">#{o.displayOrderNumber || o.id}</td>
                                                     <td className="p-3">{o.customer}</td>
                                                     <td className="p-3 font-bold">₹{o.amount.toLocaleString()}</td>
                                                     <td className="p-3 text-right font-black text-emerald-600">₹{o.earning.toLocaleString()}</td>
@@ -898,7 +1054,7 @@ const OrdersList = () => {
                                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                                         {safeOrders.map((o) => (
                                             <tr key={o.id} className="hover:bg-slate-50">
-                                                <td className="p-3 font-bold text-slate-900">#{o.id}</td>
+                                                <td className="p-3 font-bold text-slate-900">#{o.displayOrderNumber || o.id}</td>
                                                 <td className="p-3">{o.seller}</td>
                                                 <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">{o.payment}</span></td>
                                                 <td className="p-3 uppercase text-[10px] font-bold text-slate-500">{o.status}</td>

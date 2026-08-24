@@ -305,7 +305,7 @@ const AdminDashboard = () => {
                                             onClick={() => navigate(`/admin/orders/view/${order.id}`)}
                                             className="group hover:bg-slate-50/80 transition-all cursor-pointer"
                                         >
-                                            <td className="py-4 text-sm font-semibold text-primary">#{order.id}</td>
+                                            <td className="py-4 text-sm font-semibold text-primary">#{order.displayOrderNumber || order.id}</td>
                                             <td className="py-4">
                                                 <div className="flex items-center space-x-2">
                                                     <div className="h-7 w-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-500 ring-2 ring-white shadow-sm uppercase">

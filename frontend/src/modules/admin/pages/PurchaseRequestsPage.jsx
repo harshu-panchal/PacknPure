@@ -29,6 +29,19 @@ const stagePillClass = (status) => {
   return "bg-slate-100 text-slate-700 ring-slate-200";
 };
 
+// Statuses grouped under the "In transit" and "Open pipeline" quick-stat
+// filters — kept as one source of truth so the stat counts and the row
+// filter never drift apart.
+const IN_TRANSIT_STATUSES = ["pickup_assigned", "picked", "hub_delivered"];
+const CLOSED_STATUSES = ["verified", "closed", "cancelled"];
+
+const rowMatchesStatusFilter = (row, filter) => {
+  if (filter === "all") return true;
+  if (filter === "in_transit") return IN_TRANSIT_STATUSES.includes(row.rawStatus);
+  if (filter === "open_pipeline") return !CLOSED_STATUSES.includes(row.rawStatus);
+  return row.rawStatus === filter;
+};
+
 const PurchaseRequestsPage = () => {
   const [rows, setRows] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -95,7 +108,7 @@ const PurchaseRequestsPage = () => {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((row) => {
-      if (statusFilter !== "all" && row.rawStatus !== statusFilter) return false;
+      if (!rowMatchesStatusFilter(row, statusFilter)) return false;
       if (!q) return true;
       return (
         String(row.requestId || "").toLowerCase().includes(q) ||
@@ -229,15 +242,20 @@ const PurchaseRequestsPage = () => {
   };
 
   const stats = useMemo(() => {
-    const open = rows.filter((r) => !["verified", "closed", "cancelled"].includes(r.rawStatus));
-    return [
-      { label: "Total requests", value: String(rows.length) },
-      { label: "Awaiting vendor", value: String(rows.filter((r) => r.rawStatus === "created").length) },
-      { label: "In transit", value: String(rows.filter((r) => ["pickup_assigned", "picked", "hub_delivered"].includes(r.rawStatus)).length) },
-      { label: "Stocked", value: String(rows.filter((r) => r.rawStatus === "verified").length) },
-      { label: "Open pipeline", value: String(open.length) },
+    const open = rows.filter((r) => !CLOSED_STATUSES.includes(r.rawStatus));
+    const statCards = [
+      { label: "Total requests", value: String(rows.length), filterValue: "all" },
+      { label: "Awaiting vendor", value: String(rows.filter((r) => r.rawStatus === "created").length), filterValue: "created" },
+      { label: "In transit", value: String(rows.filter((r) => IN_TRANSIT_STATUSES.includes(r.rawStatus)).length), filterValue: "in_transit" },
+      { label: "Stocked", value: String(rows.filter((r) => r.rawStatus === "verified").length), filterValue: "verified" },
+      { label: "Open pipeline", value: String(open.length), filterValue: "open_pipeline" },
     ];
-  }, [rows]);
+    return statCards.map((stat) => ({
+      ...stat,
+      active: statusFilter === stat.filterValue,
+      onClick: () => setStatusFilter(stat.filterValue),
+    }));
+  }, [rows, statusFilter]);
 
   return (
     <div className="space-y-6">
@@ -272,10 +290,12 @@ const PurchaseRequestsPage = () => {
               <option value="seller_confirmed">Seller confirmed</option>
               <option value="vendor_confirmed">Vendor confirmed</option>
               <option value="pickup_assigned">Pickup assigned</option>
-              <option value="picked">In transit</option>
+              <option value="picked">Picked up</option>
+              <option value="in_transit">In transit (any stage)</option>
               <option value="hub_delivered">At hub gate</option>
               <option value="received_at_hub">Received at hub</option>
               <option value="verified">Verified</option>
+              <option value="open_pipeline">Open pipeline (not yet closed)</option>
               <option value="expired">Expired</option>
               <option value="seller_rejected">Seller Rejected</option>
               <option value="exception">Exception</option>

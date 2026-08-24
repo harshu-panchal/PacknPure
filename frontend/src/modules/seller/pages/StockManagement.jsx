@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import Button from '@shared/components/ui/Button';
 import Badge from '@shared/components/ui/Badge';
@@ -33,10 +33,12 @@ import { barcodeApi } from '@core/services/barcodeApi';
 
 const StockManagement = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [activeView, setActiveView] = useState('inventory'); // 'inventory' or 'history'
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebouncedValue(searchTerm, DEBOUNCE_MS.filter);
-    const [filterStatus, setFilterStatus] = useState('All');
+    // Deep-linkable via ?status=Low%20Stock (e.g. from the POS dashboard's Low Stock Alerts card)
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || 'All');
     const [inventory, setInventory] = useState([]);
     const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);

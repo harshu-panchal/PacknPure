@@ -397,10 +397,14 @@ export const getCustomerTransactions = async (req, res) => {
             Transaction.countDocuments({ user: customerId, userModel: "User" }),
         ]);
 
+        // Credit/debit is derived from the transaction's actual signed amount,
+        // not a hardcoded type check — every wallet-crediting type (Refund,
+        // Wallet Credit, Promotional Credit, ...) renders correctly this way,
+        // including any new type added later.
         const items = transactions.map((t) => ({
             _id: t._id,
-            type: t.type === "Refund" ? "credit" : "debit",
-            title: t.type === "Refund" ? "Refund" : t.type,
+            type: t.amount >= 0 ? "credit" : "debit",
+            title: t.type || (t.amount >= 0 ? "Wallet credit" : "Wallet debit"),
             amount: Math.abs(t.amount),
             date: t.createdAt,
             reference: t.reference,

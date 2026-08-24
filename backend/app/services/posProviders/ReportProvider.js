@@ -12,14 +12,19 @@ export class ReportProvider {
 
 export class AdminReportProvider extends ReportProvider {
     async getDashboardStats(today, reqUser) {
-        const posOrders = await Order.find({ orderSource: "POS", createdAt: { $gte: today }, status: "completed" });
-        const onlineOrders = await Order.find({ orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "completed" });
+        // Order.status has no "completed" value (see order.js enum) — the
+        // terminal successful state is "delivered", which is what POS
+        // take-away orders and fulfilled online orders actually end up as.
+        const posOrders = await Order.find({ orderSource: "POS", createdAt: { $gte: today }, status: "delivered" });
+        const onlineOrders = await Order.find({ orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "delivered" });
         const posSales = posOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
         const onlineSales = onlineOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
-        const pendingPosOrders = await Order.countDocuments({ orderSource: "POS", status: { $in: ["pending", "processing"] } });
-        const pendingOnlineOrders = await Order.countDocuments({ orderSource: { $ne: "POS" }, status: { $in: ["pending", "processing"] } });
+        // POS orders only ever land on "pending" (home delivery, not yet
+        // delivered) or "delivered" (take-away) — "processing" is not a real status.
+        const pendingPosOrders = await Order.countDocuments({ orderSource: "POS", status: "pending" });
+        const pendingOnlineOrders = await Order.countDocuments({ orderSource: { $ne: "POS" }, status: { $in: ["pending", "confirmed", "packed", "out_for_delivery"] } });
         const lowStockCount = await HubInventory.countDocuments({ $expr: { $lte: ["$availableQty", "$reorderLevel"] } });
-        const activeSessions = await PosSession.countDocuments({ status: "open" });
+        const activeSessions = await PosSession.countDocuments({ status: "OPEN" });
 
         return {
             sales: { pos: posSales, online: onlineSales, total: posSales + onlineSales },
@@ -44,17 +49,21 @@ export class AdminReportProvider extends ReportProvider {
 
 export class SellerReportProvider extends ReportProvider {
     async getDashboardStats(today, reqUser) {
-        const query = { orderSource: "POS", createdAt: { $gte: today }, status: "completed", "posDetails.sellerId": reqUser.id };
+        // Order.status has no "completed" value (see order.js enum) — the
+        // terminal successful state is "delivered".
+        const query = { orderSource: "POS", createdAt: { $gte: today }, status: "delivered", "posDetails.sellerId": reqUser.id };
         const posOrders = await Order.find(query);
         const posSales = posOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
-        
+
         // Online orders for seller
-        const onlineQuery = { orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "completed", seller: reqUser.id };
+        const onlineQuery = { orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "delivered", seller: reqUser.id };
         const onlineOrders = await Order.find(onlineQuery);
         const onlineSales = onlineOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
 
-        const pendingPosOrders = await Order.countDocuments({ orderSource: "POS", status: { $in: ["pending", "processing"] }, "posDetails.sellerId": reqUser.id });
-        const pendingOnlineOrders = await Order.countDocuments({ orderSource: { $ne: "POS" }, status: { $in: ["pending", "processing"] }, seller: reqUser.id });
+        // POS orders only ever land on "pending" (home delivery, not yet
+        // delivered) or "delivered" (take-away) — "processing" is not a real status.
+        const pendingPosOrders = await Order.countDocuments({ orderSource: "POS", status: "pending", "posDetails.sellerId": reqUser.id });
+        const pendingOnlineOrders = await Order.countDocuments({ orderSource: { $ne: "POS" }, status: { $in: ["pending", "confirmed", "packed", "out_for_delivery"] }, seller: reqUser.id });
         
         // Low stock alerts for seller
         const lowStockCount = await Product.countDocuments({ ownerType: "seller", sellerId: reqUser.id, stock: { $lte: 5 } }); // simplistic reorder logic

@@ -128,7 +128,11 @@ export function parseAddressParts(addressLine = '') {
 }
 
 export function getInvoiceNumber(order) {
-  return order?.invoiceNumber || order?.receiptNumber || `INV-${order?.orderId || 'NA'}`;
+  return (
+    order?.invoiceNumber ||
+    order?.receiptNumber ||
+    `INV-${order?.displayOrderNumber || order?.orderId || 'NA'}`
+  );
 }
 
 export function getPaymentMethodLabel(order) {
@@ -294,7 +298,7 @@ export function buildInvoiceViewModel(order, settings = {}, systemUser = '') {
 
   return {
     orderId: order?._id || order?.id || '',
-    orderNumber: order?.orderId || '—',
+    orderNumber: order?.displayOrderNumber || order?.orderId || '—',
     invoiceNumber: getInvoiceNumber(order),
     invoiceDate: order?.invoiceDate || order?.updatedAt || order?.createdAt,
     orderDate: order?.createdAt,

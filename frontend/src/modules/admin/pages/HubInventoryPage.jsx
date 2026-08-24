@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Boxes, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import Modal from "@shared/components/ui/Modal";
@@ -39,6 +40,7 @@ function variantOptionsFromRow(row) {
 }
 
 const HubInventoryPage = () => {
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [inventoryTotals, setInventoryTotals] = useState({
     totalHubAvailable: 0,
@@ -49,7 +51,10 @@ const HubInventoryPage = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
-  const [inventoryFilter, setInventoryFilter] = useState("all");
+  // Deep-linkable via ?filter=low_stock (e.g. from the POS dashboard's Low Stock Alerts card)
+  const [inventoryFilter, setInventoryFilter] = useState(
+    () => searchParams.get("filter") || "all",
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -393,8 +398,8 @@ const HubInventoryPage = () => {
   const stats = useMemo(() => {
     const lowStock = rows.filter((item) => statusText(item.status) === "Low Stock").length;
     return [
-      { label: "Total SKUs", value: String(rows.length) },
-      { label: "Low Stock Alerts", value: String(lowStock) },
+      { label: "Total SKUs", value: String(rows.length), active: inventoryFilter === "all", onClick: () => setInventoryFilter("all") },
+      { label: "Low Stock Alerts", value: String(lowStock), active: inventoryFilter === "low_stock", onClick: () => setInventoryFilter("low_stock") },
       { label: "Total Hub Available", value: String(inventoryTotals.totalHubAvailable || 0) },
       { label: "Total Hub Reserved", value: String(inventoryTotals.totalHubReserved || 0) },
       { label: "Total Seller Available", value: String(inventoryTotals.totalSellerAvailable || 0) },
@@ -404,7 +409,7 @@ const HubInventoryPage = () => {
         value: rows.length ? `${Math.round(((rows.length - lowStock) / rows.length) * 100)}%` : "0%",
       },
     ];
-  }, [rows, inventoryTotals]);
+  }, [rows, inventoryTotals, inventoryFilter]);
 
   return (
     <>

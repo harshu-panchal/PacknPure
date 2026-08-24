@@ -24,6 +24,7 @@ export const adminApi = {
     getCodCustomers: (params) => axiosInstance.get('/admin/users-cod', { params }),
     updateUserCodPolicy: (id, data) => axiosInstance.patch(`/admin/users/${id}/cod-policy`, data),
     updateUserStatus: (id, data) => axiosInstance.patch(`/admin/users/${id}/status`, data),
+    creditCustomerWallet: (id, data) => axiosInstance.post(`/admin/users/${id}/wallet-credit`, data),
     approveSeller: (id) => axiosInstance.patch(`/admin/sellers/approve/${id}`),
     approveSellerPos: (id, isPosApproved) => axiosInstance.patch(`/admin/sellers/approve-pos/${id}`, { isPosApproved }),
     rejectSeller: (id) => axiosInstance.delete(`/admin/sellers/reject/${id}`),

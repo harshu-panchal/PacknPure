@@ -288,12 +288,17 @@ const CheckoutPage = () => {
     [],
   );
 
+  // Repeated COD-then-cancel abuse gets a customer flagged codBlocked=true
+  // server-side (see applyCodCancellationStrike) — hide Cash on Delivery here
+  // too so the restriction is visible up front, not just as a checkout error.
+  const isCodBlocked = Boolean(user?.codBlocked);
+
   const paymentMethods = useMemo(
     () =>
-      isAuthenticated
-        ? allPaymentMethods
-        : allPaymentMethods.filter((m) => m.id !== "wallet"),
-    [allPaymentMethods, isAuthenticated],
+      allPaymentMethods
+        .filter((m) => isAuthenticated || m.id !== "wallet")
+        .filter((m) => !isCodBlocked || m.id !== "cash"),
+    [allPaymentMethods, isAuthenticated, isCodBlocked],
   );
 
   useEffect(() => {
@@ -301,6 +306,12 @@ const CheckoutPage = () => {
       setSelectedPayment("cash");
     }
   }, [isAuthenticated, selectedPayment]);
+
+  useEffect(() => {
+    if (isCodBlocked && selectedPayment === "cash") {
+      setSelectedPayment("online");
+    }
+  }, [isCodBlocked, selectedPayment]);
 
   // const deliveryFee = 0; // Now handled by state
   // const platformFee = 3; // Now handled by state
@@ -1436,6 +1447,12 @@ const CheckoutPage = () => {
                     );
                   })}
                 </div>
+                {isCodBlocked && (
+                  <p className="mt-3 text-xs font-medium text-amber-600">
+                    Cash on Delivery has been disabled for your account due to repeated cancelled COD orders.
+                    Please use online or wallet payment.
+                  </p>
+                )}
               </CheckoutCollapsible>
 
               <div className="mt-4 border-t border-slate-200 pt-4">
