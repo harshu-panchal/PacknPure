@@ -130,6 +130,14 @@ export const createNotificationBatch = async (items = [], options = {}) => {
 export const createNotification = async (input = {}) =>
   (await createNotificationBatch([input], input))[0] || null;
 
+/**
+ * Returns { notifications, recipientCount } rather than a bare array so the
+ * caller can tell "no recipients matched this audience" (recipientCount: 0)
+ * apart from "recipients matched but persistence failed" (recipientCount > 0,
+ * notifications.length === 0) — createNotificationBatch swallows persistence
+ * errors by design (a bad notification must never abort the order/workflow
+ * that triggered it), so this is the one place that failure needs to surface.
+ */
 export const broadcastNotification = async ({
   targetRole = "all",
   recipientIds = [],
@@ -144,9 +152,9 @@ export const broadcastNotification = async ({
     includePickupPartner,
   });
 
-  if (!recipients.length) return [];
+  if (!recipients.length) return { notifications: [], recipientCount: 0 };
 
-  return createNotificationBatch(
+  const notifications = await createNotificationBatch(
     recipients.map((recipient) => ({
       ...notification,
       recipient: recipient.recipient,
@@ -156,4 +164,6 @@ export const broadcastNotification = async ({
     })),
     notification,
   );
+
+  return { notifications, recipientCount: recipients.length };
 };

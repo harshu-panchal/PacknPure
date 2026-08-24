@@ -27,7 +27,7 @@ const notificationOutboxSchema = new mongoose.Schema(
     recipientModel: {
       type: String,
       required: true,
-      enum: ["Seller", "Admin", "Customer", "Delivery", "PickupPartner"],
+      enum: ["Seller", "Admin", "User", "Delivery", "PickupPartner"],
       index: true,
     },
     notificationType: {

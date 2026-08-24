@@ -35,6 +35,8 @@ import {
 } from "../utils/orderItemHelpers.js";
 import { buildDeliverySnapshot } from "./deliverySnapshotService.js";
 import { generateOrderNumber } from "./orderNumberService.js";
+import { processReferralOnFirstOrder } from "./referralService.js";
+import { validatePromoRules } from "./promotionValidationService.js";
 
 const ORDER_CART_POPULATE = "name mainImage price salePrice gstRate gstEnabled variants purchasePrice";
 
@@ -211,6 +213,9 @@ export const executeCoreOrderFulfillment = async ({
 
     // 5. Pricing and GST calculation
     let validatedPricing = { ...pricing };
+    // Never trust a client-supplied discount — it is only ever set below after a
+    // coupon is re-validated server-side against this exact cart/customer.
+    validatedPricing.discount = 0;
     if (normalizedAddress?.location) {
       const calc = await calculateDeliveryFee(normalizedAddress.location);
       if (calc.isOutOfRange) {
@@ -236,11 +241,15 @@ export const executeCoreOrderFulfillment = async ({
 
       let totalItemGst = 0;
       let trueSubtotal = 0;
-      
+      // GST-inclusive running total — matches what the customer actually saw as
+      // "subtotal" on the checkout screen, so coupon min-order/percentage math
+      // lines up with the amount they validated the coupon against.
+      let grossSubtotal = 0;
+
       orderItems = orderItems.map(item => {
         const itemSellingTotal = (item.price || 0) * (item.quantity || 0);
         const rate = Number(item.gstRate || 0);
-        
+
         let itemGstAmount = 0;
         let itemBasePrice = itemSellingTotal;
 
@@ -251,6 +260,7 @@ export const executeCoreOrderFulfillment = async ({
 
         totalItemGst += itemGstAmount;
         trueSubtotal += itemBasePrice;
+        grossSubtotal += itemSellingTotal;
 
         const baseCost = item.purchasePrice || 0;
         const costTotal = baseCost * (item.quantity || 0);
@@ -272,10 +282,40 @@ export const executeCoreOrderFulfillment = async ({
       const serviceGst = 0;
       validatedPricing.subtotal = Number(trueSubtotal.toFixed(2));
       validatedPricing.gst = Number((totalItemGst + serviceGst).toFixed(2));
-      validatedPricing.total = Number((validatedPricing.subtotal 
+
+      // Re-validate the selected coupon server-side (min order value, first-order-only,
+      // per-user limit, expiry, etc.) — the client only ever *suggests* a promotionId,
+      // the discount amount is always computed here, never accepted from the request body.
+      if (promotionId) {
+        if (!mongoose.Types.ObjectId.isValid(promotionId)) {
+          throw new Error("Invalid coupon selected");
+        }
+        const PromotionModel = mongoose.model("Promotion");
+        let promoQuery = PromotionModel.findById(promotionId);
+        if (session) promoQuery = promoQuery.session(session);
+        const promo = await promoQuery;
+        if (!promo) {
+          throw new Error("Selected coupon is no longer available");
+        }
+        const promoValidationItems = orderItems.map((it) => ({ ...it, productId: it.product }));
+        const promoResult = await validatePromoRules(promo, {
+          cartTotal: Number(grossSubtotal.toFixed(2)),
+          items: promoValidationItems,
+          customerId,
+        });
+        if (!promoResult.valid) {
+          throw new Error(promoResult.reason || "Coupon is not valid for this order");
+        }
+        validatedPricing.discount = promoResult.discountAmount || 0;
+        if (promoResult.freeDelivery) {
+          validatedPricing.deliveryFee = 0;
+        }
+      }
+
+      validatedPricing.total = Number((validatedPricing.subtotal
         + validatedPricing.gst
         - (validatedPricing.discount || 0)
-        + validatedPricing.deliveryFee 
+        + validatedPricing.deliveryFee
         + (validatedPricing.expressCharge || 0)
         + validatedPricing.platformFee
         + (validatedPricing.tip || 0)).toFixed(2));
@@ -453,7 +493,7 @@ export const executeCoreOrderFulfillment = async ({
 
     await createNotification({
       recipient: customerId,
-      recipientModel: "Customer",
+      recipientModel: "User",
       title: "Order Placed",
       message: `Your order #${orderId} has been placed successfully.`,
       type: "order",
@@ -563,6 +603,15 @@ export const executeCoreOrderFulfillment = async ({
     let cQuery = Cart.findOneAndUpdate({ customerId }, { items: [] });
     if (session) cQuery = cQuery.session(session);
     await cQuery;
+
+    // 14. Referral program — release the referrer's bonus if this is the referred
+    // customer's first order and it meets the admin-defined minimum value. Never
+    // allowed to block/fail order placement.
+    try {
+      await processReferralOnFirstOrder(customer, newOrder, validatedPricing?.total ?? pricing?.total ?? 0);
+    } catch (referralErr) {
+      console.warn(`[executeCoreOrderFulfillment] referral processing failed for ${newOrder.orderId}:`, referralErr.message);
+    }
 
     return {
       orderForResponse,

@@ -211,7 +211,7 @@ export async function notifyWorkflowActors(order, { title, message, type = "orde
     calls.push(
       createNotification({
         recipient: order.customer,
-        recipientModel: "Customer",
+        recipientModel: "User",
         title,
         message,
         type,

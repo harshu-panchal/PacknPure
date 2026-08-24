@@ -78,6 +78,24 @@ export const requestWithdrawal = async (req, res) => {
       return handleResponse(res, 400, "Please enter a valid amount");
     }
 
+    // 0. Bank details are mandatory before a payout can ever be requested
+    const seller = await Seller.findById(sellerId).select(
+      "bankName accountHolder accountNumber ifsc",
+    );
+    if (
+      !seller ||
+      !seller.bankName?.trim() ||
+      !seller.accountHolder?.trim() ||
+      !seller.accountNumber?.trim() ||
+      !seller.ifsc?.trim()
+    ) {
+      return handleResponse(
+        res,
+        400,
+        "Please add your bank account details in your Profile before requesting a withdrawal.",
+      );
+    }
+
     // 1. Calculate current available balance
     // Consistent with getSellerEarnings logic in sellerStatsController.js
     const transactions = await Transaction.find({

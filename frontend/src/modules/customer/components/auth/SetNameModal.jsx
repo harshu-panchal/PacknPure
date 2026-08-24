@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Sparkles, ChevronRight, Loader2, Mail, MapPin, Building2, FileText, Shield, Leaf, Briefcase, ChevronDown, X, LogOut } from 'lucide-react';
+import { User, Sparkles, ChevronRight, Loader2, Mail, MapPin, Building2, FileText, Shield, Leaf, Briefcase, ChevronDown, X, LogOut, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { customerApi } from '../../services/customerApi';
 import { BRAND_COLOR, BRAND_COLOR_DARK, BRAND_COLOR_LIGHT } from '../../constants/brandTheme';
 import AddressAutocompleteInput from './AddressAutocompleteInput';
+import { getPendingReferralCode, clearPendingReferralCode } from '@core/utils/referralCapture';
 
 const businessTypes = [
     "Restaurant", "Cafe", "Cloud Kitchen", "QSR", "Bakery", "Sweet Shop", 
@@ -36,6 +37,7 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
         panNo: '',
         gstNo: '',
         fssaiNumber: '',
+        referralCode: '',
     });
     // Optional Places metadata — never blocks save if missing (manual entry OK)
     const [userLocation, setUserLocation] = useState(null);
@@ -63,6 +65,10 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
         if (open) {
             document.body.style.overflow = 'hidden';
             setVisible(true);
+            const prefillReferral = getPendingReferralCode();
+            if (prefillReferral) {
+                setForm((prev) => ({ ...prev, referralCode: prefillReferral }));
+            }
             const t = setTimeout(() => {
                 setAnimIn(true);
                 setTimeout(() => inputRef.current?.focus(), 300);
@@ -91,6 +97,7 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                     panNo: '',
                     gstNo: '',
                     fssaiNumber: '',
+                    referralCode: '',
                 });
             }, 350);
             return () => clearTimeout(t);
@@ -141,6 +148,7 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
         const trimmedPanNo = form.panNo.trim().toUpperCase();
         const trimmedGstNo = form.gstNo.trim().toUpperCase();
         const trimmedFssai = form.fssaiNumber.trim();
+        const trimmedReferralCode = form.referralCode.trim().toUpperCase();
 
         if (!isNameValid(trimmedName)) {
             toast.error('Please enter a valid name with letters (min 2 chars)');
@@ -220,6 +228,10 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                 addresses: [addressPayload],
             };
 
+            if (trimmedReferralCode) {
+                profilePayload.referralCode = trimmedReferralCode;
+            }
+
             if (
                 businessLocation &&
                 Number.isFinite(businessLocation.lat) &&
@@ -233,6 +245,7 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
             }
 
             const response = await customerApi.updateProfile(profilePayload);
+            if (trimmedReferralCode) clearPendingReferralCode();
             toast.success(`Welcome, ${trimmedName}! 🎉`);
             onSuccess?.(trimmedName, response.data.result);
         } catch (err) {
@@ -533,6 +546,21 @@ const SetNameModal = ({ open, onSuccess, onLogout }) => {
                                     maxLength={14}
                                     disabled={isLoading}
                                     className={inputInnerClass}
+                                />
+                            </div>
+
+                            {/* ── Referral Section ── */}
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-1 pt-2">Got a referral code?</p>
+                            <div className={fieldClass} style={inputClass(form.referralCode.length > 0)}>
+                                <Gift size={18} className="shrink-0 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={form.referralCode}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, referralCode: e.target.value.toUpperCase() }))}
+                                    placeholder="Enter referral code (optional)"
+                                    maxLength={20}
+                                    disabled={isLoading}
+                                    className={`${inputInnerClass} uppercase tracking-wider`}
                                 />
                             </div>
                         </form>

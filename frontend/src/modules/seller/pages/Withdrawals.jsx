@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import Button from '@shared/components/ui/Button';
@@ -27,10 +28,12 @@ import { useAuth } from "@/core/context/AuthContext";
 import Pagination from "@shared/components/ui/Pagination";
 
 const Withdrawals = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const isVerified = user?.isVerified;
     const { earningsData: data, earningsLoading: loading, refreshEarnings } = useSellerEarnings();
     const [profile, setProfile] = useState(null);
+    const [isBankPromptOpen, setIsBankPromptOpen] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -51,6 +54,30 @@ const Withdrawals = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+
+    const hasBankDetails = Boolean(
+        profile?.bankName?.trim() &&
+        profile?.accountHolder?.trim() &&
+        profile?.accountNumber?.trim() &&
+        profile?.ifsc?.trim()
+    );
+
+    const handleGoToBankDetails = () => {
+        setIsBankPromptOpen(false);
+        navigate('/seller/profile#bank-details');
+    };
+
+    const handleOpenRequestModal = () => {
+        if (!isVerified) {
+            toast.error("Account pending approval. You cannot request withdrawals yet.");
+            return;
+        }
+        if (!hasBankDetails) {
+            setIsBankPromptOpen(true);
+            return;
+        }
+        setIsModalOpen(true);
+    };
 
     const ledger = Array.isArray(data?.ledger) ? data.ledger : [];
     const withdrawalHistory = ledger.filter((t) => (t.type || '').toString() === 'Withdrawal');
@@ -119,6 +146,12 @@ const Withdrawals = () => {
             return;
         }
 
+        if (!hasBankDetails) {
+            setIsModalOpen(false);
+            setIsBankPromptOpen(true);
+            return;
+        }
+
         try {
             setIsSubmitting(true);
             const response = await sellerApi.requestWithdrawal({ amount: parseFloat(amount) });
@@ -166,7 +199,7 @@ const Withdrawals = () => {
                         <p className="text-slate-600 text-base mt-1 font-medium">Request payouts and track your withdrawal history.</p>
                     </div>
                     <button
-                        onClick={() => isVerified ? setIsModalOpen(true) : toast.error("Account pending approval. You cannot request withdrawals yet.")}
+                        onClick={handleOpenRequestModal}
                         className={cn(
                             "w-full sm:w-auto px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2 group",
                             !isVerified && "opacity-50 cursor-not-allowed grayscale"
@@ -395,12 +428,21 @@ const Withdrawals = () => {
                                 <ArrowRight className="h-4 w-4 text-slate-300" />
                             </div>
                         </div>
+
+                        {!hasBankDetails && (
+                            <div className="p-3 bg-rose-50 rounded-2xl border border-rose-100 flex items-center gap-2.5">
+                                <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                                <p className="text-[11px] font-bold text-rose-600">
+                                    Add your bank details before requesting a payout.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex flex-col gap-3 pt-4">
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !hasBankDetails}
                             className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50 transition-all active:scale-95"
                         >
                             {isSubmitting ? <div className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'SUBMIT REQUEST'}
@@ -414,6 +456,41 @@ const Withdrawals = () => {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Bank Details Required Popup */}
+            <Modal
+                isOpen={isBankPromptOpen}
+                onClose={() => setIsBankPromptOpen(false)}
+                title="Bank Details Required"
+                size="sm"
+            >
+                <div className="text-center space-y-6 py-2">
+                    <div className="h-16 w-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+                        <AlertCircle className="h-8 w-8" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-black text-slate-900">Please add your bank details first</h3>
+                        <p className="text-sm font-medium text-slate-500 mt-2 px-2">
+                            We need your bank account details to send your payout. Please fill them in your Profile before requesting a withdrawal.
+                        </p>
+                    </div>
+                    <div className="space-y-3">
+                        <button
+                            onClick={handleGoToBankDetails}
+                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-all active:scale-95"
+                        >
+                            <Building2 className="h-4 w-4" />
+                            Go to Bank Details
+                        </button>
+                        <button
+                            onClick={() => setIsBankPromptOpen(false)}
+                            className="w-full py-2 text-xs font-black text-slate-600 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                        >
+                            Not now
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

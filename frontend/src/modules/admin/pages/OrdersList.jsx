@@ -127,8 +127,12 @@ const OrdersList = () => {
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchRiderId, setBatchRiderId] = useState("");
 
+    // Express/Slot are server-side filters (see fetchOrders) — mutually
+    // exclusive toggles, plus the true dataset-wide counts for their badges
+    // (not just what's on the currently loaded page).
     const [slotOnly, setSlotOnly] = useState(false);
     const [expressOnly, setExpressOnly] = useState(false);
+    const [deliveryModeCounts, setDeliveryModeCounts] = useState({ express: 0, slot: 0 });
     const [activeStatModal, setActiveStatModal] = useState(null);
 
     const fetchOrders = async (requestedPage = 1) => {
@@ -136,6 +140,8 @@ const OrdersList = () => {
         try {
             const params = { page: requestedPage, limit: pageSize };
             if (status !== 'all') params.status = status;
+            if (expressOnly) params.deliveryMode = 'EXPRESS';
+            else if (slotOnly) params.deliveryMode = 'SLOT';
             const response = await adminApi.getOrders(params);
             if (response.data.success) {
                 const payload = response.data.result || {};
@@ -179,6 +185,10 @@ const OrdersList = () => {
                     };
                 });
                 setOrders(formatted);
+                setDeliveryModeCounts({
+                    express: payload.deliveryModeCounts?.express ?? 0,
+                    slot: payload.deliveryModeCounts?.slot ?? 0,
+                });
                 if (typeof payload.total === 'number') {
                     setTotal(payload.total);
                 } else {
@@ -217,7 +227,23 @@ const OrdersList = () => {
     useEffect(() => {
         fetchOrders(1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pageSize, status]);
+    }, [pageSize, status, expressOnly, slotOnly]);
+
+    // The two toggles are mutually exclusive filters — turning one on turns the other off.
+    const handleToggleExpressOnly = () => {
+        setExpressOnly((v) => {
+            const next = !v;
+            if (next) setSlotOnly(false);
+            return next;
+        });
+    };
+    const handleToggleSlotOnly = () => {
+        setSlotOnly((v) => {
+            const next = !v;
+            if (next) setExpressOnly(false);
+            return next;
+        });
+    };
 
     const safeOrders = useMemo(
         () => (Array.isArray(orders) ? orders : []),
@@ -237,6 +263,8 @@ const OrdersList = () => {
     }, [safeOrders]);
 
     const filteredOrders = useMemo(() => {
+        // Express/Slot are already applied server-side (see fetchOrders) —
+        // safeOrders only ever contains matching rows when either is active.
         return safeOrders.filter(order => {
             const matchesSearch =
                 order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -245,23 +273,14 @@ const OrdersList = () => {
                 order.seller.toLowerCase().includes(searchTerm.toLowerCase());
 
             const matchesStatus = adminRouteMatchesOrder(status, order);
-            const matchesSlot = !slotOnly || order.deliveryMode === 'SLOT';
-            const matchesExpress = !expressOnly || order.deliveryMode === 'EXPRESS';
             const matchesDateRange = orderMatchesDateRange(order.createdAt, dateRange);
 
-            return matchesSearch && matchesStatus && matchesSlot && matchesExpress && matchesDateRange;
+            return matchesSearch && matchesStatus && matchesDateRange;
         });
-    }, [safeOrders, searchTerm, status, slotOnly, expressOnly, dateRange]);
+    }, [safeOrders, searchTerm, status, dateRange]);
 
-    const slotOrderCount = useMemo(
-        () => safeOrders.filter((o) => o.deliveryMode === 'SLOT').length,
-        [safeOrders],
-    );
-
-    const expressOrderCount = useMemo(
-        () => safeOrders.filter((o) => o.deliveryMode === 'EXPRESS').length,
-        [safeOrders],
-    );
+    const slotOrderCount = deliveryModeCounts.slot;
+    const expressOrderCount = deliveryModeCounts.express;
 
     const getStatusStyles = (status) => {
         switch (status.toLowerCase()) {
@@ -568,12 +587,12 @@ const OrdersList = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setExpressOnly((v) => !v)}
+                            onClick={handleToggleExpressOnly}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all bg-red-600 text-white hover:bg-red-700",
                                 expressOnly
-                                    ? "bg-red-600 text-white shadow-sm"
-                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                                    ? "shadow-sm ring-2 ring-red-300 ring-offset-1"
+                                    : "shadow-sm"
                             )}
                             title="Show only express-delivery orders"
                         >
@@ -581,7 +600,7 @@ const OrdersList = () => {
                             Express Orders ({expressOrderCount})
                         </button>
                         <button
-                            onClick={() => setSlotOnly((v) => !v)}
+                            onClick={handleToggleSlotOnly}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
                                 slotOnly

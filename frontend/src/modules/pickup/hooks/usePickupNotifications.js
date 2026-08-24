@@ -2,19 +2,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const MAX_ALERTS = 50;
-const STORAGE_KEY = "pickup_alerts_v1";
+const STORAGE_PREFIX = "pickup_alerts_v1";
+// Pre-scoping storage key (before alerts were namespaced per partner). Removed on mount so
+// it can never leak a previous rider's alerts into a new rider's session on a shared device.
+const LEGACY_STORAGE_KEY = "pickup_alerts_v1";
 
-function loadAlerts() {
+function loadAlerts(key) {
+  if (!key) return [];
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(key) || "[]");
   } catch {
     return [];
   }
 }
 
-function saveAlerts(items) {
+function saveAlerts(key, items) {
+  if (!key) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_ALERTS)));
+    localStorage.setItem(key, JSON.stringify(items.slice(0, MAX_ALERTS)));
   } catch {
     /* ignore */
   }
@@ -22,10 +27,32 @@ function saveAlerts(items) {
 
 /**
  * Tracks assignment changes between polls and surfaces in-app alerts + toasts.
+ * Alerts are persisted per logged-in partner (partnerId) so a new rider logging in
+ * on a device a previous rider didn't explicitly log out of never inherits their alerts.
  */
-export function usePickupNotifications(rows) {
-  const [alerts, setAlerts] = useState(loadAlerts);
+export function usePickupNotifications(rows, partnerId) {
+  const storageKey = partnerId ? `${STORAGE_PREFIX}_${partnerId}` : null;
+  const [alerts, setAlerts] = useState(() => loadAlerts(storageKey));
   const prevRef = useRef(new Map());
+  const loadedPartnerRef = useRef(partnerId);
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Re-scope alerts if the logged-in partner changes without a full page reload
+  // (e.g. rider A never hit logout, rider B logs in on the same device).
+  useEffect(() => {
+    if (partnerId === loadedPartnerRef.current) return;
+    loadedPartnerRef.current = partnerId;
+    prevRef.current = new Map();
+    setAlerts(loadAlerts(storageKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partnerId]);
 
   const pushAlert = useCallback((type, title, message) => {
     const item = {
@@ -38,19 +65,19 @@ export function usePickupNotifications(rows) {
     };
     setAlerts((prev) => {
       const next = [item, ...prev].slice(0, MAX_ALERTS);
-      saveAlerts(next);
+      saveAlerts(storageKey, next);
       return next;
     });
     return item;
-  }, []);
+  }, [storageKey]);
 
   const markAllRead = useCallback(() => {
     setAlerts((prev) => {
       const next = prev.map((a) => ({ ...a, read: true }));
-      saveAlerts(next);
+      saveAlerts(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 

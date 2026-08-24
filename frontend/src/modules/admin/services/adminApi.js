@@ -43,6 +43,10 @@ export const adminApi = {
     uploadSettingsImage: (formData, type = 'logo') =>
         axiosInstance.post(`/settings/upload?type=${type}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
+    // Referral program
+    getReferrals: (params) => axiosInstance.get('/admin/referrals', { params }),
+    getReferralStats: () => axiosInstance.get('/admin/referrals/stats'),
+
     // Category Management
     getCategories: (params) => axiosInstance.get('/admin/categories', { params }),
     getCategoryTree: () => axiosInstance.get('/admin/categories?tree=true'),
@@ -198,6 +202,7 @@ export const adminApi = {
     createCoupon: (data) => axiosInstance.post('/admin/promotions', data),
     updateCoupon: (id, data) => axiosInstance.put(`/admin/promotions/${id}`, data),
     deleteCoupon: (id) => axiosInstance.delete(`/admin/promotions/${id}`),
+    updateCouponStatus: (id, isActive) => axiosInstance.patch(`/admin/promotions/${id}/status`, { isActive }),
 
     // Product Requests
     getProductRequests: (params) => axiosInstance.get('/product-requests', { params }),

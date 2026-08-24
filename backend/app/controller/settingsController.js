@@ -50,7 +50,11 @@ const ALLOWED_KEYS = [
   "slaHours",
   "procurementFailureAction",
   "enableMultiSellerAllocation",
-  "enableReturns"
+  "enableReturns",
+  "referralEnabled",
+  "referralSignupBonus",
+  "referralBonus",
+  "referralMinOrderValue",
 ];
 
 /** Joi schema for validating settings update payload */
@@ -104,6 +108,10 @@ const updateSettingsSchema = Joi.object({
   procurementFailureAction: Joi.string().valid("auto_cancel", "put_on_hold"),
   enableMultiSellerAllocation: Joi.boolean(),
   enableReturns: Joi.boolean(),
+  referralEnabled: Joi.boolean(),
+  referralSignupBonus: Joi.number().min(0),
+  referralBonus: Joi.number().min(0),
+  referralMinOrderValue: Joi.number().min(0),
 }).unknown(false);
 
 /**
@@ -120,7 +128,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns referralEnabled referralSignupBonus referralBonus referralMinOrderValue createdAt",
       )
       .lean();
 

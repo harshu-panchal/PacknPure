@@ -214,7 +214,7 @@ export const broadcastNotifications = async (req, res) => {
       return handleResponse(res, 400, "title and message are required");
     }
 
-    const notifications = await broadcastNotification({
+    const { notifications, recipientCount } = await broadcastNotification({
       targetRole,
       recipientIds,
       recipientModel,
@@ -237,6 +237,23 @@ export const broadcastNotifications = async (req, res) => {
         includePickupPartner,
       },
     });
+
+    if (recipientCount === 0) {
+      return handleResponse(res, 200, "No matching recipients found for this audience", {
+        count: 0,
+        notifications: [],
+      });
+    }
+
+    if (notifications.length === 0) {
+      // recipientCount > 0 but nothing persisted — createNotificationBatch swallowed a
+      // real error (check server logs). Report this as a failure, not a false success.
+      return handleResponse(
+        res,
+        500,
+        "Broadcast failed to send to any recipient. Check server logs for details.",
+      );
+    }
 
     return handleResponse(res, 200, "Broadcast queued successfully", {
       count: notifications.length,

@@ -26,6 +26,7 @@ import {
   PackageSearch,
   Timer,
   QrCode,
+  Gift,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -76,6 +77,9 @@ const DeliveryFunds = React.lazy(() => import("../pages/DeliveryFunds"));
 const AdminWallet = React.lazy(() => import("../pages/AdminWallet"));
 const WithdrawalRequests = React.lazy(
   () => import("../pages/WithdrawalRequests"),
+);
+const ReferralProgramPage = React.lazy(
+  () => import("../pages/ReferralProgramPage"),
 );
 const SellerTransactions = React.lazy(
   () => import("../pages/SellerTransactions"),
@@ -285,6 +289,12 @@ const navItems = [
     color: "orange",
   },
   {
+    label: "Referral Program",
+    path: "/admin/referrals",
+    icon: Gift,
+    color: "fuchsia",
+  },
+  {
     label: "Collect Cash",
     path: "/admin/cash-collection",
     icon: CircleDollarSign,
@@ -367,6 +377,7 @@ const AdminRoutes = () => {
         <Route path="/delivery-funds" element={<DeliveryFunds />} />
         <Route path="/wallet" element={<AdminWallet />} />
         <Route path="/withdrawals" element={<WithdrawalRequests />} />
+        <Route path="/referrals" element={<ReferralProgramPage />} />
         <Route path="/seller-transactions" element={<SellerTransactions />} />
         <Route path="/cash-collection" element={<CashCollection />} />
         <Route path="/customers" element={<CustomerManagement />} />

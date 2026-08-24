@@ -53,12 +53,15 @@ const CouponManagement = () => {
         stackable: false,
     });
 
+    // Status (all/active/expired/expiring/redeemed) is filtered client-side against the
+    // full list — only `search` goes to the server. This keeps the stat cards (which need
+    // the TRUE total across every status) and the table filter reading from one consistent
+    // source, instead of the total silently shrinking to whatever tab happens to be active.
     useEffect(() => {
         const fetchCoupons = async () => {
             try {
                 setIsLoading(true);
                 const res = await adminApi.getCoupons({
-                    status: statusFilter === 'all' ? undefined : statusFilter,
                     search: searchTerm || undefined,
                 });
                 if (res.data.success) {
@@ -72,30 +75,44 @@ const CouponManagement = () => {
             }
         };
         fetchCoupons();
-    }, [statusFilter, searchTerm]);
+    }, [searchTerm]);
+
+    const getCouponBucket = (c, now) => {
+        const from = c.validFrom ? new Date(c.validFrom) : null;
+        const till = c.validTill ? new Date(c.validTill) : null;
+        const isExpired = Boolean(till && till < now);
+        const isLive = Boolean(c.isActive) && (!from || from <= now) && !isExpired;
+        const diffDays = till ? (till - now) / (1000 * 60 * 60 * 24) : null;
+        const isExpiringSoon = Boolean(till) && diffDays >= 0 && diffDays <= 7;
+        return { isLive, isExpired, isExpiringSoon, isRedeemed: (c.usedCount || 0) > 0 };
+    };
 
     const stats = useMemo(() => {
         const now = new Date();
-        const active = coupons.filter(c => {
-            const from = c.validFrom ? new Date(c.validFrom) : null;
-            const till = c.validTill ? new Date(c.validTill) : null;
-            return c.isActive && (!from || from <= now) && (!till || till >= now);
-        });
-        const expiringSoon = coupons.filter(c => {
-            if (!c.validTill) return false;
-            const till = new Date(c.validTill);
-            const diffDays = (till - now) / (1000 * 60 * 60 * 24);
-            return diffDays >= 0 && diffDays <= 7;
-        });
-        return {
-            total: coupons.length,
-            active: active.length,
-            totalRedeemed: coupons.reduce((acc, c) => acc + (c.usedCount || 0), 0),
-            expiringSoon: expiringSoon.length,
-        };
+        let active = 0;
+        let expiringSoon = 0;
+        let totalRedeemed = 0;
+        for (const c of coupons) {
+            const bucket = getCouponBucket(c, now);
+            if (bucket.isLive) active += 1;
+            if (bucket.isExpiringSoon) expiringSoon += 1;
+            totalRedeemed += c.usedCount || 0;
+        }
+        return { total: coupons.length, active, totalRedeemed, expiringSoon };
     }, [coupons]);
 
-    const filteredCoupons = coupons;
+    const filteredCoupons = useMemo(() => {
+        if (statusFilter === 'all') return coupons;
+        const now = new Date();
+        return coupons.filter((c) => {
+            const bucket = getCouponBucket(c, now);
+            if (statusFilter === 'active') return bucket.isLive;
+            if (statusFilter === 'expired') return bucket.isExpired;
+            if (statusFilter === 'expiring') return bucket.isExpiringSoon;
+            if (statusFilter === 'redeemed') return bucket.isRedeemed;
+            return true;
+        });
+    }, [coupons, statusFilter]);
 
     const handleOpenModal = (coupon = null) => {
         if (coupon) {
@@ -192,6 +209,17 @@ const CouponManagement = () => {
         }
     };
 
+    const handleToggleStatus = async (coupon) => {
+        try {
+            const nextActive = !coupon.isActive;
+            await adminApi.updateCouponStatus(coupon._id, nextActive);
+            setCoupons((prev) => prev.map((c) => (c._id === coupon._id ? { ...c, isActive: nextActive } : c)));
+            showToast(nextActive ? 'Coupon activated' : 'Coupon deactivated', 'success');
+        } catch (error) {
+            showToast('Failed to update coupon status', 'error');
+        }
+    };
+
     const handleDelete = async (id) => {
         try {
             await adminApi.deleteCoupon(id);
@@ -226,26 +254,44 @@ const CouponManagement = () => {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                    { label: 'Total Coupons', value: stats.total, icon: HiOutlineTicket, color: 'indigo' },
-                    { label: 'Active Codes', value: stats.active, icon: HiOutlineCheckCircle, color: 'emerald' },
-                    { label: 'Redemptions', value: stats.totalRedeemed.toLocaleString(), icon: HiOutlineUsers, color: 'amber' },
-                    { label: 'Expiring Soon', value: stats.expiringSoon, icon: HiOutlineClock, color: 'rose' },
-                ].map((s, i) => (
-                    <Card key={i} className="p-6 border-none shadow-xl ring-1 ring-slate-100 bg-white group hover:ring-primary/20 transition-all">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className={cn("p-2.5 rounded-2xl",
-                                s.color === 'indigo' && "bg-indigo-50 text-indigo-600",
-                                s.color === 'emerald' && "bg-emerald-50 text-emerald-600",
-                                s.color === 'amber' && "bg-amber-50 text-amber-600",
-                                s.color === 'rose' && "bg-rose-50 text-rose-600",
-                            )}>
-                                <s.icon className="h-6 w-6" />
+                    { label: 'Total Coupons', value: stats.total, icon: HiOutlineTicket, color: 'indigo', filterValue: 'all' },
+                    { label: 'Active Codes', value: stats.active, icon: HiOutlineCheckCircle, color: 'emerald', filterValue: 'active' },
+                    { label: 'Redemptions', value: stats.totalRedeemed.toLocaleString(), icon: HiOutlineUsers, color: 'amber', filterValue: 'redeemed' },
+                    { label: 'Expiring Soon', value: stats.expiringSoon, icon: HiOutlineClock, color: 'rose', filterValue: 'expiring' },
+                ].map((s, i) => {
+                    const isActiveCard = statusFilter === s.filterValue;
+                    return (
+                        <Card
+                            key={i}
+                            onClick={() => setStatusFilter(s.filterValue)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setStatusFilter(s.filterValue);
+                                }
+                            }}
+                            className={cn(
+                                "p-6 border-none shadow-xl ring-1 bg-white group transition-all cursor-pointer hover:-translate-y-0.5 active:scale-[0.98]",
+                                isActiveCard ? "ring-2 ring-primary/40" : "ring-slate-100 hover:ring-primary/20",
+                            )}
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <div className={cn("p-2.5 rounded-2xl",
+                                    s.color === 'indigo' && "bg-indigo-50 text-indigo-600",
+                                    s.color === 'emerald' && "bg-emerald-50 text-emerald-600",
+                                    s.color === 'amber' && "bg-amber-50 text-amber-600",
+                                    s.color === 'rose' && "bg-rose-50 text-rose-600",
+                                )}>
+                                    <s.icon className="h-6 w-6" />
+                                </div>
                             </div>
-                        </div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{s.label}</h4>
-                        <h3 className="text-2xl font-black text-slate-900">{s.value}</h3>
-                    </Card>
-                ))}
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{s.label}</h4>
+                            <h3 className="text-2xl font-black text-slate-900">{s.value}</h3>
+                        </Card>
+                    );
+                })}
             </div>
 
             {/* Main Content Area */}
@@ -263,8 +309,8 @@ const CouponManagement = () => {
                                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-1 ring-transparent focus:ring-primary/10 transition-all"
                             />
                         </div>
-                        <div className="flex bg-slate-100 p-1.5 rounded-2xl">
-                            {['all', 'active', 'expired'].map((filter) => (
+                        <div className="flex bg-slate-100 p-1.5 rounded-2xl flex-wrap">
+                            {['all', 'active', 'expiring', 'expired', 'redeemed'].map((filter) => (
                                 <button
                                     key={filter}
                                     onClick={() => setStatusFilter(filter)}
@@ -350,9 +396,18 @@ const CouponManagement = () => {
                                         </div>
                                     </td>
                                     <td className="px-4 py-6 text-center">
-                                        <Badge variant={c.isActive ? 'success' : 'secondary'} className="text-[9px] font-black uppercase">
-                                            {c.isActive ? 'active' : 'inactive'}
-                                        </Badge>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleStatus(c)}
+                                            title={c.isActive ? 'Click to deactivate' : 'Click to activate'}
+                                        >
+                                            <Badge
+                                                variant={c.isActive ? 'success' : 'secondary'}
+                                                className="text-[9px] font-black uppercase cursor-pointer hover:opacity-75 transition-opacity"
+                                            >
+                                                {c.isActive ? 'active' : 'inactive'}
+                                            </Badge>
+                                        </button>
                                     </td>
                                     <td className="px-4 py-6">
                                         <div className="flex items-center justify-end gap-2">
@@ -414,7 +469,7 @@ const CouponManagement = () => {
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={() => handleDelete(deleteTarget.id)}
+                                        onClick={() => handleDelete(deleteTarget._id)}
                                         className="px-4 py-2.5 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors"
                                     >
                                         Delete

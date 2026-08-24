@@ -18,7 +18,7 @@ const transactionSchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ["Order Payment", "Order Sale", "Delivery Earning", "Withdrawal", "Refund", "Incentive", "Bonus", "Cash Collection", "Cash Settlement", "Supply Earning", "Pickup Earning", "Wallet Credit", "Promotional Credit"],
+            enum: ["Order Payment", "Order Sale", "Delivery Earning", "Withdrawal", "Refund", "Incentive", "Bonus", "Cash Collection", "Cash Settlement", "Supply Earning", "Pickup Earning", "Wallet Credit", "Promotional Credit", "Referral Signup Bonus", "Referral Bonus"],
             required: true,
         },
         amount: {

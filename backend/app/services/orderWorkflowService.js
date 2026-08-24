@@ -643,7 +643,7 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
   // Notify Customer
   await createNotification({
     recipient: updated.customer?._id || updated.customer,
-    recipientModel: "Customer",
+    recipientModel: "User",
     title: "Delivery Partner Assigned",
     message: `A delivery partner has been assigned to your order #${orderId} and is on the way.`,
     type: "order",
@@ -818,7 +818,7 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
     }
     await createNotification({
       recipient: updated.customer,
-      recipientModel: "Customer",
+      recipientModel: "User",
       title: "Order Cancelled",
       message: `Order #${orderId} was cancelled because no delivery partner was available.`,
       type: "order",

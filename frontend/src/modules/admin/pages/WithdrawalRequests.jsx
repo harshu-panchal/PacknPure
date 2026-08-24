@@ -139,7 +139,19 @@ const WithdrawalRequests = () => {
         });
     }, [activeTab, sellerRequests, deliveryRequests, pickupRequests, searchTerm, filterStatus]);
 
+    const sellerHasBankDetails = (request) => Boolean(
+        request?.user?.bankName?.trim() &&
+        request?.user?.accountHolder?.trim() &&
+        request?.user?.accountNumber?.trim() &&
+        request?.user?.ifsc?.trim()
+    );
+
     const handleAction = (type, request) => {
+        if (type === 'approve' && activeTab === 'sellers' && !sellerHasBankDetails(request)) {
+            toast.error("This seller hasn't added bank details yet. You can't settle this payout until they do.");
+            setSelectedRequest(request);
+            return;
+        }
         setActionModal({ isOpen: true, type, request });
     };
 
@@ -154,7 +166,7 @@ const WithdrawalRequests = () => {
                 setActionModal({ isOpen: false, type: null, request: null });
             }
         } catch (error) {
-            toast.error("Action failed");
+            toast.error(error.response?.data?.message || "Action failed");
         } finally {
             setLoading(false);
         }
@@ -338,7 +350,13 @@ const WithdrawalRequests = () => {
                                                     <>
                                                         <button
                                                             onClick={() => handleAction('approve', req)}
-                                                            className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-90"
+                                                            title={activeTab === 'sellers' && !sellerHasBankDetails(req) ? "Seller hasn't added bank details yet" : "Approve"}
+                                                            className={cn(
+                                                                "p-2 rounded-xl transition-all active:scale-90",
+                                                                activeTab === 'sellers' && !sellerHasBankDetails(req)
+                                                                    ? "bg-slate-50 text-slate-300 hover:bg-slate-100"
+                                                                    : "bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                                                            )}
                                                         >
                                                             <CheckCircle className="h-4 w-4" />
                                                         </button>
@@ -459,6 +477,15 @@ const WithdrawalRequests = () => {
                                     </div>
                                 </div>
                             </Card>
+
+                            {activeTab === 'sellers' && !sellerHasBankDetails(selectedRequest) && (
+                                <Card className="p-4 border-none bg-rose-50 ring-1 ring-rose-100 rounded-xl flex items-center gap-3">
+                                    <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
+                                    <p className="text-xs font-bold text-rose-600">
+                                        This seller hasn't filled in complete bank details yet. Settlement is blocked until they do.
+                                    </p>
+                                </Card>
+                            )}
                         </div>
 
                         <div className="flex gap-3 pt-2">
@@ -466,7 +493,8 @@ const WithdrawalRequests = () => {
                                 <>
                                     <button
                                         onClick={() => { setSelectedRequest(null); handleAction('approve', selectedRequest); }}
-                                        className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]"
+                                        disabled={activeTab === 'sellers' && !sellerHasBankDetails(selectedRequest)}
+                                        className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl shadow-indigo-200 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                                     >
                                         Authorize Transfer
                                     </button>

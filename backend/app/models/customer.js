@@ -121,6 +121,34 @@ const userSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+
+        /** Auto-generated on account creation. Unique, never user-editable. */
+        referralCode: {
+            type: String,
+            trim: true,
+            uppercase: true,
+            unique: true,
+            sparse: true,
+            immutable: true,
+        },
+        /** The other customer whose referral code this user redeemed at signup (null if none/self-registered). */
+        referredBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        /** Raw code the user typed in at registration, kept for audit even if referredBy resolution changes. */
+        referralCodeUsed: {
+            type: String,
+            trim: true,
+            uppercase: true,
+            default: null,
+        },
+        /** Guards against granting the signup bonus more than once for this account. */
+        referralSignupBonusGranted: {
+            type: Boolean,
+            default: false,
+        },
         fcmTokens: {
             type: [notificationTokenSchema],
             default: [],
@@ -158,6 +186,7 @@ userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ phone: 1 }, { unique: true });
 userSchema.index({ codBlocked: 1, codCancelCount: 1 });
+userSchema.index({ referredBy: 1 });
 
 /** Safe profile for API responses (no OTP fields). */
 userSchema.methods.toPublicJSON = function () {

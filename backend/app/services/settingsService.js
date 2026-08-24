@@ -126,6 +126,16 @@ export const getReturnWindowDays = async () => {
   return Math.max(1, Number(settings?.returnWindowDays ?? 7));
 };
 
+export const getReferralSettings = async () => {
+  const settings = await getSettings();
+  return {
+    enabled: Boolean(settings?.referralEnabled),
+    signupBonus: Math.max(0, Number(settings?.referralSignupBonus ?? 0)),
+    referrerBonus: Math.max(0, Number(settings?.referralBonus ?? 0)),
+    minOrderValue: Math.max(0, Number(settings?.referralMinOrderValue ?? 0)),
+  };
+};
+
 export const invalidateSettingsCache = () => {
   cachedSettings = null;
   cacheExpiresAt = 0;

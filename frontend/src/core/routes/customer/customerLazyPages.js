@@ -29,4 +29,5 @@ export const CustomerPages = {
   SearchPage: lazy(() => import('@modules/customer/pages/SearchPage')),
   WalletPage: lazy(() => import('@modules/customer/pages/WalletPage')),
   RequestProductPage: lazy(() => import('@modules/customer/pages/RequestProductPage')),
+  ReferAndEarnPage: lazy(() => import('@modules/customer/pages/ReferAndEarnPage')),
 };

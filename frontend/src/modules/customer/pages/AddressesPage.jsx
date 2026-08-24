@@ -318,7 +318,7 @@ const AddressesPage = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24 font-sans">
-            <main className="max-w-2xl mx-auto px-4 pt-4 relative z-20 space-y-4">
+            <main className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6 pt-4 md:pt-8 relative z-20 space-y-5">
                 <div className="mb-2">
                     <div className="flex items-center gap-3">
                         <button

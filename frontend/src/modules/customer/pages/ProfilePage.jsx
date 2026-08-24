@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
-    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, PackagePlus, Bell
+    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, PackagePlus, Bell, Gift
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -14,8 +14,8 @@ const ProfilePage = () => {
     const appName = settings?.appName || 'App';
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-24 md:pb-8 font-sans">
-            <main className="max-w-2xl mx-auto px-4 pt-4 relative z-20 space-y-4">
+        <div className="min-h-screen bg-slate-50 pb-24 md:pb-12 font-sans">
+            <main className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6 pt-4 md:pt-8 relative z-20 space-y-5">
                 <div className="mb-2">
                     <div className="flex items-center gap-3">
                         <button
@@ -95,6 +95,14 @@ const ProfilePage = () => {
                                 path="/notifications"
                                 color="#E23744"
                                 bg="rgba(244,63,94,0.10)"
+                            />
+                            <MenuItem
+                                icon={Gift}
+                                label="Refer a Friend"
+                                sub="Share your code, earn rewards"
+                                path="/refer"
+                                color="#a855f7"
+                                bg="rgba(168,85,247,0.10)"
                             />
                             <MenuItem
                                 icon={Heart}

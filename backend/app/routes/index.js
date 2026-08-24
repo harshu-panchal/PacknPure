@@ -32,6 +32,7 @@ import barcodeRoute from "./barcodeRoutes.js";
 import stockAuditRoute from "./stockAuditRoutes.js";
 import deliveryTripRoute from "./deliveryTripRoutes.js";
 import stockNotificationRoute from "./stockNotificationRoutes.js";
+import { customerReferralRouter, adminReferralRouter } from "./referralRoutes.js";
 
 import express from "express";
 
@@ -42,6 +43,8 @@ const setupRoutes = (app) => {
     router.use("/barcodes", barcodeRoute);
     router.use("/stock-audits", stockAuditRoute);
     router.use("/customer", customerRoute);
+    router.use("/customer/referral", customerReferralRouter);
+    router.use("/admin/referrals", adminReferralRouter);
     router.use("/delivery", deliveryRoute);
     router.use("/admin/categories", categoryRoute);
     router.use("/admin/pos", posRoute);

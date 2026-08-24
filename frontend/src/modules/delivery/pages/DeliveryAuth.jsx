@@ -24,6 +24,7 @@ import { deliveryApi } from "../services/deliveryApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
+import CameraCapture from "../components/CameraCapture";
 
 const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
@@ -81,6 +82,8 @@ const DeliveryAuth = () => {
   const [dlFile, setDlFile] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  // Which document tile's live camera overlay is currently open (null = closed)
+  const [cameraTarget, setCameraTarget] = useState(null);
 
   // OTP state
   const [otp, setOtp] = useState(["", "", "", ""]);
@@ -243,6 +246,24 @@ const DeliveryAuth = () => {
     });
     setPhotoFile(file || null);
     if (file) toast.success("Profile photo added!");
+  };
+
+  // Maps each document tile to its camera config + the handler that receives
+  // the captured File, plus the hidden <input> id to fall back to if the
+  // in-page camera can't start (permission denied / unsupported browser).
+  const cameraTargets = {
+    photo: { facingMode: "user", label: "Profile Photo", handler: handlePhotoUpload, fallbackInputId: "photo" },
+    aadhar: { facingMode: "environment", label: "Aadhar Card", handler: handleAadharUpload, fallbackInputId: "aadhar" },
+    pan: { facingMode: "environment", label: "RC Book", handler: handlePanUpload, fallbackInputId: "pan" },
+    dl: { facingMode: "environment", label: "Driving License", handler: handleDLUpload, fallbackInputId: "dl" },
+  };
+
+  const handleCameraError = (message) => {
+    toast.error(`${message} — opening gallery instead`);
+    const inputId = cameraTargets[cameraTarget]?.fallbackInputId;
+    setCameraTarget(null);
+    // Let the overlay unmount first so the native picker isn't fighting it
+    setTimeout(() => document.getElementById(inputId)?.click(), 50);
   };
 
   const handleSendOtp = async () => {
@@ -773,8 +794,11 @@ const DeliveryAuth = () => {
                                 capture="user"
                                 onChange={(e) => handlePhotoUpload(e.target.files[0])}
                               />
-                              <label
-                                htmlFor="photo"
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setCameraTarget("photo")}
+                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCameraTarget("photo"); } }}
                                 className={`flex items-center justify-between p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${photoFile
                                   ? "border-green-200 bg-green-50/50"
                                   : "border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 hover:border-indigo-200 hover:bg-indigo-50/30"
@@ -793,7 +817,7 @@ const DeliveryAuth = () => {
                                       Profile Photo (Required)
                                     </p>
                                     <p className="text-[10px] text-gray-400 font-bold truncate max-w-[180px]">
-                                      {photoFile ? photoFile.name : "Tap to upload a clear face photo"}
+                                      {photoFile ? photoFile.name : "Tap to open camera"}
                                     </p>
                                   </div>
                                 </div>
@@ -802,6 +826,7 @@ const DeliveryAuth = () => {
                                     type="button"
                                     onClick={(e) => {
                                       e.preventDefault();
+                                      e.stopPropagation();
                                       handlePhotoUpload(null);
                                     }}
                                     className="p-1.5 hover:bg-green-100 rounded-lg text-green-600 transition-colors"
@@ -809,7 +834,16 @@ const DeliveryAuth = () => {
                                     <X className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                              </label>
+                              </div>
+                              {/* Fallback file input — only used if the in-page camera can't start */}
+                              <input
+                                type="file"
+                                id="photo"
+                                className="hidden"
+                                accept="image/*"
+                                capture="user"
+                                onChange={(e) => handlePhotoUpload(e.target.files[0])}
+                              />
                             </div>
 
                             {[
@@ -832,8 +866,11 @@ const DeliveryAuth = () => {
                                     else doc.setter(file);
                                   }}
                                 />
-                                <label
-                                  htmlFor={doc.id}
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => setCameraTarget(doc.id)}
+                                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCameraTarget(doc.id); } }}
                                   className={`flex items-center justify-between p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${doc.state
                                     ? "border-green-200 bg-green-50/50"
                                     : "border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 hover:border-indigo-200 hover:bg-indigo-50/30"
@@ -848,7 +885,7 @@ const DeliveryAuth = () => {
                                         {doc.label}
                                       </p>
                                       <p className="text-[10px] text-gray-400 font-bold truncate max-w-[180px]">
-                                        {doc.state ? doc.state.name : "Tap to upload document"}
+                                        {doc.state ? doc.state.name : "Tap to open camera"}
                                       </p>
                                     </div>
                                   </div>
@@ -857,6 +894,7 @@ const DeliveryAuth = () => {
                                       type="button"
                                       onClick={(e) => {
                                         e.preventDefault();
+                                        e.stopPropagation();
                                         doc.setter(null);
                                       }}
                                       className="p-1.5 hover:bg-green-100 rounded-lg text-green-600 transition-colors"
@@ -864,7 +902,7 @@ const DeliveryAuth = () => {
                                       <X className="w-3.5 h-3.5" />
                                     </button>
                                   )}
-                                </label>
+                                </div>
 
                                 {/* OCR Progress & Badge for DL */}
                                 {doc.id === "dl" && (
@@ -1153,6 +1191,21 @@ const DeliveryAuth = () => {
           {appName} Partner Ecosystem • v1.0
         </p>
       </motion.div>
+
+      <AnimatePresence>
+        {cameraTarget && (
+          <CameraCapture
+            facingMode={cameraTargets[cameraTarget].facingMode}
+            label={cameraTargets[cameraTarget].label}
+            onClose={() => setCameraTarget(null)}
+            onCapture={(file) => {
+              cameraTargets[cameraTarget].handler(file);
+              setCameraTarget(null);
+            }}
+            onError={handleCameraError}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

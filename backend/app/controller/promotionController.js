@@ -1,6 +1,7 @@
 import Promotion from "../models/promotion.js";
 import Order from "../models/order.js";
 import handleResponse from "../utils/helper.js";
+import { validatePromoRules } from "../services/promotionValidationService.js";
 
 // --- ADMIN APIs ---
 
@@ -124,109 +125,7 @@ export const getAnalytics = async (req, res) => {
 };
 
 // --- CUSTOMER APIs ---
-
-// Helper function to validate a single promotion against cart/user context
-const validatePromoRules = async (promo, { cartTotal, items, customerId }) => {
-    const now = new Date();
-
-    if (!promo.isActive) return { valid: false, reason: "Promotion is not active" };
-    if (promo.validFrom && promo.validFrom > now) return { valid: false, reason: "Promotion has not started yet" };
-    if (promo.validTill && promo.validTill < now) return { valid: false, reason: "Promotion has expired" };
-
-    if (promo.usageLimit && promo.usedCount >= promo.usageLimit) {
-        return { valid: false, reason: "Promotion usage limit reached" };
-    }
-
-    if (promo.conditions?.minOrderValue && cartTotal < promo.conditions.minOrderValue) {
-        return { valid: false, reason: `Minimum order value should be ₹${promo.conditions.minOrderValue}` };
-    }
-
-    if (promo.conditions?.maxOrderValue && cartTotal > promo.conditions.maxOrderValue) {
-        return { valid: false, reason: `Maximum order value for this promotion is ₹${promo.conditions.maxOrderValue}` };
-    }
-
-    const totalQty = items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 0;
-    if (promo.conditions?.minQuantity && totalQty < promo.conditions.minQuantity) {
-        return { valid: false, reason: `Add at least ${promo.conditions.minQuantity} items to use this promotion` };
-    }
-
-    if (customerId) {
-        // User specific checks
-        const userOrdersCount = await Order.countDocuments({ customer: customerId });
-        
-        if (promo.conditions?.firstOrderOnly && userOrdersCount > 0) {
-            return { valid: false, reason: "This promotion is only valid for your first order" };
-        }
-
-        if (promo.conditions?.newUserOnly && userOrdersCount > 0) {
-            return { valid: false, reason: "This promotion is only available for new users" };
-        }
-
-        if (promo.conditions?.applicableUsers?.length > 0) {
-            if (!promo.conditions.applicableUsers.includes(customerId)) {
-                return { valid: false, reason: "You are not eligible for this promotion" };
-            }
-        }
-
-        if (promo.perUserLimit) {
-            const userUsageCount = await Order.countDocuments({ 
-                customer: customerId, 
-                promotionApplied: promo._id 
-            });
-            if (userUsageCount >= promo.perUserLimit) {
-                return { valid: false, reason: `You have reached the usage limit for this promotion` };
-            }
-        }
-    } else if (promo.conditions?.firstOrderOnly || promo.conditions?.newUserOnly || promo.conditions?.applicableUsers?.length > 0 || promo.perUserLimit) {
-        // If it requires user validation, they must be logged in (though typically checkout passes customerId)
-        return { valid: false, reason: "Please login to use this promotion" };
-    }
-
-    // Product & Category validation
-    if (promo.conditions?.applicableCategories?.length > 0) {
-        const hasApplicableCategory = items?.some(item => 
-            item.category && promo.conditions.applicableCategories.map(c => c.toString()).includes(item.category.toString())
-        );
-        if (!hasApplicableCategory) {
-            return { valid: false, reason: "Your cart does not contain eligible categories for this promotion" };
-        }
-    }
-
-    if (promo.conditions?.applicableProducts?.length > 0) {
-        const hasApplicableProduct = items?.some(item => 
-            promo.conditions.applicableProducts.map(p => p.toString()).includes(item.productId?.toString() || item._id?.toString())
-        );
-        if (!hasApplicableProduct) {
-            return { valid: false, reason: "Your cart does not contain eligible products for this promotion" };
-        }
-    }
-
-    // Calculate discount
-    let discountAmount = 0;
-    let freeDelivery = false;
-
-    if (promo.discountType === "free_delivery") {
-        freeDelivery = true;
-    } else if (promo.discountType === "percentage") {
-        discountAmount = Math.round((cartTotal * promo.discountValue) / 100);
-    } else if (promo.discountType === "fixed") {
-        discountAmount = promo.discountValue;
-    }
-
-    if (promo.maxDiscount && discountAmount > promo.maxDiscount) {
-        discountAmount = promo.maxDiscount;
-    }
-
-    if (discountAmount <= 0 && !freeDelivery) {
-        return { valid: false, reason: "This promotion does not provide any discount on current cart" };
-    }
-
-    return { 
-        valid: true, 
-        discountAmount, 
-        freeDelivery 
-    };
-};
+// validatePromoRules is shared with coreOrderService.js — see promotionValidationService.js
 
 export const getAvailablePromotions = async (req, res) => {
     try {
@@ -234,8 +133,10 @@ export const getAvailablePromotions = async (req, res) => {
         const now = new Date();
         const activePromotions = await Promotion.find({
             isActive: true,
-            $or: [{ validFrom: null }, { validFrom: { $lte: now } }],
-            $or: [{ validTill: null }, { validTill: { $gte: now } }]
+            $and: [
+                { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+                { $or: [{ validTill: null }, { validTill: { $gte: now } }] },
+            ],
         }).sort({ priority: -1, createdAt: -1 }).lean();
 
         let filteredPromotions = activePromotions;

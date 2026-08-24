@@ -107,6 +107,14 @@ const SellerProfile = () => {
     fetchProfile();
   }, [fetchProfile]);
 
+  useEffect(() => {
+    if (window.location.hash === "#bank-details" && !isLoading) {
+      setIsEditing(true);
+      document.getElementById("bank-details")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
   const handleCancel = () => {
     setFormData(profileToForm(profile));
     setIsEditing(false);
@@ -424,7 +432,7 @@ const SellerProfile = () => {
         </Card>
 
         {/* Bank Details */}
-        <Card className="border-none p-5 shadow-sm ring-1 ring-slate-100 lg:col-span-2">
+        <Card id="bank-details" className="border-none p-5 shadow-sm ring-1 ring-slate-100 lg:col-span-2 scroll-mt-24">
           <h3 className="mb-4 text-sm font-bold text-slate-900">Bank Details for Payout Transfer</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Bank Name">

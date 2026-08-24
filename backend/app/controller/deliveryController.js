@@ -884,7 +884,7 @@ export const validateDeliveryOtp = async (req, res) => {
             const { createNotification } = await import('../services/notificationService.js');
             await createNotification({
                 recipient: order.customer?._id || order.customer,
-                recipientModel: "Customer",
+                recipientModel: "User",
                 title: "Order Delivered",
                 message: `Your order #${order.orderId} has been delivered successfully. Enjoy!`,
                 type: "order",

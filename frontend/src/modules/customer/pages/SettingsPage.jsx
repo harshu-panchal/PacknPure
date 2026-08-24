@@ -22,7 +22,7 @@ const SettingsPage = () => {
                 </button>
             </div>
 
-            <div className="max-w-2xl mx-auto px-4 -mt-10 relative z-20 space-y-6">
+            <div className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6 -mt-10 relative z-20 space-y-6">
 
                 {/* General Section */}
                 <div className="bg-white rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">

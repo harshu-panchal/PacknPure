@@ -73,9 +73,8 @@ const NotificationComposer = () => {
         }
         try {
             setIsSending(true);
-            const targetRole = selectedSegment === 'all' ? 'all' : 'customer';
             const response = await adminApi.broadcastNotification({
-                targetRole: targetRole === 'specific' ? 'all' : targetRole,
+                targetRole,
                 recipientModel: targetRole === 'specific' ? recipientModel : undefined,
                 recipientIds: targetRole === 'specific'
                     ? recipientIdsText.split(',').map((value) => value.trim()).filter(Boolean)
@@ -95,15 +94,20 @@ const NotificationComposer = () => {
             });
 
             if (response.data.success) {
-                showToast(`Broadcast queued for ${response.data.result.count || 0} recipients`, 'success');
+                const count = response.data.result?.count || 0;
+                if (count === 0) {
+                    showToast(response.data.message || 'No matching recipients found for this audience', 'warning');
+                } else {
+                    showToast(`Broadcast queued for ${count} recipients`, 'success');
+                    setTitle('');
+                    setMessage('');
+                    setDeepLink('');
+                    setImageUrl('');
+                }
                 const historyResponse = await adminApi.getBroadcastHistory({ page: 1, limit: 5 });
                 if (historyResponse.data.success) {
                     setBroadcastHistory(historyResponse.data.result.items || []);
                 }
-                setTitle('');
-                setMessage('');
-                setDeepLink('');
-                setImageUrl('');
             }
         } catch (error) {
             showToast(error.response?.data?.message || 'Broadcast failed', 'error');

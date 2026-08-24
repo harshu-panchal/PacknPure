@@ -589,8 +589,25 @@ export const updateWithdrawalStatus = async (req, res) => {
     const { id } = req.params;
     const { status, reason } = req.body;
     if (!["Settled", "Failed", "Processing"].includes(status)) return handleResponse(res, 400, "Invalid status");
-    const transaction = await Transaction.findById(id).populate("user", "name");
+    const transaction = await Transaction.findById(id).populate("user", "name bankName accountHolder accountNumber ifsc");
     if (!transaction) return handleResponse(res, 404, "Transaction not found");
+
+    if (status === "Settled" && transaction.userModel === "Seller") {
+      const seller = transaction.user;
+      const hasBankDetails =
+        seller?.bankName?.trim() &&
+        seller?.accountHolder?.trim() &&
+        seller?.accountNumber?.trim() &&
+        seller?.ifsc?.trim();
+      if (!hasBankDetails) {
+        return handleResponse(
+          res,
+          400,
+          "This seller has not filled in their bank details yet. Ask them to complete their bank details before settling this payout.",
+        );
+      }
+    }
+
     transaction.status = status;
     if (reason) transaction.notes = reason;
     await transaction.save();

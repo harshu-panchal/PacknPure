@@ -14,6 +14,7 @@
 import Product from "../models/product.js";
 import Promotion from "../models/promotion.js";
 import User from "../models/customer.js";
+import Order from "../models/order.js";
 import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
 import crypto from "crypto";
 
@@ -280,18 +281,14 @@ function generatePricingHash(pricingData) {
  * Count how many times user has used a coupon
  */
 async function countCouponUsageByUser(couponId, userId) {
-  // This would typically query Order/Transaction history
-  // For now, returning 0 - should be implemented per your Order schema
-  return 0;
+  return Order.countDocuments({ customer: userId, promotionApplied: couponId });
 }
 
 /**
  * Count total orders for a user (for first-order-only coupon)
  */
 async function countUserOrders(userId) {
-  // This would query Order collection
-  // For now, returning 0 - should be implemented per your Order schema
-  return 0;
+  return Order.countDocuments({ customer: userId });
 }
 
 /**

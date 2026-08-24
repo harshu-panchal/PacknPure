@@ -13,6 +13,8 @@ import {
     removeRecipientPushToken,
     upsertRecipientPushToken,
 } from "../services/notificationHelper.js";
+import { generateUniqueReferralCode } from "../utils/referralCode.js";
+import { redeemReferralCode } from "../services/referralService.js";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 
@@ -114,9 +116,11 @@ export const sendCustomerOtp = async (req, res) => {
         let isNewUser = false;
 
         if (!customer) {
+            const referralCode = await generateUniqueReferralCode();
             customer = await Customer.create({
                 phone,
                 role: "customer",
+                referralCode,
             });
             isNewUser = true;
         }
@@ -248,11 +252,30 @@ export const updateCustomerProfile = async (req, res) => {
             businessLatitude,
             businessLongitude,
             businessPlaceId,
+            referralCode,
         } = req.body;
 
         const customer = await Customer.findById(req.user.id);
         if (!customer) {
             return handleResponse(res, 404, "Customer not found");
+        }
+
+        let referralResult = null;
+        if (referralCode !== undefined && String(referralCode || "").trim()) {
+            referralResult = await redeemReferralCode(customer, referralCode);
+            if (!referralResult.applied) {
+                const messages = {
+                    invalid: "That referral code doesn't exist. Check and try again, or leave it blank.",
+                    self: "You can't use your own referral code.",
+                    already_used: "A referral code has already been applied to this account.",
+                    disabled: null, // referral program off — silently ignore, don't block profile completion
+                    empty: null,
+                };
+                const message = messages[referralResult.reason];
+                if (message) {
+                    return handleResponse(res, 400, message);
+                }
+            }
         }
 
         if (name !== undefined) customer.name = String(name).trim();

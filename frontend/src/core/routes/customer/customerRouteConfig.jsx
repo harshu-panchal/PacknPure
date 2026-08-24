@@ -124,6 +124,14 @@ export const customerRouteChildren = [
           </ProtectedRoute>
         ),
       },
+      {
+        path: 'refer',
+        element: (
+          <ProtectedRoute>
+            <P.ReferAndEarnPage />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
 ];

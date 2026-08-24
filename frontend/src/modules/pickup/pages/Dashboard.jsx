@@ -80,7 +80,7 @@ const Dashboard = () => {
     [acceptBroadcastShared, fetchAssignments],
   );
 
-  const { alerts, unreadCount, markAllRead } = usePickupNotifications(rows);
+  const { alerts, unreadCount, markAllRead } = usePickupNotifications(rows, user?._id);
   React.useEffect(() => {
     setAlertState({ alerts, unreadCount, markAllRead });
   }, [alerts, unreadCount, markAllRead, setAlertState]);

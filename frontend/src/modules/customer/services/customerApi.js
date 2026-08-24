@@ -14,6 +14,7 @@ export const customerApi = {
   },
   getWalletTransactions: (params) =>
     getWithDedupe("/customer/transactions", params),
+  getReferralInfo: () => getWithDedupe("/customer/referral/me", {}, { ttl: 15 * 1000 }),
   getCategories: (params) =>
     getWithDedupe("/categories", params, { ttl: 60 * 1000 }), // 1 min for categories
   // Keep a short TTL so admin-side edits (name/description/price) reflect quickly on the app.

@@ -15,7 +15,7 @@ const notificationSchema = new mongoose.Schema(
         recipientModel: {
             type: String,
             required: true,
-            enum: ["Seller", "Admin", "Customer", "Delivery"],
+            enum: ["Seller", "Admin", "User", "Delivery", "PickupPartner"],
         },
         title: {
             type: String,
@@ -31,7 +31,7 @@ const notificationSchema = new mongoose.Schema(
         },
         senderModel: {
             type: String,
-            enum: ["Seller", "Admin", "Customer", "Delivery", "PickupPartner"],
+            enum: ["Seller", "Admin", "User", "Delivery", "PickupPartner"],
         },
         type: {
             type: String,

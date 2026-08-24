@@ -192,6 +192,30 @@ const settingSchema = new mongoose.Schema(
             default: 2,
             min: 1,
         },
+
+        // Referral & coupon bonus program
+        referralEnabled: {
+            type: Boolean,
+            default: false,
+        },
+        // Wallet credit given to the NEW user immediately when they redeem a valid referral code at signup.
+        referralSignupBonus: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Wallet credit given to the REFERRER once the referred user's first order clears the min value below.
+        referralBonus: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Referee's first order must be at least this much for the referrer bonus to release.
+        referralMinOrderValue: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
     },
     {
         timestamps: true,

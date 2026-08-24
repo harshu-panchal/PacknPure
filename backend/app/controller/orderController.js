@@ -88,7 +88,7 @@ export const placeOrder = async (req, res) => {
     const { address, payment, pricing, timeSlot, items, promotionId, deliveryMode, selectedSlot, selectedDate } = req.body;
     const paymentMethod = normalizePaymentMethod(payment?.method);
     const customer = await User.findById(customerId).select(
-      "walletBalance codBlocked codCancelCount",
+      "walletBalance codBlocked codCancelCount referredBy",
     );
 
     if (!customer) {
@@ -1421,7 +1421,7 @@ export const updateReturnStatus = async (req, res) => {
 export const getSellerOrders = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
-    const { startDate, endDate, status: statusParam } = req.query;
+    const { startDate, endDate, status: statusParam, deliveryMode: deliveryModeParam } = req.query;
 
     // If admin, fetch all orders.
     // If seller, fetch:
@@ -1481,6 +1481,19 @@ export const getSellerOrders = async (req, res) => {
     }
     console.log("Fetching Orders - User role:", role, "User ID:", userId);
 
+    // Delivery-mode quick-filter counts, faceted against every OTHER active
+    // filter (status/date/search scope) but not against deliveryMode itself —
+    // these back the "Express Orders (N)" / "Slot Bookings (N)" stat buttons,
+    // which previously only counted the current page's 25 loaded rows.
+    const [expressCount, slotCount] = await Promise.all([
+      Order.countDocuments({ ...query, deliveryMode: "EXPRESS" }),
+      Order.countDocuments({ ...query, deliveryMode: "SLOT" }),
+    ]);
+
+    if (deliveryModeParam === "EXPRESS" || deliveryModeParam === "SLOT") {
+      query.deliveryMode = deliveryModeParam;
+    }
+
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 25,
       maxLimit: 100,
@@ -1536,6 +1549,7 @@ export const getSellerOrders = async (req, res) => {
         limit,
         total,
         totalPages: Math.ceil(total / limit) || 1,
+        deliveryModeCounts: { express: expressCount, slot: slotCount },
       },
     );
   } catch (error) {
