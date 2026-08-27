@@ -2,6 +2,7 @@ import express from "express";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 import {
   getPickupPartners,
+  getPickupPartnerById,
   createPickupPartner,
   updatePickupPartner,
   updatePickupPartnerStatus,
@@ -31,6 +32,7 @@ const router = express.Router();
 
 router.get("/", verifyToken, allowRoles("admin", "seller"), getPickupPartners);
 router.post("/", verifyToken, allowRoles("admin"), createPickupPartner);
+router.get("/:id", verifyToken, allowRoles("admin"), getPickupPartnerById);
 router.put("/:id", verifyToken, allowRoles("admin"), updatePickupPartner);
 router.patch("/:id/status", verifyToken, allowRoles("admin"), updatePickupPartnerStatus);
 

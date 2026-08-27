@@ -56,6 +56,12 @@ const pickupPartnerSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    /** Last GPS ping from POST /pickup-partner/my/location — used to detect a
+     * partner whose isOnline flag is stale (app closed/crashed without
+     * toggling offline) so they aren't auto-assigned pickups they'll never see. */
+    lastLocationAt: {
+      type: Date,
+    },
     otp: {
       type: String,
       select: false,

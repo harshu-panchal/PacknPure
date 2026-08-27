@@ -293,6 +293,9 @@ const DeliveryAuth = () => {
         if (!PATTERNS.account.test(signupAccountNumber)) { toast.error("Please enter a valid Bank Account Number"); return; }
         if (!PATTERNS.ifsc.test(signupIfsc)) { toast.error("Please enter a valid IFSC Code"); return; }
         if (!photoFile) { toast.error("Please upload a profile photo"); return; }
+        if (!aadharFile) { toast.error("Please upload Aadhar Card"); return; }
+        if (!panFile) { toast.error("Please upload RC Book"); return; }
+        if (!dlFile) { toast.error("Please upload Driving License"); return; }
 
         const formData = new FormData();
         formData.append("name", tName);
@@ -848,7 +851,7 @@ const DeliveryAuth = () => {
 
                             {[
                               { label: "Aadhar Card (Front/Back)", state: aadharFile, setter: setAadharFile, id: "aadhar" },
-                              { label: "RC Book (Optional)", state: panFile, setter: setPanFile, id: "pan" },
+                              { label: "RC Book", state: panFile, setter: setPanFile, id: "pan" },
                               { label: "Driving License", state: dlFile, setter: setDlFile, id: "dl" },
                             ].map((doc) => (
                               <div key={doc.id} className="relative">
@@ -1025,7 +1028,7 @@ const DeliveryAuth = () => {
                             </button>
                             <button
                               onClick={handleSendOtp}
-                              disabled={loading || !photoFile || dlVerified !== true || aadharVerified !== true}
+                              disabled={loading || !photoFile || dlVerified !== true || aadharVerified !== true || panVerified !== true}
                               className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {loading ? (

@@ -33,7 +33,7 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
             <Header showMobile={finalShowHeaderMobile} showDesktop={true} />
 
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !fullHeight && "pb-16")}>
+            <main className={cn("flex-1 min-w-0 md:pb-0", !showHeader && "pt-0", !fullHeight && "pb-16")}>
                 {children}
             </main>
 

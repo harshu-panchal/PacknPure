@@ -251,13 +251,18 @@ export const processPosCheckout = async (req, res) => {
         newOrder.orderId,
         session
       );
-    } else if (
-      req.user.role === "seller" &&
-      newOrder.payment.paymentMode === "ONLINE" &&
-      posSessionId
-    ) {
-      activeSession.totalOnlineSales =
-        (activeSession.totalOnlineSales || 0) + newOrder.pricing.total;
+    } else if (newOrder.payment.paymentMode === "ONLINE" && posSessionId) {
+      // Applies to every POS role (seller and admin/hub cashiers alike) — the
+      // role restriction here previously meant admin/hub UPI & Card sales
+      // never touched the session totals at all.
+      const amount = newOrder.pricing.total;
+      activeSession.totalOnlineSales = (activeSession.totalOnlineSales || 0) + amount;
+      const method = String(newOrder.payment.method || "").toLowerCase();
+      if (method === "upi") {
+        activeSession.totalUPISales = (activeSession.totalUPISales || 0) + amount;
+      } else if (method === "card") {
+        activeSession.totalCardSales = (activeSession.totalCardSales || 0) + amount;
+      }
       await activeSession.save({ session });
     }
 

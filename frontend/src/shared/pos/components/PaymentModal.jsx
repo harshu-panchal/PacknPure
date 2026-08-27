@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
-import { Banknote, CreditCard, Smartphone, Wallet, Loader2 } from 'lucide-react';
+import { Banknote, CreditCard, Smartphone, Loader2 } from 'lucide-react';
 import { posApi } from '../services/posApi';
 import { toast } from 'sonner';
 import { usePosEngine } from '../context/PosEngineContext';
@@ -170,7 +170,7 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                     ) : (
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-3">Payment Method</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-3 gap-3">
                                 <MethodBtn 
                                     id="cash" label="Cash" icon={Banknote} 
                                     active={paymentMethod} onClick={setPaymentMethod} 
@@ -181,10 +181,6 @@ export const PaymentModal = ({ open, onOpenChange, total, onProcessPayment, isPr
                                 />
                                 <MethodBtn 
                                     id="card" label="Card" icon={CreditCard} 
-                                    active={paymentMethod} onClick={setPaymentMethod} 
-                                />
-                                <MethodBtn 
-                                    id="wallet" label="Wallet" icon={Wallet} 
                                     active={paymentMethod} onClick={setPaymentMethod} 
                                 />
                             </div>

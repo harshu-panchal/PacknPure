@@ -2,7 +2,7 @@ import React from "react";
 import Modal from "@shared/components/ui/Modal";
 import Badge from "@shared/components/ui/Badge";
 import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline";
-import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
+import { formatInr, formatPrDate, prStatusLabel, prDisplayCode } from "@shared/utils/purchaseRequestFormat";
 import PurchaseRequestLineItems from "./PurchaseRequestLineItems";
 
 const lineStatusLabel = (status) => {
@@ -36,7 +36,7 @@ const PurchaseRequestDetailModal = ({ isOpen, onClose, row, loading = false }) =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={row?.requestId ? `Purchase request · ${row.requestId}` : "Purchase request"}
+      title={row?.requestId ? `Purchase request · ${prDisplayCode(row)}` : "Purchase request"}
       size="xl"
       footer={
         <button
@@ -56,9 +56,16 @@ const PurchaseRequestDetailModal = ({ isOpen, onClose, row, loading = false }) =
         <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <Badge variant="primary" className="text-[10px] uppercase mb-2">
-                {row.statusLabel || prStatusLabel(row.status)}
-              </Badge>
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="primary" className="text-[10px] uppercase">
+                  {row.statusLabel || prStatusLabel(row.status)}
+                </Badge>
+                {row.orderNumber && (
+                  <Badge variant="secondary" className="text-[10px] uppercase">
+                    Order #{row.orderNumber}
+                  </Badge>
+                )}
+              </div>
               <p className="text-lg font-bold text-slate-900">{row.vendorName || "Vendor"}</p>
               {row.vendorPhone ? (
                 <p className="text-sm text-slate-500">{row.vendorPhone}</p>

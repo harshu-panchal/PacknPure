@@ -228,6 +228,8 @@ const SuppliersManagementPage = () => {
       if (filterStatus === "pending") matchesStatus = !s.isVerified;
       if (filterStatus === "geoMapped") matchesStatus = s.hasGeo;
       if (filterStatus === "elite") matchesStatus = s.rating >= 4.5;
+      if (filterStatus === "hasOrders") matchesStatus = s.totalOrders > 0;
+      if (filterStatus === "hasRevenue") matchesStatus = s.revenue > 0;
 
       const matchesRevenue = s.revenue >= (Number(advancedFilters.minRevenue) || 0);
       const matchesRating = s.rating >= (Number(advancedFilters.minRating) || 0);
@@ -253,6 +255,11 @@ const SuppliersManagementPage = () => {
     const elite = suppliers.filter((s) => s.rating >= 4.5).length;
     const totalRevenue = suppliers.reduce((acc, s) => acc + s.revenue, 0);
     const totalOrders = suppliers.reduce((acc, s) => acc + s.totalOrders, 0);
+    // "hasOrders"/"hasRevenue" filter suppliers, not orders/rupees — these counts
+    // are what the table will actually show once you click those cards, so the
+    // headline total (orders/revenue) doesn't look "wrong" next to a shorter list.
+    const suppliersWithOrders = suppliers.filter((s) => s.totalOrders > 0).length;
+    const suppliersWithRevenue = suppliers.filter((s) => s.revenue > 0).length;
 
     return {
       total: suppliers.length,
@@ -263,6 +270,8 @@ const SuppliersManagementPage = () => {
       elite,
       totalRevenue,
       totalOrders,
+      suppliersWithOrders,
+      suppliersWithRevenue,
     };
   }, [suppliers]);
 
@@ -521,8 +530,8 @@ const SuppliersManagementPage = () => {
           { label: "Pending Approval", val: stats.pending, icon: HiOutlineClock, color: "text-amber-600", bg: "bg-amber-50", filterValue: "pending" },
           { label: "Geo Mapped", val: stats.geoMapped, icon: HiOutlineMapPin, color: "text-violet-600", bg: "bg-violet-50", filterValue: "geoMapped" },
           { label: "Elite Rated (4.5+)", val: stats.elite, icon: HiOutlineStar, color: "text-amber-600", bg: "bg-amber-50", filterValue: "elite" },
-          { label: "Procurement Orders", val: stats.totalOrders.toLocaleString(), icon: HiOutlineArrowTrendingUp, color: "text-indigo-600", bg: "bg-indigo-50" },
-          { label: "Supply Revenue", val: `₹${(stats.totalRevenue / 100000).toFixed(1)}L`, icon: HiOutlineCheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Procurement Orders", val: stats.totalOrders.toLocaleString(), icon: HiOutlineArrowTrendingUp, color: "text-indigo-600", bg: "bg-indigo-50", filterValue: "hasOrders", sub: `across ${stats.suppliersWithOrders} supplier${stats.suppliersWithOrders === 1 ? "" : "s"}` },
+          { label: "Supply Revenue", val: `₹${(stats.totalRevenue / 100000).toFixed(1)}L`, icon: HiOutlineCheckCircle, color: "text-emerald-600", bg: "bg-emerald-50", filterValue: "hasRevenue", sub: `across ${stats.suppliersWithRevenue} supplier${stats.suppliersWithRevenue === 1 ? "" : "s"}` },
           { label: "Verified Partners", val: stats.verified, icon: HiOutlineCheck, color: "text-sky-600", bg: "bg-sky-50", filterValue: "verified" },
         ].map((stat, i) => (
           <Card
@@ -532,9 +541,8 @@ const SuppliersManagementPage = () => {
             tabIndex={stat.filterValue ? 0 : undefined}
             onKeyDown={stat.filterValue ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyStatFilter(stat.filterValue); } } : undefined}
             className={cn(
-              "border-none shadow-sm p-4 group transition-all",
-              stat.filterValue && "cursor-pointer hover:shadow-md active:scale-[0.98]",
-              stat.filterValue && filterStatus === stat.filterValue ? "ring-2 ring-primary/60" : "ring-1 ring-slate-100",
+              "border-none shadow-sm p-4 group cursor-pointer transition-all hover:shadow-md active:scale-[0.98]",
+              filterStatus === stat.filterValue ? "ring-2 ring-primary/60" : "ring-1 ring-slate-100",
             )}
           >
             <div className="flex items-center gap-3">
@@ -544,6 +552,7 @@ const SuppliersManagementPage = () => {
               <div>
                 <p className="ds-label">{stat.label}</p>
                 <h4 className="ds-stat-medium">{stat.val}</h4>
+                {stat.sub && <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{stat.sub}</p>}
               </div>
             </div>
           </Card>
@@ -587,6 +596,8 @@ const SuppliersManagementPage = () => {
               <option value="inactive">Inactive</option>
               <option value="geoMapped">Geo Mapped</option>
               <option value="elite">Elite Rated (4.5+)</option>
+              <option value="hasOrders">Has Procurement Orders</option>
+              <option value="hasRevenue">Has Supply Revenue</option>
             </select>
             <div className="relative">
               <button

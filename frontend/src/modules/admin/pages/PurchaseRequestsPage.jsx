@@ -10,7 +10,7 @@ import {
 import PurchaseRequestDetailModal from "../components/PurchaseRequestDetailModal";
 import PurchaseRequestLineItems from "../components/PurchaseRequestLineItems";
 import { adminApi } from "../services/adminApi";
-import { formatInr, formatPrDate, prStatusLabel } from "@shared/utils/purchaseRequestFormat";
+import { formatInr, formatPrDate, prStatusLabel, prDisplayCode } from "@shared/utils/purchaseRequestFormat";
 import PRCountdown from "@shared/components/PRCountdown";
 
 const statusToLabel = (value) => prStatusLabel(value);
@@ -112,6 +112,8 @@ const PurchaseRequestsPage = () => {
       if (!q) return true;
       return (
         String(row.requestId || "").toLowerCase().includes(q) ||
+        prDisplayCode(row).toLowerCase().includes(q) ||
+        String(row.orderNumber || "").toLowerCase().includes(q) ||
         String(row.vendorName || "").toLowerCase().includes(q) ||
         String(row.product || "").toLowerCase().includes(q) ||
         (Array.isArray(row.items) &&
@@ -277,7 +279,7 @@ const PurchaseRequestsPage = () => {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search ID, vendor, product…"
+              placeholder="Search request ID, order #, vendor, product…"
               className="h-10 min-w-[200px] rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-400"
             />
             <select
@@ -318,7 +320,7 @@ const PurchaseRequestsPage = () => {
             render: (row) => (
               <div className="min-w-[150px]">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-bold text-slate-900 leading-tight">{row.requestId}</p>
+                  <p className="text-sm font-bold text-slate-900 leading-tight">{prDisplayCode(row)}</p>
                   {row.requestType === "manual" ? (
                     <span className="bg-amber-50 text-amber-700 ring-1 ring-amber-100 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-bold tracking-wide shrink-0">
                       Manual
@@ -329,6 +331,7 @@ const PurchaseRequestsPage = () => {
                     </span>
                   )}
                 </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">{row.requestId}</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">{formatPrDate(row.createdAt)}</p>
               </div>
             ),

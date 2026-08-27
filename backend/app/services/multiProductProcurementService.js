@@ -233,7 +233,7 @@ export const createSellerGroupedPurchaseRequests = async ({
       status: "created",
       expiresAt: new Date(Date.now() + sellerResponseTimeoutMs),
       items: prItems,
-      notes: `Multi-product PR for order ${order.orderId} (${preparedLines.length} items)`,
+      notes: `Multi-product PR for order ${order.displayOrderNumber || order.orderId} (${preparedLines.length} items)`,
     });
 
     if (procurementSession) {

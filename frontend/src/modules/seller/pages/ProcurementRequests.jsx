@@ -8,7 +8,7 @@ import { useToast } from "@shared/components/ui/Toast";
 import { useAuth } from "@/core/context/AuthContext";
 import { getOrderSocket } from "@/core/services/orderSocket";
 import PurchaseRequestTimeline from "@shared/components/PurchaseRequestTimeline";
-import { formatPrDate } from "@shared/utils/purchaseRequestFormat";
+import { formatPrDate, prDisplayCode } from "@shared/utils/purchaseRequestFormat";
 import PRCountdown from "@shared/components/PRCountdown";
 
 /** Set true later to let sellers edit Accept Qty again. */
@@ -367,7 +367,7 @@ const ProcurementRequests = () => {
                       ) : (
                         <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold">Automated</span>
                       )}
-                      {row.requestId}
+                      {prDisplayCode(row)}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       Hub: <span className="font-semibold text-indigo-600">{row.hubId}</span>

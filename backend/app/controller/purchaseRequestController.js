@@ -56,6 +56,42 @@ import {
 const DEFAULT_HUB_ID = process.env.DEFAULT_HUB_ID || "MAIN_HUB";
 const PICKUP_BROADCAST_TIMEOUT_MS = () =>
   parseInt(process.env.PICKUP_BROADCAST_TIMEOUT_MS || "120000", 10);
+// isOnline is a manual toggle the partner flips in-app — it has no automatic
+// expiry, so an app that crashed/closed without toggling offline leaves the
+// flag stuck "online" forever. A partner is only treated as genuinely online
+// if they've also sent a live-location ping within this window (partners who
+// have never sent one yet — just toggled on — are still given the benefit
+// of the doubt).
+const PICKUP_ONLINE_STALE_MS = () =>
+  parseInt(process.env.PICKUP_ONLINE_STALE_MS || "1200000", 10); // 20 min
+// Pickup partner sessions expire after 7 days (see buildPartnerToken) — a lastLogin
+// older than that means their token is already dead and they cannot possibly be
+// using the app right now, no matter what the isOnline flag says.
+const PICKUP_LOGIN_STALE_MS = () =>
+  parseInt(process.env.PICKUP_LOGIN_STALE_MS || String(7 * 24 * 60 * 60 * 1000), 10);
+
+const genuinelyOnlineFilter = () => {
+  const now = Date.now();
+  return {
+    isOnline: true,
+    $and: [
+      {
+        $or: [
+          { lastLogin: { $exists: false } },
+          { lastLogin: null },
+          { lastLogin: { $gte: new Date(now - PICKUP_LOGIN_STALE_MS()) } },
+        ],
+      },
+      {
+        $or: [
+          { lastLocationAt: { $exists: false } },
+          { lastLocationAt: null },
+          { lastLocationAt: { $gte: new Date(now - PICKUP_ONLINE_STALE_MS()) } },
+        ],
+      },
+    ],
+  };
+};
 
 const ALLOWED_STATUSES = new Set([
   "created",
@@ -129,7 +165,7 @@ const generateRequestId = () =>
 const pickBestPickupPartner = async (hubId = DEFAULT_HUB_ID) => {
   const candidates = await PickupPartner.find({
     hubId: String(hubId || DEFAULT_HUB_ID),
-    isOnline: true,
+    ...genuinelyOnlineFilter(),
     isActive: true,
     isVerified: true,
     status: { $in: ["available", "active"] },
@@ -304,7 +340,7 @@ const broadcastPickupForRequest = async (pr) => {
   const hubId = String(pr.hubId || DEFAULT_HUB_ID);
   const candidates = await PickupPartner.find({
     hubId,
-    isOnline: true,
+    ...genuinelyOnlineFilter(),
     isActive: true,
     isVerified: true,
     status: { $in: ["available", "active"] },
@@ -534,6 +570,9 @@ const mapRow = (reqDoc, extras = {}) => {
     _id: reqDoc._id,
     requestId: reqDoc.requestId,
     orderId: reqDoc.orderId?._id || reqDoc.orderId || null,
+    // Human-readable order number (e.g. "HUBORD0195") — same one shown on the admin
+    // Orders list and sent to the seller, so a PR can be traced back to its order.
+    orderNumber: reqDoc.orderId?.displayOrderNumber || null,
     hubId: reqDoc.hubId || DEFAULT_HUB_ID,
     vendorId: reqDoc.vendorId?._id || reqDoc.vendorId || null,
     vendorName:
@@ -592,7 +631,9 @@ const mapSellerRow = (reqDoc, extras = {}) => {
     _id: reqDoc._id,
     requestId: reqDoc.requestId,
     orderId: reqDoc.orderId?._id || reqDoc.orderId || null,
-    orderCode: reqDoc.orderId?.orderId || "",
+    // Same human-readable order number the customer/admin sees (e.g. "HUBORD0195"),
+    // not the internal long orderId — this is what should reach the seller.
+    orderCode: reqDoc.orderId?.displayOrderNumber || reqDoc.orderId?.orderId || "",
     hubId: reqDoc.hubId,
     status: reqDoc.status,
     statusLabel: prStatusLabel(reqDoc.status),
@@ -823,7 +864,7 @@ export const getPurchaseRequestProductContext = async (req, res) => {
 const loadPurchaseRequestDetail = async (id) => {
   const doc = await PurchaseRequest.findById(id)
     .populate("vendorId", "shopName name phone email")
-    .populate("orderId", "orderId status")
+    .populate("orderId", "orderId displayOrderNumber status")
     .populate("items.productId", "name mainImage unit sku")
     .populate("pickupPartnerId", "name phone")
     .lean();
@@ -873,7 +914,7 @@ export const getPurchaseRequestById = async (req, res) => {
       }
       return handleResponse(res, 200, "Purchase request loaded", mapSellerRow(
         await PurchaseRequest.findById(id)
-          .populate("orderId", "orderId")
+          .populate("orderId", "orderId displayOrderNumber")
           .populate("items.productId", "name mainImage unit")
           .populate("pickupPartnerId", "name phone")
           .lean(),
@@ -924,7 +965,7 @@ export const getPurchaseRequests = async (req, res) => {
     const [items, total] = await Promise.all([
       PurchaseRequest.find(query)
         .populate("vendorId", "shopName name phone")
-        .populate("orderId", "orderId status")
+        .populate("orderId", "orderId displayOrderNumber status")
         .populate("items.productId", "name mainImage unit")
         .populate("pickupPartnerId", "name phone")
         .sort({ createdAt: -1 })
@@ -1814,7 +1855,7 @@ export const getSellerPurchaseRequests = async (req, res) => {
     const rows = await PurchaseRequest.find(query)
       .populate({
         path: "orderId",
-        select: "orderId status workflowStatus",
+        select: "orderId displayOrderNumber status workflowStatus",
       })
       .populate("items.productId", "name mainImage unit")
       .populate("pickupPartnerId", "name phone")
@@ -2238,7 +2279,7 @@ export const markSellerRequestReady = async (req, res) => {
     }
 
     const updated = await PurchaseRequest.findById(id)
-      .populate("orderId", "orderId")
+      .populate("orderId", "orderId displayOrderNumber")
       .populate("items.productId", "name")
       .populate("pickupPartnerId", "name phone")
       .lean();

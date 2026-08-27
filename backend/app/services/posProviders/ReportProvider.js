@@ -16,8 +16,12 @@ export class AdminReportProvider extends ReportProvider {
         // terminal successful state is "delivered", which is what POS
         // take-away orders and fulfilled online orders actually end up as.
         const posOrders = await Order.find({ orderSource: "POS", createdAt: { $gte: today }, status: "delivered" });
-        const onlineOrders = await Order.find({ orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "delivered" });
         const posSales = posOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
+        // "Online Sales" here means payment method (UPI/Card/online), not order
+        // channel — a POS sale paid by UPI/Card is still an online sale, and this
+        // dashboard is POS-scoped, so it's the online-paid subset of posOrders,
+        // not orders placed through the separate marketplace/app channel.
+        const onlineOrders = posOrders.filter((order) => order.payment?.method !== "cash");
         const onlineSales = onlineOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
         // POS orders only ever land on "pending" (home delivery, not yet
         // delivered) or "delivered" (take-away) — "processing" is not a real status.
@@ -27,7 +31,10 @@ export class AdminReportProvider extends ReportProvider {
         const activeSessions = await PosSession.countDocuments({ status: "OPEN" });
 
         return {
-            sales: { pos: posSales, online: onlineSales, total: posSales + onlineSales },
+            // online is now a subset of pos (same POS channel, filtered by payment
+            // method), so total is just posSales — adding online again would
+            // double-count it.
+            sales: { pos: posSales, online: onlineSales, total: posSales },
             orders: { totalPosToday: posOrders.length, totalOnlineToday: onlineOrders.length, pendingPos: pendingPosOrders, pendingOnline: pendingOnlineOrders },
             inventory: { lowStockAlerts: lowStockCount },
             system: { activeSessions }
@@ -55,9 +62,11 @@ export class SellerReportProvider extends ReportProvider {
         const posOrders = await Order.find(query);
         const posSales = posOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
 
-        // Online orders for seller
-        const onlineQuery = { orderSource: { $ne: "POS" }, createdAt: { $gte: today }, status: "delivered", seller: reqUser.id };
-        const onlineOrders = await Order.find(onlineQuery);
+        // "Online Sales" here means payment method (UPI/Card/online), not order
+        // channel — a POS sale paid by UPI/Card is still an online sale, and this
+        // dashboard is POS-scoped, so it's the online-paid subset of posOrders,
+        // not orders placed through the separate marketplace/app channel.
+        const onlineOrders = posOrders.filter((order) => order.payment?.method !== "cash");
         const onlineSales = onlineOrders.reduce((acc, order) => acc + (order.pricing?.total || order.totalAmount || 0), 0);
 
         // POS orders only ever land on "pending" (home delivery, not yet
@@ -70,7 +79,10 @@ export class SellerReportProvider extends ReportProvider {
         const activeSessions = await PosSession.countDocuments({ status: "OPEN", cashierId: reqUser.id });
 
         return {
-            sales: { pos: posSales, online: onlineSales, total: posSales + onlineSales },
+            // online is now a subset of pos (same POS channel, filtered by payment
+            // method), so total is just posSales — adding online again would
+            // double-count it.
+            sales: { pos: posSales, online: onlineSales, total: posSales },
             orders: { totalPosToday: posOrders.length, totalOnlineToday: onlineOrders.length, pendingPos: pendingPosOrders, pendingOnline: pendingOnlineOrders },
             inventory: { lowStockAlerts: lowStockCount },
             system: { activeSessions }

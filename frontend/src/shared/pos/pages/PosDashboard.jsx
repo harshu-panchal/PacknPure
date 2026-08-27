@@ -27,6 +27,7 @@ export default function PosDashboard() {
     const lowStockPath = posRole === 'seller'
         ? '/seller/inventory?status=Low%20Stock'
         : '/admin/hub-inventory?filter=low_stock';
+    const onlineSalesPath = posRole === 'seller' ? '/seller/analytics' : '/admin/orders/all';
 
     const [stats, setStats] = useState(null);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -160,6 +161,7 @@ export default function PosDashboard() {
                     icon={Banknote} 
                     color="emerald" 
                     trend={isLoadingStats ? '...' : `${stats?.orders?.totalPosToday || 0} Orders`} 
+                    action={() => navigate(`/${posRole}/pos/orders`)}
                 />
                 <StatCard 
                     title="Today's Online Sales" 
@@ -167,6 +169,7 @@ export default function PosDashboard() {
                     icon={ShoppingCart} 
                     color="blue" 
                     trend={isLoadingStats ? '...' : `${stats?.orders?.totalOnlineToday || 0} Orders`} 
+                    action={() => navigate(onlineSalesPath)}
                 />
                 <StatCard 
                     title="Pending POS Orders" 
@@ -174,6 +177,7 @@ export default function PosDashboard() {
                     icon={Boxes} 
                     color="indigo" 
                     subtitle="Awaiting Take Away / Delivery" 
+                    action={() => navigate(`/${posRole}/pos/orders`)}
                 />
                 <StatCard 
                     title="Low Stock Alerts" 
@@ -235,7 +239,7 @@ export default function PosDashboard() {
                             </div>
                             <div className="flex justify-between items-center py-2 border-b border-gray-100">
                                 <span className="text-gray-600">Expected Cash</span>
-                                <span className="font-semibold text-gray-800">₹{activeSession.expectedCash.toFixed(2)}</span>
+                                <span className="font-semibold text-gray-800">₹{(activeSession.expectedCash || 0).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center py-2 border-b border-gray-100">
                                 <span className="text-gray-600">POS Sales Today</span>
@@ -269,7 +273,7 @@ const StatCard = ({ title, value, icon: Icon, color, trend, subtitle, action }) 
         blue: 'bg-blue-50 text-blue-600 border-blue-100',
         emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
         indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-        red: 'bg-red-50 text-red-600 border-red-100 cursor-pointer hover:shadow-md transition-shadow',
+        red: 'bg-red-50 text-red-600 border-red-100',
     };
 
     return (

@@ -9,6 +9,7 @@ import Product from "../models/product.js";
 import Transaction from "../models/transaction.js";
 import Setting from "../models/setting.js";
 import PickupPartner from "../models/pickupPartner.js";
+import PurchaseRequest from "../models/purchaseRequest.js";
 import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
 import Category from "../models/category.js";
@@ -987,33 +988,90 @@ export const getSellers = async (req, res) => {
 
     const sellerIds = sellers.map((s) => s._id).filter(Boolean);
     const productStatsMap = new Map();
+    const procurementStatsMap = new Map();
 
     if (sellerIds.length > 0) {
-      const productStats = await Product.aggregate([
-        {
-          $match: {
-            ownerType: "seller",
-            sellerId: { $in: sellerIds },
+      const [productStats, prStats, orderStats] = await Promise.all([
+        Product.aggregate([
+          {
+            $match: {
+              ownerType: "seller",
+              sellerId: { $in: sellerIds },
+            },
           },
-        },
-        {
-          $group: {
-            _id: "$sellerId",
-            totalProducts: { $sum: 1 },
-            activeProducts: {
-              $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] },
+          {
+            $group: {
+              _id: "$sellerId",
+              totalProducts: { $sum: 1 },
+              activeProducts: {
+                $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] },
+              },
+              pendingProducts: {
+                $sum: { $cond: [{ $eq: ["$status", "pending_approval"] }, 1, 0] },
+              },
+              inStockProducts: {
+                $sum: {
+                  $cond: [{ $gt: [MONGO_CATALOG_STOCK_EXPR, 0] }, 1, 0],
+                },
+              },
+              totalStock: { $sum: MONGO_CATALOG_STOCK_EXPR },
             },
-            pendingProducts: {
-              $sum: { $cond: [{ $eq: ["$status", "pending_approval"] }, 1, 0] },
+          },
+        ]),
+        PurchaseRequest.aggregate([
+          {
+            $match: {
+              vendorId: { $in: sellerIds },
             },
-            inStockProducts: {
-              $sum: {
-                $cond: [{ $gt: [MONGO_CATALOG_STOCK_EXPR, 0] }, 1, 0],
+          },
+          {
+            $group: {
+              _id: "$vendorId",
+              totalOrders: { $sum: 1 },
+              totalRevenue: {
+                $sum: {
+                  $reduce: {
+                    input: "$items",
+                    initialValue: 0,
+                    in: {
+                      $add: [
+                        "$$value",
+                        {
+                          $ifNull: [
+                            "$$this.totalProcurementCost",
+                            {
+                              $multiply: [
+                                { $ifNull: ["$$this.finalSupplyPrice", { $ifNull: ["$$this.vendorUnitCost", 0] }] },
+                                { $ifNull: ["$$this.requestedQty", 1] },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                },
               },
             },
-            totalStock: { $sum: MONGO_CATALOG_STOCK_EXPR },
           },
-        },
+        ]),
+        Order.aggregate([
+          {
+            $match: {
+              $or: [
+                { seller: { $in: sellerIds } },
+                { "posDetails.sellerId": { $in: sellerIds } },
+              ],
+            },
+          },
+          {
+            $group: {
+              _id: { $ifNull: ["$seller", "$posDetails.sellerId"] },
+              totalOrders: { $sum: 1 },
+              totalRevenue: { $sum: { $ifNull: ["$pricing.total", 0] } },
+            },
+          },
+        ]),
       ]);
 
       productStats.forEach((row) => {
@@ -1031,6 +1089,28 @@ export const getSellers = async (req, res) => {
           });
         }
       });
+
+      prStats.forEach((row) => {
+        if (row._id) {
+          const sId = String(row._id);
+          const existing = procurementStatsMap.get(sId) || { totalOrders: 0, totalRevenue: 0 };
+          procurementStatsMap.set(sId, {
+            totalOrders: existing.totalOrders + (Number(row.totalOrders) || 0),
+            totalRevenue: existing.totalRevenue + (Number(row.totalRevenue) || 0),
+          });
+        }
+      });
+
+      orderStats.forEach((row) => {
+        if (row._id) {
+          const sId = String(row._id);
+          const existing = procurementStatsMap.get(sId) || { totalOrders: 0, totalRevenue: 0 };
+          procurementStatsMap.set(sId, {
+            totalOrders: existing.totalOrders + (Number(row.totalOrders) || 0),
+            totalRevenue: existing.totalRevenue + (Number(row.totalRevenue) || 0),
+          });
+        }
+      });
     }
 
     const items = sellers.map((seller) => {
@@ -1042,8 +1122,22 @@ export const getSellers = async (req, res) => {
         outOfStockProducts: 0,
         totalStock: 0,
       };
+      const procStats = procurementStatsMap.get(String(seller._id)) || {
+        totalOrders: 0,
+        totalRevenue: 0,
+      };
+      const totalOrders = (Number(seller.totalOrders) || 0) + procStats.totalOrders;
+      const totalRevenue = (Number(seller.totalRevenue) || Number(seller.revenue) || 0) + procStats.totalRevenue;
+
       return {
         ...seller,
+        totalOrders,
+        totalRevenue,
+        revenue: totalRevenue,
+        stats: {
+          totalOrders,
+          totalRevenue,
+        },
         productStats: stats,
         productCount: stats.totalProducts,
       };
@@ -1074,12 +1168,46 @@ export const getSellerById = async (req, res) => {
       (typeof seller.address === "string" && seller.address.trim())
         ? seller.address.trim()
         : coordsLabel || "Not mapped";
-    const [totalOrders, totalRevenue, recentOrders, productStatsRows, sellerProducts, transactions] = await Promise.all([
+    const sellerObjId = new mongoose.Types.ObjectId(id);
+    const [directOrderCount, directOrderRev, prCount, prRev, recentOrders, productStatsRows, sellerProducts, transactions] = await Promise.all([
       Order.countDocuments({ seller: id }),
-      Order.aggregate([{ $match: { seller: new mongoose.Types.ObjectId(id), status: "delivered" } }, { $group: { _id: null, total: { $sum: "$pricing.total" } } }]),
+      Order.aggregate([{ $match: { seller: sellerObjId, status: "delivered" } }, { $group: { _id: null, total: { $sum: "$pricing.total" } } }]),
+      PurchaseRequest.countDocuments({ vendorId: id }),
+      PurchaseRequest.aggregate([
+        { $match: { vendorId: sellerObjId } },
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: {
+                $reduce: {
+                  input: "$items",
+                  initialValue: 0,
+                  in: {
+                    $add: [
+                      "$$value",
+                      {
+                        $ifNull: [
+                          "$$this.totalProcurementCost",
+                          {
+                            $multiply: [
+                              { $ifNull: ["$$this.finalSupplyPrice", { $ifNull: ["$$this.vendorUnitCost", 0] }] },
+                              { $ifNull: ["$$this.requestedQty", 1] },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      ]),
       Order.find({ seller: id }).sort({ createdAt: -1 }).limit(10).populate("customer", "name phone"),
       Product.aggregate([
-        { $match: { sellerId: new mongoose.Types.ObjectId(id), ownerType: "seller" } },
+        { $match: { sellerId: sellerObjId, ownerType: "seller" } },
         {
           $group: {
             _id: null,
@@ -1099,6 +1227,9 @@ export const getSellerById = async (req, res) => {
         .lean(),
       Transaction.find({ user: id, userModel: "Seller" }).lean(),
     ]);
+
+    const totalOrders = directOrderCount + prCount;
+    const totalRevenue = (directOrderRev[0]?.total || 0) + (prRev[0]?.total || 0);
 
     const settledBalance = (transactions || [])
       .filter((t) => t.status === "Settled")

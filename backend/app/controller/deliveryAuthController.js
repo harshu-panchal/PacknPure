@@ -79,6 +79,15 @@ export const signupDelivery = async (req, res) => {
         if (!photoUrl) {
             return handleResponse(res, 400, "Profile photo is required");
         }
+        if (!aadharUrl) {
+            return handleResponse(res, 400, "Aadhar card document is required");
+        }
+        if (!panUrl) {
+            return handleResponse(res, 400, "RC Book document is required");
+        }
+        if (!dlUrl) {
+            return handleResponse(res, 400, "Driving license document is required");
+        }
 
         const deliveryData = {
             name, phone, vehicleType, email, address, vehicleNumber, drivingLicenseNumber,

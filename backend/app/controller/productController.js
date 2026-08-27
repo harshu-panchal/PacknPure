@@ -301,15 +301,6 @@ export const getProducts = async (req, res) => {
     if (status) query.status = status;
     if (sellerId) query.sellerId = sellerId;
 
-    // Quick Filters based on stock status
-    if (req.query.stockStatus === 'active') {
-      query.status = 'active';
-    } else if (req.query.stockStatus === 'low_stock') {
-      query.stock = { $gt: 0, $lte: 10 };
-    } else if (req.query.stockStatus === 'out_of_stock') {
-      query.stock = 0;
-    }
-
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -372,6 +363,38 @@ export const getProducts = async (req, res) => {
     if (req.query.sellerReviewPending === "true") {
       query.ownerType = "seller";
       query["adminReview.pending"] = true;
+    }
+
+    // Quick Filters based on stock status
+    if (req.query.stockStatus === 'active') {
+      query.status = 'active';
+    } else if (req.query.stockStatus === 'low_stock' || req.query.stockStatus === 'out_of_stock') {
+      if (isAdminCatalogRequest) {
+        const HubInventory = (await import("../models/hubInventory.js")).default;
+        const candidateProducts = await Product.find(query).select('_id').lean();
+        const candidateIds = candidateProducts.map((p) => p._id);
+        const hubStatus = req.query.stockStatus;
+        const matchingHubRows = await HubInventory.find({
+          productId: { $in: candidateIds },
+          status: hubStatus,
+        }).select('productId').lean();
+        const matchingPIds = matchingHubRows.map((r) => r.productId);
+        query._id = { $in: matchingPIds };
+      } else {
+        if (req.query.stockStatus === 'low_stock') {
+          query.$or = [
+            { stock: { $gt: 0, $lte: 10 } },
+            { variants: { $elemMatch: { stock: { $gt: 0, $lte: 10 } } } },
+          ];
+        } else {
+          const stockFilter = buildSellerStockStatusQuery("out");
+          if (stockFilter) {
+            Object.assign(query, stockFilter);
+          } else {
+            query.stock = { $lte: 0 };
+          }
+        }
+      }
     }
 
     const { page, limit, skip } = getPagination(req, {
@@ -534,6 +557,9 @@ export const getProducts = async (req, res) => {
     const statsQuery = { ...query };
     delete statsQuery.status;
     delete statsQuery.stock;
+    delete statsQuery.$or;
+    delete statsQuery.$and;
+    delete statsQuery._id;
     if (query.ownerType) statsQuery.ownerType = query.ownerType;
 
     let lowStockCount = 0;
@@ -548,13 +574,25 @@ export const getProducts = async (req, res) => {
         HubInventory.countDocuments({ productId: { $in: pIds }, status: 'out_of_stock' }),
       ]);
     } else {
+      const sellerLowStockFilter = {
+        ...statsQuery,
+        $or: [
+          { stock: { $gt: 0, $lte: 10 } },
+          { variants: { $elemMatch: { stock: { $gt: 0, $lte: 10 } } } },
+        ],
+      };
+      const sellerOutStockFilter = {
+        ...statsQuery,
+        ...buildSellerStockStatusQuery("out"),
+      };
       [lowStockCount, outOfStockCount] = await Promise.all([
-        Product.countDocuments({ ...statsQuery, stock: { $gt: 0, $lte: 10 } }),
-        Product.countDocuments({ ...statsQuery, stock: { $lte: 0 } }),
+        Product.countDocuments(sellerLowStockFilter),
+        Product.countDocuments(sellerOutStockFilter),
       ]);
     }
 
-    const [total, activeCount] = await Promise.all([
+    const [filteredTotal, total, activeCount] = await Promise.all([
+      Product.countDocuments(query),
       Product.countDocuments(statsQuery),
       Product.countDocuments({ ...statsQuery, status: 'active' }),
     ]);
@@ -567,14 +605,14 @@ export const getProducts = async (req, res) => {
       items,
       page,
       limit,
-      total,
+      total: filteredTotal,
       stats: {
         total,
         active: activeCount,
         lowStock: lowStockCount,
         outOfStock: outOfStockCount,
       },
-      totalPages: Math.ceil(total / limit) || 1,
+      totalPages: Math.ceil(filteredTotal / limit) || 1,
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

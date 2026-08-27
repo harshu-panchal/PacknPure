@@ -703,7 +703,7 @@ export const createAutoPurchaseRequests = async ({
         finalSupplyPrice: item.finalSupplyPrice || 0,
         totalProcurementCost: item.totalProcurementCost || 0,
       }],
-      notes: `Auto-generated from order ${order.orderId}`,
+      notes: `Auto-generated from order ${order.displayOrderNumber || order.orderId}`,
     });
 
     if (procurementSession && allocationId) {

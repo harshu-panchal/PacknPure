@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Truck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Truck, Eye } from "lucide-react";
 import SupplyModuleTable from "../components/supply/SupplyModuleTable";
 import {
   SupplyConfirmModal,
@@ -9,6 +10,7 @@ import {
 import { adminApi } from "../services/adminApi";
 
 const PickupPartnersPage = () => {
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -158,6 +160,13 @@ const PickupPartnersPage = () => {
         statusColumn="status"
         renderActions={(row) => (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/pickup-partners/${row.id}`)}
+              title="View full profile"
+              className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 hover:text-primary">
+              <Eye className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => openEdit(row)}

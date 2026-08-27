@@ -7,6 +7,7 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
+import { shouldHardenMobileApp } from '@core/mobile/mobileAppHardening';
 
 const LenisContext = createContext(null);
 
@@ -15,9 +16,14 @@ export const useLenis = () => useContext(LenisContext);
 const MOBILE_SCROLL_QUERY =
   '(max-width: 767.98px), (hover: none) and (pointer: coarse)';
 
+// Delegates the "is this mobile" check to mobileAppHardening's own function
+// call rather than reading back the DOM class it sets — reading a class that
+// another module writes (and that module's own listeners run on the same
+// resize/media-query events) creates a MutationObserver feedback loop the
+// moment something here also reacts to document.documentElement class changes.
 function isMobileScrollEnvironment() {
   if (typeof window === 'undefined') return true;
-  if (document.documentElement.classList.contains('app-mobile-hardened')) return true;
+  if (shouldHardenMobileApp()) return true;
   if (window.matchMedia(MOBILE_SCROLL_QUERY).matches) return true;
   if (window.matchMedia('(display-mode: standalone)').matches) return true;
   if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
@@ -51,9 +57,9 @@ const LenisProvider = ({ children }) => {
       if (lenis) {
         lenis.destroy();
         lenis = null;
+        document.documentElement.classList.remove('lenis', 'lenis-smooth');
       }
       lenisRef.current = null;
-      document.documentElement.classList.remove('lenis', 'lenis-smooth');
     };
 
     const createLenis = () => {
@@ -98,21 +104,28 @@ const LenisProvider = ({ children }) => {
 
     sync();
 
-    const media = window.matchMedia(MOBILE_SCROLL_QUERY);
+    // Re-sync on both this provider's own breakpoint and mobileAppHardening's
+    // breakpoint (1024px) — isMobileScrollEnvironment() depends on both via
+    // shouldHardenMobileApp(), so a resize crossing either one needs to
+    // re-run sync(). This replaces watching document.documentElement's class
+    // attribute (which mobileAppHardening.js also writes to on these same
+    // events) — reacting to the actual media queries instead of a DOM class
+    // another module toggles avoids the two systems triggering each other.
+    const mediaQueries = [
+      window.matchMedia(MOBILE_SCROLL_QUERY),
+      window.matchMedia('(max-width: 1024px)'),
+    ];
     const onMedia = () => sync();
-    if (typeof media.addEventListener === 'function') media.addEventListener('change', onMedia);
-    else if (typeof media.addListener === 'function') media.addListener(onMedia);
-
-    const classObserver = new MutationObserver(sync);
-    classObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
+    mediaQueries.forEach((mq) => {
+      if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onMedia);
+      else if (typeof mq.addListener === 'function') mq.addListener(onMedia);
     });
 
     return () => {
-      if (typeof media.removeEventListener === 'function') media.removeEventListener('change', onMedia);
-      else if (typeof media.removeListener === 'function') media.removeListener(onMedia);
-      classObserver.disconnect();
+      mediaQueries.forEach((mq) => {
+        if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', onMedia);
+        else if (typeof mq.removeListener === 'function') mq.removeListener(onMedia);
+      });
       destroyLenis();
     };
   }, []);

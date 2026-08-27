@@ -55,6 +55,9 @@ const PurchaseRequestsPage = React.lazy(
 const PickupPartnersPage = React.lazy(
   () => import("../pages/PickupPartnersPage"),
 );
+const PickupPartnerProfile = React.lazy(
+  () => import("../pages/PickupPartnerProfile"),
+);
 const DeliveryPartnersPage = React.lazy(
   () => import("../pages/DeliveryPartnersPage"),
 );
@@ -355,6 +358,7 @@ const AdminRoutes = () => {
         <Route path="/product-requests" element={<ProductRequestsList />} />
         <Route path="/purchase-requests" element={<PurchaseRequestsPage />} />
         <Route path="/pickup-partners" element={<PickupPartnersPage />} />
+        <Route path="/pickup-partners/:id" element={<PickupPartnerProfile />} />
         <Route path="/delivery-partners" element={<DeliveryPartnersPage />} />
         <Route path="/sellers/active" element={<Navigate to="/admin/suppliers?tab=verified" replace />} />
         <Route path="/sellers/active/:id" element={<SellerDetail />} />

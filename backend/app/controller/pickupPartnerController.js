@@ -134,6 +134,63 @@ export const getPickupPartners = async (req, res) => {
   }
 };
 
+/* ===============================
+   GET PICKUP PARTNER BY ID (Admin — full profile)
+================================ */
+export const getPickupPartnerById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = await PickupPartner.findById(id).lean();
+    if (!partner) return handleResponse(res, 404, "Pickup partner not found");
+
+    const [assignmentAgg, recentPickups] = await Promise.all([
+      PurchaseRequest.aggregate([
+        { $match: { pickupPartnerId: partner._id } },
+        {
+          $group: {
+            _id: null,
+            totalAssigned: { $sum: 1 },
+            activeAssigned: {
+              $sum: { $cond: [{ $in: ["$status", ["pickup_assigned", "picked"]] }, 1, 0] },
+            },
+            completed: {
+              $sum: { $cond: [{ $in: ["$status", ["hub_delivered", "received_at_hub", "verified", "closed"]] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      PurchaseRequest.find({ pickupPartnerId: partner._id })
+        .sort({ pickupAssignedAt: -1, createdAt: -1 })
+        .limit(50)
+        .populate("vendorId", "shopName name")
+        .select("requestId status pickupAssignedAt createdAt hubId vendorId items")
+        .lean(),
+    ]);
+
+    const stats = assignmentAgg[0] || { totalAssigned: 0, activeAssigned: 0, completed: 0 };
+
+    return handleResponse(res, 200, "Pickup partner fetched", {
+      partner,
+      stats: {
+        totalAssigned: stats.totalAssigned,
+        activeAssigned: stats.activeAssigned,
+        completed: stats.completed,
+        walletBalance: partner.walletBalance || 0,
+      },
+      recentPickups: recentPickups.map((pr) => ({
+        _id: pr._id,
+        requestId: pr.requestId,
+        status: pr.status,
+        vendorName: pr.vendorId?.shopName || pr.vendorId?.name || "Unknown Vendor",
+        itemCount: Array.isArray(pr.items) ? pr.items.length : 0,
+        assignedAt: pr.pickupAssignedAt || pr.createdAt,
+      })),
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 export const createPickupPartner = async (req, res) => {
   try {
     const {

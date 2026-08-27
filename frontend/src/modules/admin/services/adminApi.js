@@ -110,6 +110,7 @@ export const adminApi = {
     verifyPurchaseRequestInward: (id, data = {}) =>
         axiosInstance.post(`/admin/purchase-requests/${id}/verify`, data),
     getPickupPartners: (params) => axiosInstance.get('/admin/pickup-partners', { params }),
+    getPickupPartnerById: (id) => axiosInstance.get(`/admin/pickup-partners/${id}`),
     createPickupPartner: (data) => axiosInstance.post('/admin/pickup-partners', data),
     updatePickupPartner: (id, data) => axiosInstance.put(`/admin/pickup-partners/${id}`, data),
     updatePickupPartnerStatus: (id, status) =>
