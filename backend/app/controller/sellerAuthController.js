@@ -30,14 +30,88 @@ const generateToken = (seller) =>
     );
 
 /* ===============================
+   SIGNUP: SEND PHONE OTP
+================================ */
+export const sendSellerSignupOtp = async (req, res) => {
+    try {
+        const phone = normalizePhone(req.body?.phone);
+
+        if (!isValidIndianPhone(phone)) {
+            return handleResponse(res, 400, "Enter a valid 10-digit mobile number");
+        }
+
+        const existing = await Seller.findOne({ phone }).select("_id");
+        if (existing) {
+            return handleResponse(res, 400, "This phone number is already registered. Please log in instead.");
+        }
+
+        const smsResult = await sendSmsOtp(phone, "Seller");
+
+        return handleResponse(res, 200, smsResult.message || "OTP sent successfully", {
+            phone,
+            sessionId: smsResult.sessionId,
+            otp: smsResult.otp,
+        });
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
+   SIGNUP: VERIFY PHONE OTP
+================================ */
+export const verifySellerSignupOtp = async (req, res) => {
+    try {
+        const phone = normalizePhone(req.body?.phone);
+        const otp = String(req.body?.otp ?? "").trim();
+
+        if (!isValidIndianPhone(phone) || !otp) {
+            return handleResponse(res, 400, "Phone and OTP are required");
+        }
+
+        const isOtpValid = await verifySmsOtp(phone, otp, "Seller");
+        if (!isOtpValid) {
+            return handleResponse(res, 400, "Invalid or expired OTP. Please request a new one.");
+        }
+
+        // Short-lived proof of verification, checked server-side at actual signup so
+        // the phone field can't just be typed in and submitted without ever verifying.
+        const phoneVerificationToken = jwt.sign(
+            { phone, purpose: "seller_signup_phone_verified" },
+            process.env.JWT_SECRET,
+            { expiresIn: "20m" },
+        );
+
+        return handleResponse(res, 200, "Phone number verified", { phone, phoneVerificationToken });
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
    SELLER SIGNUP
 ================================ */
 export const signupSeller = async (req, res) => {
     try {
-        const { name, email, phone, password, shopName, address, lat, lng, radius, description, category } = req.body;
+        const { name, email, phone, password, shopName, address, lat, lng, radius, description, category, phoneVerificationToken } = req.body;
 
         if (!name || !email || !phone || !password || !shopName) {
             return handleResponse(res, 400, "All fields are required");
+        }
+
+        if (!phoneVerificationToken) {
+            return handleResponse(res, 400, "Please verify your phone number before registering");
+        }
+        try {
+            const payload = jwt.verify(phoneVerificationToken, process.env.JWT_SECRET);
+            if (
+                payload.purpose !== "seller_signup_phone_verified" ||
+                normalizePhone(payload.phone) !== normalizePhone(phone)
+            ) {
+                return handleResponse(res, 400, "Phone verification doesn't match this number — please verify again");
+            }
+        } catch (e) {
+            return handleResponse(res, 400, "Phone verification expired — please verify again");
         }
 
         // Validate coordinates and radius if provided

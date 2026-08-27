@@ -13,13 +13,16 @@ const LocationContext = createContext(undefined);
 const STORAGE_KEY = "location_v2";
 
 export const LocationProvider = ({ children }) => {
-  // Default location (used until we can resolve a better one)
+  // Placeholder only — shown until we resolve the visitor's real location.
+  // Previously this hardcoded a real city (Indore), which every visitor with
+  // no cached location saw as if it had actually been detected, regardless of
+  // where they really were.
   const [currentLocation, setCurrentLocation] = useState({
     name: "Please select your location",
     time: "12-15 mins",
-    city: "Indore",
-    state: "Madhya Pradesh",
-    pincode: "452018",
+    city: "",
+    state: "",
+    pincode: "",
     latitude: 22.711140989838025,
     longitude: 75.9001552518043,
   });
@@ -242,11 +245,18 @@ export const LocationProvider = ({ children }) => {
     refreshAddresses();
   }, [refreshAddresses]);
 
-  // On mount: only restore from cache. Do NOT auto-fetch – browsers block the
-  // location prompt unless it's triggered by a user gesture (e.g. tap).
+  // On mount: restore from cache if we have one. Otherwise, silently try a real
+  // detection ONLY if the browser already has geolocation permission granted —
+  // getCurrentPosition doesn't show a prompt in that case, so no user gesture is
+  // needed. If permission isn't granted yet, leave the neutral placeholder in
+  // place (and do NOT cache it) rather than presenting a specific wrong city as
+  // if it had been detected; the user's tap on the location pill/"use current
+  // location" is what triggers the real permission prompt for that case.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let cancelled = false;
 
+    let hadCache = false;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -265,18 +275,31 @@ export const LocationProvider = ({ children }) => {
             },
             { persist: false, updateSavedHome: false },
           );
+          hadCache = true;
         }
-      } else {
-        // If no location is stored, persist the default one immediately
-        updateLocation(currentLocation, {
-          persist: true,
-          updateSavedHome: false,
-        });
       }
     } catch {
       // ignore parse errors
     }
-    // Live fetch happens only when user taps location pill or "Use current location"
+
+    if (!hadCache && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: "geolocation" })
+        .then((status) => {
+          if (!cancelled && status.state === "granted") {
+            fetchAndCacheLocation().catch(() => {
+              // Silent auto-detect failed — keep the neutral placeholder.
+            });
+          }
+        })
+        .catch(() => {
+          // Permissions API doesn't support the 'geolocation' descriptor here — no-op.
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -377,3 +377,136 @@ export const verifyPayment = async (req, res) => {
         return handleResponse(res, 500, error.message);
     }
 };
+
+/* ===============================
+   CREATE WALLET TOP-UP ORDER
+================================ */
+export const createWalletTopupOrder = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) return handleResponse(res, 401, "Unauthorized");
+
+        const amount = Number(req.body?.amount);
+        if (!Number.isFinite(amount) || amount < 10 || amount > 50000) {
+            return handleResponse(res, 400, "Enter an amount between ₹10 and ₹50,000");
+        }
+
+        const order = await razorpay.orders.create({
+            amount: Math.round(amount * 100),
+            currency: "INR",
+            receipt: `WALLET-${userId}-${Date.now()}`,
+            // Server re-derives the credited amount from this order at verify time —
+            // the client never gets to dictate how much the wallet is credited.
+            notes: {
+                purpose: "wallet_topup",
+                userId: String(userId),
+            },
+        });
+
+        return handleResponse(res, 200, "Razorpay order created", {
+            razorpayOrderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            key: process.env.RAZORPAY_KEY_ID,
+        });
+    } catch (error) {
+        console.error("[WALLET_TOPUP_CREATE] Error", error);
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
+   VERIFY WALLET TOP-UP PAYMENT
+================================ */
+export const verifyWalletTopup = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const userId = req.user?.id;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+
+        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            await session.abortTransaction();
+            session.endSession();
+            return handleResponse(res, 400, "Missing payment verification fields");
+        }
+
+        // === 1. VERIFY RAZORPAY SIGNATURE ===
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest("hex");
+
+        if (expectedSignature !== razorpay_signature) {
+            await session.abortTransaction();
+            session.endSession();
+            return handleResponse(res, 400, "Payment verification failed", { signatureIsValid: false });
+        }
+
+        // === 2. FETCH THE ORDER FROM RAZORPAY — never trust a client-supplied amount ===
+        const rpOrder = await razorpay.orders.fetch(razorpay_order_id);
+        if (
+            !rpOrder ||
+            rpOrder.notes?.purpose !== "wallet_topup" ||
+            String(rpOrder.notes?.userId) !== String(userId)
+        ) {
+            await session.abortTransaction();
+            session.endSession();
+            return handleResponse(res, 400, "This payment does not belong to a wallet top-up for this account");
+        }
+        if (rpOrder.status !== "paid") {
+            await session.abortTransaction();
+            session.endSession();
+            return handleResponse(res, 400, "Payment has not been captured yet");
+        }
+
+        const amount = Number(rpOrder.amount) / 100;
+
+        // === 3. CREDIT WALLET (idempotent — reference is the unique Razorpay payment id,
+        // so a retried/duplicate verify call can never credit the same payment twice) ===
+        const customer = await User.findById(userId).session(session);
+        if (!customer) {
+            await session.abortTransaction();
+            session.endSession();
+            return handleResponse(res, 404, "Customer not found");
+        }
+
+        customer.walletBalance = Number(customer.walletBalance || 0) + amount;
+        await customer.save({ session });
+
+        const [transaction] = await Transaction.create(
+            [
+                {
+                    user: customer._id,
+                    userModel: "User",
+                    type: "Wallet Credit",
+                    amount,
+                    status: "Settled",
+                    reference: razorpay_payment_id,
+                    meta: { gateway: "razorpay", razorpayOrderId: razorpay_order_id, purpose: "wallet_topup" },
+                },
+            ],
+            { session },
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return handleResponse(res, 200, "Wallet topped up successfully", {
+            walletBalance: customer.walletBalance,
+            amount,
+            transactionId: transaction._id,
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        if (error?.code === 11000) {
+            // razorpay_payment_id already used as a Transaction.reference — this exact
+            // payment was already credited by an earlier call. Idempotent success.
+            return handleResponse(res, 200, "Wallet already topped up for this payment");
+        }
+        console.error("[WALLET_TOPUP_VERIFY] Error", error);
+        return handleResponse(res, 500, error.message);
+    }
+};

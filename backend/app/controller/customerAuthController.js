@@ -268,6 +268,7 @@ export const updateCustomerProfile = async (req, res) => {
                     invalid: "That referral code doesn't exist. Check and try again, or leave it blank.",
                     self: "You can't use your own referral code.",
                     already_used: "A referral code has already been applied to this account.",
+                    limit_reached: "This referral code has reached its usage limit.",
                     disabled: null, // referral program off — silently ignore, don't block profile completion
                     empty: null,
                 };
@@ -432,6 +433,9 @@ export const getCustomerTransactions = async (req, res) => {
             date: t.createdAt,
             reference: t.reference,
             orderId: t.order?.orderId,
+            // Only meaningful for types with an approval workflow (Withdrawal) —
+            // instant credits/debits are always effectively "Settled".
+            status: t.type === "Withdrawal" ? t.status : undefined,
         }));
 
         return handleResponse(res, 200, "Transactions fetched", {

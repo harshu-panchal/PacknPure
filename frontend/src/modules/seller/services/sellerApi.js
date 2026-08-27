@@ -8,6 +8,8 @@ export const sellerApi = {
     signup: (data) => axiosInstance.post('/seller/signup', data, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    sendSignupOtp: (data) => axiosInstance.post('/seller/signup-otp/send', data),
+    verifySignupOtp: (data) => axiosInstance.post('/seller/signup-otp/verify', data),
     // Products
     getProducts: (params) => axiosInstance.get('/products/seller/me', { params }),
     getMasterCatalog: (params) =>

@@ -23,3 +23,34 @@ export async function generateUniqueReferralCode() {
   // Astronomically unlikely fallback: widen with a timestamp suffix to guarantee termination.
   return `PKP${Date.now().toString(36).toUpperCase()}`;
 }
+
+/**
+ * Self-heals a missing referral code for a legacy account, atomically.
+ *
+ * Two call sites can race to backfill the same account (a customer opening
+ * their own Refer & Earn page at the same moment an admin views the "All
+ * Users" list, or a React double-effect firing twice) — a plain read →
+ * generate → `.save()` lets the second writer silently overwrite the first
+ * writer's already-committed code, because each writer only checks the
+ * in-memory value it read before either save landed. The `findOneAndUpdate`
+ * filter below re-checks "is referralCode still unset" at the DB level at
+ * the instant of the write, so only one of the racing writers can ever win.
+ *
+ * Returns the account's referral code (its own, or the winner's if it lost the race).
+ */
+export async function ensureReferralCode(customerId, currentCode) {
+  if (currentCode) return currentCode;
+
+  const generated = await generateUniqueReferralCode();
+  const claimed = await Customer.findOneAndUpdate(
+    { _id: customerId, $or: [{ referralCode: null }, { referralCode: { $exists: false } }] },
+    { $set: { referralCode: generated } },
+    { new: true },
+  ).select("referralCode");
+
+  if (claimed) return claimed.referralCode;
+
+  // Lost the race — another writer already set it moments earlier; read the real value.
+  const existing = await Customer.findById(customerId).select("referralCode");
+  return existing?.referralCode || null;
+}

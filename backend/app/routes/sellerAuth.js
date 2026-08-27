@@ -1,5 +1,12 @@
 import express from "express";
-import { signupSeller, loginSeller, forgotPasswordOtp, resetPasswordWithOtp } from "../controller/sellerAuthController.js";
+import {
+    signupSeller,
+    loginSeller,
+    forgotPasswordOtp,
+    resetPasswordWithOtp,
+    sendSellerSignupOtp,
+    verifySellerSignupOtp,
+} from "../controller/sellerAuthController.js";
 import upload from "../middleware/uploadMiddleware.js";
 import {
     getSellerProfile,
@@ -36,6 +43,8 @@ router.post(
 router.post("/login", loginSeller);
 router.post("/forgot-password", forgotPasswordOtp);
 router.post("/reset-password", resetPasswordWithOtp);
+router.post("/signup-otp/send", sendSellerSignupOtp);
+router.post("/signup-otp/verify", verifySellerSignupOtp);
 router.get("/nearby", getNearbySellers);
 
 // Profile routes

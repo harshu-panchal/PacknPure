@@ -182,7 +182,9 @@ const Withdrawals = () => {
     const balances = {
         available: Math.max(0, Number(data.balances?.settledBalance ?? 0) - Math.abs(Number(data.balances?.pendingPayouts ?? 0))),
         pending: Math.abs(Number(data.balances?.pendingPayouts ?? 0)),
-        lastWithdrawal: Math.abs(withdrawalHistory[0]?.amount ?? 0),
+        // "Last Withdrawal" means actually sent to bank — skip Pending/Failed requests,
+        // not just the most recent request of any status (ledger is newest-first).
+        lastWithdrawal: Math.abs(withdrawalHistory.find((t) => t.status === 'Settled')?.amount ?? 0),
     };
 
     return (
@@ -215,7 +217,7 @@ const Withdrawals = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                 {[
                     { label: 'Available Balance', value: `₹${balances.available.toLocaleString()}`, icon: Wallet, color: 'emerald', sub: 'Ready to withdraw' },
-                    { label: 'Pending Requests', value: `₹${balances.pending.toLocaleString()}`, icon: Clock, color: 'amber', sub: 'Awaiting approval' },
+                    { label: 'Pending Amount', value: `₹${balances.pending.toLocaleString()}`, icon: Clock, color: 'amber', sub: 'Awaiting approval' },
                     { label: 'Last Withdrawal', value: `₹${balances.lastWithdrawal.toLocaleString()}`, icon: CheckCircle2, color: 'blue', sub: 'Sent to bank' },
                 ].map((stat, i) => (
                     <BlurFade key={i} delay={0.2 + i * 0.1}>

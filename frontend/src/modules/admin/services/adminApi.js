@@ -46,6 +46,14 @@ export const adminApi = {
     // Referral program
     getReferrals: (params) => axiosInstance.get('/admin/referrals', { params }),
     getReferralStats: () => axiosInstance.get('/admin/referrals/stats'),
+    getReferralUsers: (params) => axiosInstance.get('/admin/referrals/users', { params }),
+    updateUserReferralLimit: (id, referralMaxAllowed, referralLimitLocked) =>
+        axiosInstance.patch(`/admin/referrals/users/${id}/limit`, {
+            referralMaxAllowed,
+            referralLimitLocked,
+        }),
+    bulkSetReferralLimit: (referralMaxAllowed) =>
+        axiosInstance.post('/admin/referrals/users/limit/bulk', { referralMaxAllowed }),
 
     // Category Management
     getCategories: (params) => axiosInstance.get('/admin/categories', { params }),
@@ -149,6 +157,7 @@ export const adminApi = {
     getSellerWithdrawals: (params) => axiosInstance.get('/admin/seller-withdrawals', { params }),
     getDeliveryWithdrawals: (params) => axiosInstance.get('/admin/delivery-withdrawals', { params }),
     getPickupWithdrawals: (params) => axiosInstance.get('/admin/pickup-withdrawals', { params }),
+    getCustomerWithdrawals: (params) => axiosInstance.get('/admin/customer-withdrawals', { params }),
     getSellerTransactions: (params) => axiosInstance.get('/admin/seller-transactions', { params }),
     updateWithdrawalStatus: (id, data) => axiosInstance.put(`/admin/withdrawals/${id}`, data),
     settlePickupWallet: (data) => axiosInstance.post('/admin/settle-pickup-wallet', data),

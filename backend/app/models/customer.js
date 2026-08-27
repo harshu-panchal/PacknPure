@@ -122,14 +122,29 @@ const userSchema = new mongoose.Schema(
             default: 0,
         },
 
-        /** Auto-generated on account creation. Unique, never user-editable. */
+        /** Payout destination for wallet withdrawals — filled in by the customer before requesting one. */
+        bankName: { type: String, trim: true, default: "" },
+        accountHolder: { type: String, trim: true, default: "" },
+        accountNumber: { type: String, trim: true, default: "" },
+        ifsc: { type: String, trim: true, uppercase: true, default: "" },
+        upiId: { type: String, trim: true, default: "" },
+
+        /**
+         * Auto-generated on account creation (or backfilled for legacy accounts).
+         * Settable exactly once — locked as soon as a value exists — never user-editable
+         * after that. Plain `immutable: true` would also block ever assigning it in the
+         * first place on a document re-fetched from the DB (isNew === false), which is
+         * every legacy account, so the predicate checks the current value instead.
+         */
         referralCode: {
             type: String,
             trim: true,
             uppercase: true,
             unique: true,
             sparse: true,
-            immutable: true,
+            immutable: function () {
+                return this.referralCode != null;
+            },
         },
         /** The other customer whose referral code this user redeemed at signup (null if none/self-registered). */
         referredBy: {
@@ -146,6 +161,17 @@ const userSchema = new mongoose.Schema(
         },
         /** Guards against granting the signup bonus more than once for this account. */
         referralSignupBonusGranted: {
+            type: Boolean,
+            default: false,
+        },
+        /** Admin-set cap on how many people this user can refer for a bonus. null = unlimited, 0 = blocked. */
+        referralMaxAllowed: {
+            type: Number,
+            default: null,
+            min: 0,
+        },
+        /** When true, the "Apply to All Users" bulk referral-limit action skips this user's referralMaxAllowed. */
+        referralLimitLocked: {
             type: Boolean,
             default: false,
         },

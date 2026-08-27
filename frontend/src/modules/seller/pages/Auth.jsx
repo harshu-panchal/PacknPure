@@ -3,22 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
-import { 
-    Mail, 
-    Lock, 
-    Phone, 
-    ArrowRight, 
+import {
+    Mail,
+    Lock,
+    Phone,
+    ArrowRight,
     ArrowLeft,
-    Store, 
-    MapPin, 
-    FileText, 
-    Upload, 
-    CheckCircle2, 
+    Store,
+    MapPin,
+    FileText,
+    Upload,
+    CheckCircle2,
     ShieldCheck,
     Building2,
     Sparkles,
     User,
-    X
+    X,
+    Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { sellerApi } from '../services/sellerApi';
@@ -105,6 +106,17 @@ const Auth = () => {
 
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
+    // Signup phone verification (separate from the forgot-password OTP flow above,
+    // which reuses formData.otp for a different purpose).
+    const [signupOtp, setSignupOtp] = useState('');
+    const [signupOtpSent, setSignupOtpSent] = useState(false);
+    const [signupOtpError, setSignupOtpError] = useState('');
+    const [phoneVerified, setPhoneVerified] = useState(false);
+    const [phoneVerificationToken, setPhoneVerificationToken] = useState('');
+    const [sendingSignupOtp, setSendingSignupOtp] = useState(false);
+    const [verifyingSignupOtp, setVerifyingSignupOtp] = useState(false);
+    const [verifiedPhone, setVerifiedPhone] = useState('');
+
     const [documents, setDocuments] = useState({
         tradeLicense: null,
         gstCertificate: null,
@@ -131,6 +143,15 @@ const Auth = () => {
         } else if (name === 'phone' || name === 'forgotPhone') {
             const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
             setFormData({ ...formData, [name]: digitsOnly });
+            if (name === 'phone' && digitsOnly !== verifiedPhone) {
+                // Number changed after verifying (or mid-verification) — the old
+                // verification no longer applies to whatever's in the box now.
+                setPhoneVerified(false);
+                setPhoneVerificationToken('');
+                setSignupOtpSent(false);
+                setSignupOtp('');
+                setSignupOtpError('');
+            }
         } else if (name === 'password' || name === 'newPassword' || name === 'confirmPassword') {
             const cleaned = value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6);
             setFormData({ ...formData, [name]: cleaned });
@@ -148,6 +169,48 @@ const Auth = () => {
         if (files && files[0]) {
             setDocuments(prev => ({ ...prev, [name]: files[0] }));
             toast.success(`${name.replace(/([A-Z])/g, ' $1')} attached`);
+        }
+    };
+
+    const handleSendSignupOtp = async () => {
+        if (formData.phone.length !== 10) {
+            toast.error('Enter a valid 10-digit mobile number.');
+            return;
+        }
+        setSendingSignupOtp(true);
+        try {
+            await sellerApi.sendSignupOtp({ phone: formData.phone });
+            toast.success('OTP sent to your phone.');
+            setSignupOtpSent(true);
+            setSignupOtp('');
+            setSignupOtpError('');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to send OTP');
+        } finally {
+            setSendingSignupOtp(false);
+        }
+    };
+
+    const handleVerifySignupOtp = async () => {
+        if (signupOtp.length < 4) {
+            toast.error('Enter the OTP sent to your phone.');
+            return;
+        }
+        setVerifyingSignupOtp(true);
+        try {
+            const res = await sellerApi.verifySignupOtp({ phone: formData.phone, otp: signupOtp });
+            const { phoneVerificationToken: token } = res.data.result;
+            setPhoneVerified(true);
+            setVerifiedPhone(formData.phone);
+            setPhoneVerificationToken(token);
+            setSignupOtpError('');
+            toast.success('Phone number verified!');
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Invalid or expired OTP';
+            setSignupOtpError(msg);
+            toast.error(msg);
+        } finally {
+            setVerifyingSignupOtp(false);
         }
     };
 
@@ -215,6 +278,10 @@ const Auth = () => {
         }
 
         if (!isLogin) {
+            if (!phoneVerified) {
+                toast.error('Please verify your phone number before submitting.');
+                return;
+            }
             if (selectedCategoryOption === 'Other' && !customCategory.trim()) {
                 toast.error('Please write your store category.');
                 return;
@@ -250,6 +317,7 @@ const Auth = () => {
                 Object.keys(documents).forEach(key => {
                     if (documents[key]) data.append(key, documents[key]);
                 });
+                data.append('phoneVerificationToken', phoneVerificationToken);
                 response = await sellerApi.signup(data);
             }
 
@@ -457,7 +525,21 @@ const Auth = () => {
                                             <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 ml-1">Phone Number</label>
                                             <div className="relative group">
                                                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={18} />
-                                                <input type="tel" name="phone" required value={formData.phone} onChange={handleChange} placeholder="10 Digit Number" className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                                <input type="tel" name="phone" required value={formData.phone} onChange={handleChange} placeholder="10 Digit Number" className="w-full pl-12 pr-28 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                                {phoneVerified ? (
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] font-black text-emerald-600 uppercase tracking-widest">
+                                                        <CheckCircle2 size={14} /> Verified
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSendSignupOtp}
+                                                        disabled={formData.phone.length !== 10 || sendingSignupOtp}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all"
+                                                    >
+                                                        {sendingSignupOtp ? '...' : signupOtpSent ? 'Resend' : 'Get OTP'}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="space-y-2">
@@ -507,6 +589,51 @@ const Auth = () => {
                                             )}
                                         </div>
                                     </div>
+
+                                    {signupOtpSent && !phoneVerified && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="space-y-2 overflow-hidden"
+                                        >
+                                            <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 ml-1">
+                                                Enter OTP sent to {formData.phone}
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <div className="relative group flex-1">
+                                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={18} />
+                                                    <input
+                                                        type="text"
+                                                        value={signupOtp}
+                                                        onChange={(e) => {
+                                                            setSignupOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 6));
+                                                            if (signupOtpError) setSignupOtpError('');
+                                                        }}
+                                                        placeholder="OTP Code"
+                                                        className={`w-full pl-12 pr-5 py-4 bg-slate-50 border-2 rounded-[20px] text-sm font-bold text-slate-700 outline-none transition-all tracking-[0.5em] ${signupOtpError ? 'border-red-300 focus:border-red-400 focus:bg-white' : 'border-transparent focus:border-indigo-100 focus:bg-white'}`}
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleVerifySignupOtp}
+                                                    disabled={verifyingSignupOtp || signupOtp.length < 4}
+                                                    className="px-6 bg-slate-900 text-white rounded-[20px] text-xs font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 transition-all flex items-center gap-2"
+                                                >
+                                                    {verifyingSignupOtp ? <Loader2 size={16} className="animate-spin" /> : 'Verify'}
+                                                </button>
+                                            </div>
+                                            {signupOtpError && <p className="text-red-500 text-[10px] font-bold ml-1">{signupOtpError}</p>}
+                                            <button
+                                                type="button"
+                                                onClick={handleSendSignupOtp}
+                                                disabled={sendingSignupOtp}
+                                                className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline ml-1 disabled:opacity-40"
+                                            >
+                                                {sendingSignupOtp ? 'Sending...' : "Didn't get it? Resend OTP"}
+                                            </button>
+                                        </motion.div>
+                                    )}
 
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between ml-1">

@@ -30,7 +30,9 @@ export async function redeemReferralCode(customer, rawCode) {
     return { applied: false, reason: "self" };
   }
 
-  const referrer = await Customer.findOne({ referralCode: code }).select("_id referralCode");
+  const referrer = await Customer.findOne({ referralCode: code }).select(
+    "_id referralCode referralMaxAllowed",
+  );
   if (!referrer) {
     return { applied: false, reason: "invalid" };
   }
@@ -41,6 +43,17 @@ export async function redeemReferralCode(customer, rawCode) {
   const existing = await Referral.findOne({ referee: customer._id }).select("_id");
   if (existing) {
     return { applied: false, reason: "already_used" };
+  }
+
+  // Admin-configured cap on how many people this referrer can refer (null = unlimited).
+  if (referrer.referralMaxAllowed !== null && referrer.referralMaxAllowed !== undefined) {
+    const referrerReferralCount = await Referral.countDocuments({
+      referrer: referrer._id,
+      status: { $in: ["pending", "completed"] },
+    });
+    if (referrerReferralCount >= referrer.referralMaxAllowed) {
+      return { applied: false, reason: "limit_reached" };
+    }
   }
 
   try {

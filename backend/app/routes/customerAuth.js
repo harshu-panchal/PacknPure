@@ -7,6 +7,12 @@ import {
     updateCustomerProfile,
     getCustomerTransactions,
 } from "../controller/customerAuthController.js";
+import {
+    getBankDetails,
+    updateBankDetails,
+    requestWithdrawal,
+    getMyWithdrawals,
+} from "../controller/customerWalletController.js";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -22,5 +28,10 @@ const customerOnly = [verifyToken, allowRoles("customer")];
 router.get("/profile", ...customerOnly, getCustomerProfile);
 router.put("/profile", ...customerOnly, updateCustomerProfile);
 router.get("/transactions", ...customerOnly, getCustomerTransactions);
+
+router.get("/wallet/bank-details", ...customerOnly, getBankDetails);
+router.put("/wallet/bank-details", ...customerOnly, updateBankDetails);
+router.post("/wallet/withdraw", ...customerOnly, requestWithdrawal);
+router.get("/wallet/withdrawals", ...customerOnly, getMyWithdrawals);
 
 export default router;

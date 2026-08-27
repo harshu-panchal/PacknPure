@@ -1,17 +1,56 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  AlertCircle,
   ArrowDownLeft,
   ArrowUpRight,
+  Banknote,
   ChevronLeft,
+  Loader2,
+  Pencil,
+  Plus,
   Receipt,
   ShoppingBag,
   Wallet,
+  X,
 } from 'lucide-react';
 import { customerApi } from '../services/customerApi';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@core/context/AuthContext';
+import { useSettings } from '@core/context/SettingsContext';
+import { useToast } from '@shared/components/ui/Toast';
 
 const ACCENT = '#E23744';
+const QUICK_AMOUNTS = [100, 200, 500, 1000];
+const MIN_WITHDRAWAL = 100;
+
+const WITHDRAWAL_STATUS_META = {
+  Pending: { label: 'Pending review', className: 'bg-amber-50 text-amber-600' },
+  Processing: { label: 'Processing', className: 'bg-blue-50 text-blue-600' },
+  Settled: { label: 'Paid out', className: 'bg-emerald-50 text-emerald-600' },
+  Failed: { label: 'Rejected', className: 'bg-rose-50 text-rose-600' },
+};
+
+function payoutSummary(details) {
+  if (!details) return '';
+  if (details.upiId) return details.upiId;
+  if (details.accountNumber) {
+    const last4 = details.accountNumber.slice(-4);
+    return `A/C ••••${last4}`;
+  }
+  return '';
+}
+
+function loadRazorpayScript() {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Failed to load payment gateway'));
+    document.body.appendChild(script);
+  });
+}
 
 function formatDate(d) {
   if (!d) return '';
@@ -78,49 +117,259 @@ function EmptyTransactions() {
 
 const WalletPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { settings } = useSettings();
+  const { showToast } = useToast();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [profileRes, txRes] = await Promise.all([
-          customerApi.getProfile(),
-          customerApi.getWalletTransactions({ page: 1, limit: 100 }),
-        ]);
-        const profile = profileRes.data?.result ?? profileRes.data?.data ?? profileRes.data;
-        setBalance(Number(profile?.walletBalance) || 0);
-        const rawTx = txRes.data?.result?.items ?? txRes.data?.items ?? [];
-        const txs = Array.isArray(rawTx) ? rawTx : [];
-        setTransactions(
-          txs.map((tx) => ({
-            _id: tx._id,
-            type: tx.type === 'credit' ? 'credit' : 'debit',
-            title: tx.title || (tx.type === 'credit' ? 'Wallet credit' : 'Wallet debit'),
-            amount: Number(tx.amount) || 0,
-            date: tx.date || tx.createdAt,
-            orderId: tx.orderId,
-          })),
-        );
-      } catch (err) {
-        console.error('Wallet fetch error:', err);
-        setBalance(0);
-        setTransactions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupSubmitting, setTopupSubmitting] = useState(false);
+
+  const [bankDetails, setBankDetails] = useState(null);
+
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [payoutForm, setPayoutForm] = useState({
+    bankName: '',
+    accountHolder: '',
+    accountNumber: '',
+    ifsc: '',
+    upiId: '',
+  });
+  const [payoutSubmitting, setPayoutSubmitting] = useState(false);
+  const [resumeWithdrawAfterPayout, setResumeWithdrawAfterPayout] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [profileRes, txRes] = await Promise.all([
+        customerApi.getProfile(),
+        customerApi.getWalletTransactions({ page: 1, limit: 100 }),
+      ]);
+      const profile = profileRes.data?.result ?? profileRes.data?.data ?? profileRes.data;
+      setBalance(Number(profile?.walletBalance) || 0);
+      const rawTx = txRes.data?.result?.items ?? txRes.data?.items ?? [];
+      const txs = Array.isArray(rawTx) ? rawTx : [];
+      setTransactions(
+        txs.map((tx) => ({
+          _id: tx._id,
+          type: tx.type === 'credit' ? 'credit' : 'debit',
+          title: tx.title || (tx.type === 'credit' ? 'Wallet credit' : 'Wallet debit'),
+          amount: Number(tx.amount) || 0,
+          date: tx.date || tx.createdAt,
+          orderId: tx.orderId,
+          status: tx.status,
+        })),
+      );
+    } catch (err) {
+      console.error('Wallet fetch error:', err);
+      setBalance(0);
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  const loadBankDetails = useCallback(async () => {
+    try {
+      const res = await customerApi.getBankDetails();
+      setBankDetails(res.data?.result ?? null);
+    } catch (err) {
+      console.error('Bank details fetch error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    loadBankDetails();
+  }, [fetchData, loadBankDetails]);
 
   const filteredTx = useMemo(() => {
     if (filter === 'credit') return transactions.filter((t) => t.type === 'credit');
     if (filter === 'debit') return transactions.filter((t) => t.type === 'debit');
     return transactions;
   }, [transactions, filter]);
+
+  const openAddMoney = () => {
+    setTopupAmount('');
+    setAddMoneyOpen(true);
+  };
+
+  const openPayoutModal = (resumeWithdraw = false) => {
+    setPayoutForm({
+      bankName: bankDetails?.bankName || '',
+      accountHolder: bankDetails?.accountHolder || '',
+      accountNumber: bankDetails?.accountNumber || '',
+      ifsc: bankDetails?.ifsc || '',
+      upiId: bankDetails?.upiId || '',
+    });
+    setResumeWithdrawAfterPayout(resumeWithdraw);
+    setPayoutOpen(true);
+  };
+
+  const handlePayoutSubmit = async (e) => {
+    e?.preventDefault();
+    const { accountHolder, accountNumber, ifsc, upiId } = payoutForm;
+    const hasBankFields = accountHolder.trim() || accountNumber.trim() || ifsc.trim();
+    if (hasBankFields && (!accountHolder.trim() || !accountNumber.trim() || !ifsc.trim())) {
+      showToast('Account holder, account number, and IFSC are all required for bank transfer', 'error');
+      return;
+    }
+    if (!hasBankFields && !upiId.trim()) {
+      showToast('Add either your bank account details or a UPI ID', 'error');
+      return;
+    }
+
+    setPayoutSubmitting(true);
+    try {
+      const res = await customerApi.updateBankDetails(payoutForm);
+      if (res.data?.success) {
+        setBankDetails(res.data.result);
+        showToast('Payout details saved', 'success');
+        setPayoutOpen(false);
+        if (resumeWithdrawAfterPayout) {
+          setResumeWithdrawAfterPayout(false);
+          setWithdrawAmount('');
+          setWithdrawOpen(true);
+        }
+      } else {
+        showToast(res.data?.message || 'Could not save payout details', 'error');
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Could not save payout details', 'error');
+    } finally {
+      setPayoutSubmitting(false);
+    }
+  };
+
+  const openWithdraw = () => {
+    if (!bankDetails?.hasDetails) {
+      showToast('Add your payout details first', 'error');
+      openPayoutModal(true);
+      return;
+    }
+    setWithdrawAmount('');
+    setWithdrawOpen(true);
+  };
+
+  const handleWithdrawSubmit = async (e) => {
+    e?.preventDefault();
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount < MIN_WITHDRAWAL) {
+      showToast(`Enter an amount of at least ₹${MIN_WITHDRAWAL}`, 'error');
+      return;
+    }
+    if (amount > balance) {
+      showToast('Amount exceeds your wallet balance', 'error');
+      return;
+    }
+
+    setWithdrawSubmitting(true);
+    try {
+      const res = await customerApi.requestWithdrawal({ amount });
+      if (res.data?.success) {
+        showToast('Withdrawal request sent — we’ll process it shortly', 'success');
+        setWithdrawOpen(false);
+        fetchData();
+      } else if (res.data?.result?.code === 'NO_PAYOUT_DETAILS') {
+        setWithdrawOpen(false);
+        openPayoutModal(true);
+      } else {
+        showToast(res.data?.message || 'Could not submit withdrawal request', 'error');
+      }
+    } catch (err) {
+      if (err.response?.data?.result?.code === 'NO_PAYOUT_DETAILS') {
+        setWithdrawOpen(false);
+        showToast('Add your payout details first', 'error');
+        openPayoutModal(true);
+      } else {
+        showToast(err.response?.data?.message || 'Could not submit withdrawal request', 'error');
+      }
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  };
+
+  const handleTopupSubmit = async (e) => {
+    e?.preventDefault();
+    const amount = parseFloat(topupAmount);
+    if (!amount || amount < 10) {
+      showToast('Enter an amount of at least ₹10', 'error');
+      return;
+    }
+    if (amount > 50000) {
+      showToast('Maximum ₹50,000 per top-up', 'error');
+      return;
+    }
+
+    setTopupSubmitting(true);
+    try {
+      await loadRazorpayScript();
+
+      const orderRes = await customerApi.createWalletTopupOrder({ amount });
+      const data = orderRes.data?.result;
+      if (!orderRes.data?.success || !data?.razorpayOrderId) {
+        throw new Error(orderRes.data?.message || 'Could not start payment');
+      }
+
+      const options = {
+        key: data.key,
+        amount: data.amount,
+        currency: data.currency,
+        name: settings?.appName || 'PacknPure',
+        description: 'Add Money to Wallet',
+        order_id: data.razorpayOrderId,
+        handler: async (response) => {
+          try {
+            const verifyRes = await customerApi.verifyWalletTopup({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            if (verifyRes.data?.success) {
+              showToast('Money added to your wallet!', 'success');
+              setAddMoneyOpen(false);
+              fetchData();
+            } else {
+              showToast(verifyRes.data?.message || 'Verification failed', 'error');
+            }
+          } catch (err) {
+            showToast('Payment verification failed. Contact support if the amount was deducted.', 'error');
+          } finally {
+            setTopupSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setTopupSubmitting(false);
+          },
+        },
+        prefill: {
+          name: user?.name,
+          email: user?.email,
+          contact: user?.phone,
+        },
+        theme: { color: ACCENT },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', () => {
+        showToast('Payment failed. Please try again.', 'error');
+        setTopupSubmitting(false);
+      });
+      rzp.open();
+    } catch (err) {
+      showToast(err.message || 'Could not start payment', 'error');
+      setTopupSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 md:pb-8">
@@ -179,6 +428,34 @@ const WalletPage = () => {
                   </p>
                 </div>
               </div>
+              <div className="relative mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={openAddMoney}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-3 text-sm font-bold text-[#E23744] shadow-sm active:scale-[0.98] md:flex-none md:px-6"
+                >
+                  <Plus size={16} strokeWidth={3} />
+                  Add Money
+                </button>
+                <button
+                  type="button"
+                  onClick={openWithdraw}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-3 text-sm font-bold text-white shadow-sm backdrop-blur-sm active:scale-[0.98] md:flex-none md:px-6"
+                >
+                  <Banknote size={16} strokeWidth={2.5} />
+                  Withdraw
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => openPayoutModal(false)}
+                className="relative mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+              >
+                <Pencil size={12} />
+                {bankDetails?.hasDetails
+                  ? `Payout to ${payoutSummary(bankDetails)} · Edit`
+                  : 'Add payout details'}
+              </button>
             </div>
 
             {/* Transactions */}
@@ -235,6 +512,16 @@ const WalletPage = () => {
                               {tx.title}
                             </p>
                             <p className="text-[11px] text-slate-500">{formatDate(tx.date)}</p>
+                            {tx.status && WITHDRAWAL_STATUS_META[tx.status] ? (
+                              <span
+                                className={cn(
+                                  'mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold',
+                                  WITHDRAWAL_STATUS_META[tx.status].className,
+                                )}
+                              >
+                                {WITHDRAWAL_STATUS_META[tx.status].label}
+                              </span>
+                            ) : null}
                             {tx.orderId ? (
                               <Link
                                 to={`/orders/${tx.orderId}`}
@@ -263,6 +550,271 @@ const WalletPage = () => {
           </>
         )}
       </div>
+
+      {/* Add Money modal */}
+      {addMoneyOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add money to wallet"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Add Money</h3>
+              <button
+                type="button"
+                onClick={() => !topupSubmitting && setAddMoneyOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleTopupSubmit}>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-300">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="10"
+                  max="50000"
+                  autoFocus
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  placeholder="0"
+                  disabled={topupSubmitting}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-2xl font-black text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                />
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {QUICK_AMOUNTS.map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    disabled={topupSubmitting}
+                    onClick={() => setTopupAmount(String(amt))}
+                    className={cn(
+                      'rounded-full border px-4 py-1.5 text-xs font-bold transition-colors',
+                      String(amt) === topupAmount
+                        ? 'border-[#E23744] bg-[#E23744]/10 text-[#E23744]'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    ₹{amt}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={topupSubmitting || !topupAmount}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: ACCENT }}
+              >
+                {topupSubmitting ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Wallet size={18} />
+                )}
+                {topupSubmitting ? 'Please wait…' : 'Proceed to Pay'}
+              </button>
+              <p className="mt-3 text-center text-[11px] text-slate-400">
+                Secured by Razorpay · Min ₹10, Max ₹50,000
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw modal */}
+      {withdrawOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Withdraw from wallet"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Withdraw Money</h3>
+              <button
+                type="button"
+                onClick={() => !withdrawSubmitting && setWithdrawOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="mb-4 text-xs font-semibold text-slate-500">
+              Available balance: <span className="text-slate-900">₹{balance.toLocaleString('en-IN')}</span>
+            </p>
+
+            <form onSubmit={handleWithdrawSubmit}>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-300">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_WITHDRAWAL}
+                  max={balance}
+                  autoFocus
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="0"
+                  disabled={withdrawSubmitting}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-2xl font-black text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openPayoutModal(false)}
+                className="mt-3 flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"
+              >
+                <span className="text-xs text-slate-500">
+                  Payout to <span className="font-bold text-slate-900">{payoutSummary(bankDetails)}</span>
+                </span>
+                <span className="text-[11px] font-bold text-[#E23744]">Change</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={withdrawSubmitting || !withdrawAmount}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: ACCENT }}
+              >
+                {withdrawSubmitting ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Banknote size={18} />
+                )}
+                {withdrawSubmitting ? 'Please wait…' : 'Request Withdrawal'}
+              </button>
+              <p className="mt-3 text-center text-[11px] text-slate-400">
+                Min ₹{MIN_WITHDRAWAL} · Sent to admin for approval, then paid to your account
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payout details modal */}
+      {payoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Payout details"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Payout Details</h3>
+              <button
+                type="button"
+                onClick={() => !payoutSubmitting && setPayoutOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {resumeWithdrawAfterPayout && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-amber-700">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <p className="text-xs font-semibold leading-relaxed">
+                  Add where we should send your money before requesting a withdrawal.
+                </p>
+              </div>
+            )}
+
+            <form onSubmit={handlePayoutSubmit} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-bold text-slate-500">UPI ID</label>
+                <input
+                  type="text"
+                  placeholder="yourname@upi"
+                  value={payoutForm.upiId}
+                  onChange={(e) => setPayoutForm((f) => ({ ...f, upiId: e.target.value }))}
+                  disabled={payoutSubmitting}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 py-1">
+                <div className="h-px flex-1 bg-slate-200" />
+                <span className="text-[10px] font-bold uppercase text-slate-400">Or bank account</span>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-bold text-slate-500">Account Holder Name</label>
+                <input
+                  type="text"
+                  value={payoutForm.accountHolder}
+                  onChange={(e) => setPayoutForm((f) => ({ ...f, accountHolder: e.target.value }))}
+                  disabled={payoutSubmitting}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-bold text-slate-500">Account Number</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={payoutForm.accountNumber}
+                  onChange={(e) => setPayoutForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                  disabled={payoutSubmitting}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-slate-500">IFSC Code</label>
+                  <input
+                    type="text"
+                    value={payoutForm.ifsc}
+                    onChange={(e) =>
+                      setPayoutForm((f) => ({ ...f, ifsc: e.target.value.toUpperCase() }))
+                    }
+                    disabled={payoutSubmitting}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold uppercase text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-slate-500">Bank Name</label>
+                  <input
+                    type="text"
+                    value={payoutForm.bankName}
+                    onChange={(e) => setPayoutForm((f) => ({ ...f, bankName: e.target.value }))}
+                    disabled={payoutSubmitting}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={payoutSubmitting}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: ACCENT }}
+              >
+                {payoutSubmitting ? <Loader2 size={18} className="animate-spin" /> : null}
+                {payoutSubmitting ? 'Saving…' : 'Save Payout Details'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

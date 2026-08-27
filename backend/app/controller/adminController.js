@@ -583,6 +583,23 @@ export const getPickupWithdrawals = async (req, res) => {
 };
 
 /* ===============================
+   GET CUSTOMER WITHDRAWALS
+================================ */
+export const getCustomerWithdrawals = async (req, res) => {
+  try {
+    const { page, limit, skip } = getPagination(req, { defaultLimit: 25, maxLimit: 200 });
+    const query = { userModel: "User", type: "Withdrawal" };
+    const [transactions, total] = await Promise.all([
+      Transaction.find(query).populate("user", "name phone").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.countDocuments(query),
+    ]);
+    return handleResponse(res, 200, "Customer withdrawals fetched", { items: transactions, page, limit, total, totalPages: Math.ceil(total / limit) || 1 });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
    UPDATE WITHDRAWAL STATUS
 ================================ */
 export const updateWithdrawalStatus = async (req, res) => {
@@ -609,8 +626,21 @@ export const updateWithdrawalStatus = async (req, res) => {
       }
     }
 
+    // Customer withdrawals debit the wallet immediately at request time — refund it back
+    // if the admin rejects the request, guarded so a repeated "reject" click can't double-refund.
+    if (
+      transaction.userModel === "User" &&
+      transaction.type === "Withdrawal" &&
+      status === "Failed" &&
+      transaction.status !== "Failed"
+    ) {
+      await User.findByIdAndUpdate(transaction.user._id, {
+        $inc: { walletBalance: Math.abs(transaction.amount) },
+      });
+    }
+
     transaction.status = status;
-    if (reason) transaction.notes = reason;
+    if (reason) transaction.meta = { ...(transaction.meta || {}), reason };
     await transaction.save();
     return handleResponse(res, 200, `Withdrawal ${status} successfully`);
   } catch (error) {

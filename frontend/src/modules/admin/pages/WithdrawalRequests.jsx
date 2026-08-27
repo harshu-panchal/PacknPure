@@ -21,7 +21,9 @@ import {
     FileText,
     AlertCircle,
     RotateCw,
-    Package
+    Package,
+    Users,
+    Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,21 +42,25 @@ const WithdrawalRequests = () => {
     const [sellerRequests, setSellerRequests] = useState([]);
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [pickupRequests, setPickupRequests] = useState([]);
+    const [customerRequests, setCustomerRequests] = useState([]);
     const [sellerPage, setSellerPage] = useState(1);
     const [deliveryPage, setDeliveryPage] = useState(1);
     const [pickupPage, setPickupPage] = useState(1);
+    const [customerPage, setCustomerPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
     const [sellerTotal, setSellerTotal] = useState(0);
     const [deliveryTotal, setDeliveryTotal] = useState(0);
     const [pickupTotal, setPickupTotal] = useState(0);
+    const [customerTotal, setCustomerTotal] = useState(0);
 
-    const fetchData = async (sellerPageNum = 1, deliveryPageNum = 1, pickupPageNum = 1) => {
+    const fetchData = async (sellerPageNum = 1, deliveryPageNum = 1, pickupPageNum = 1, customerPageNum = 1) => {
         try {
             setLoading(true);
-            const [sellerRes, deliveryRes, pickupRes] = await Promise.all([
+            const [sellerRes, deliveryRes, pickupRes, customerRes] = await Promise.all([
                 adminApi.getSellerWithdrawals({ page: sellerPageNum, limit: pageSize }).catch(() => ({ data: { success: false } })),
                 adminApi.getDeliveryWithdrawals({ page: deliveryPageNum, limit: pageSize }).catch(() => ({ data: { success: false } })),
-                adminApi.getPickupWithdrawals({ page: pickupPageNum, limit: pageSize }).catch(() => ({ data: { success: false } }))
+                adminApi.getPickupWithdrawals({ page: pickupPageNum, limit: pageSize }).catch(() => ({ data: { success: false } })),
+                adminApi.getCustomerWithdrawals({ page: customerPageNum, limit: pageSize }).catch(() => ({ data: { success: false } }))
             ]);
 
             if (sellerRes.data?.success) {
@@ -78,6 +84,13 @@ const WithdrawalRequests = () => {
                 setPickupTotal(payload.total || items.length);
                 setPickupPage(payload.page || pickupPageNum);
             }
+            if (customerRes.data?.success) {
+                const payload = customerRes.data.result || {};
+                const items = Array.isArray(payload.items) ? payload.items : (customerRes.data.results || []);
+                setCustomerRequests(items);
+                setCustomerTotal(payload.total || items.length);
+                setCustomerPage(payload.page || customerPageNum);
+            }
         } catch (error) {
             console.error("Fetch error:", error);
             toast.error("Failed to fetch requests");
@@ -87,17 +100,21 @@ const WithdrawalRequests = () => {
     };
 
     useEffect(() => {
-        fetchData(sellerPage, deliveryPage);
+        fetchData(sellerPage, deliveryPage, pickupPage, customerPage);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageSize]);
 
     const fetchSellerPage = (p) => {
-        fetchData(p, deliveryPage);
+        fetchData(p, deliveryPage, pickupPage, customerPage);
         setSellerPage(p);
     };
     const fetchDeliveryPage = (p) => {
-        fetchData(sellerPage, p);
+        fetchData(sellerPage, p, pickupPage, customerPage);
         setDeliveryPage(p);
+    };
+    const fetchCustomerPage = (p) => {
+        fetchData(sellerPage, deliveryPage, pickupPage, p);
+        setCustomerPage(p);
     };
 
     const stats = useMemo(() => {
@@ -128,7 +145,8 @@ const WithdrawalRequests = () => {
         let data = [];
         if (activeTab === 'sellers') data = sellerRequests;
         else if (activeTab === 'delivery') data = deliveryRequests;
-        else data = pickupRequests;
+        else if (activeTab === 'pickup') data = pickupRequests;
+        else data = customerRequests;
 
         return (data || []).filter(r => {
             const name = r.user?.shopName || r.user?.name || "";
@@ -137,7 +155,7 @@ const WithdrawalRequests = () => {
             const matchesStatus = filterStatus === 'all' || r.status?.toLowerCase() === filterStatus.toLowerCase();
             return matchesSearch && matchesStatus;
         });
-    }, [activeTab, sellerRequests, deliveryRequests, pickupRequests, searchTerm, filterStatus]);
+    }, [activeTab, sellerRequests, deliveryRequests, pickupRequests, customerRequests, searchTerm, filterStatus]);
 
     const sellerHasBankDetails = (request) => Boolean(
         request?.user?.bankName?.trim() &&
@@ -145,6 +163,11 @@ const WithdrawalRequests = () => {
         request?.user?.accountNumber?.trim() &&
         request?.user?.ifsc?.trim()
     );
+
+    // Customer payout details are snapshotted onto the transaction at request time
+    // (not read live off the user) so a later profile edit can't change what's shown
+    // for an already-submitted request.
+    const customerPayout = (request) => request?.meta?.bankSnapshot || {};
 
     const handleAction = (type, request) => {
         if (type === 'approve' && activeTab === 'sellers' && !sellerHasBankDetails(request)) {
@@ -181,11 +204,11 @@ const WithdrawalRequests = () => {
                         Withdrawal Requests
                         <Badge variant="primary" className="text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">Financial Hub</Badge>
                     </h1>
-                    <p className="ds-description mt-1">Review and process fund disbursement requests from sellers and delivery partners.</p>
+                    <p className="ds-description mt-1">Review and process fund disbursement requests from sellers, delivery partners, and customers.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => fetchData(sellerPage, deliveryPage)}
+                        onClick={() => fetchData(sellerPage, deliveryPage, pickupPage, customerPage)}
                         className="p-2.5 bg-white ring-1 ring-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm"
                     >
                         <RotateCw className={cn("h-4 w-4", loading && "animate-spin")} />
@@ -264,6 +287,20 @@ const WithdrawalRequests = () => {
                                 activeTab === 'pickup' ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-600"
                             )}>{pickupRequests.length}</span>
                         </button>
+                        <button
+                            onClick={() => setActiveTab('customers')}
+                            className={cn(
+                                "flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all",
+                                activeTab === 'customers' ? "bg-white text-slate-900 shadow-md" : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            <Users className="h-4 w-4" />
+                            CUSTOMERS
+                            <span className={cn(
+                                "ml-1 px-2 py-0.5 rounded-full text-[10px]",
+                                activeTab === 'customers' ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-600"
+                            )}>{customerRequests.length}</span>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -314,9 +351,9 @@ const WithdrawalRequests = () => {
                                             <div className="flex items-center gap-4">
                                                 <div className={cn(
                                                     "h-12 w-12 rounded-2xl flex items-center justify-center shadow-inner",
-                                                    activeTab === 'sellers' ? "bg-indigo-50 text-indigo-600" : activeTab === 'delivery' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                                                    activeTab === 'sellers' ? "bg-indigo-50 text-indigo-600" : activeTab === 'delivery' ? "bg-emerald-50 text-emerald-600" : activeTab === 'pickup' ? "bg-amber-50 text-amber-600" : "bg-rose-50 text-rose-600"
                                                 )}>
-                                                    {activeTab === 'sellers' ? <Building2 className="h-6 w-6" /> : activeTab === 'delivery' ? <Truck className="h-6 w-6" /> : <Package className="h-6 w-6" />}
+                                                    {activeTab === 'sellers' ? <Building2 className="h-6 w-6" /> : activeTab === 'delivery' ? <Truck className="h-6 w-6" /> : activeTab === 'pickup' ? <Package className="h-6 w-6" /> : <Users className="h-6 w-6" />}
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors cursor-pointer" onClick={() => setSelectedRequest(req)}>
@@ -395,20 +432,22 @@ const WithdrawalRequests = () => {
                     </div>
                     <div className="px-6 py-3 border-t border-slate-100">
                         <Pagination
-                            page={activeTab === 'sellers' ? sellerPage : activeTab === 'delivery' ? deliveryPage : pickupPage}
-                            totalPages={Math.ceil((activeTab === 'sellers' ? sellerTotal : activeTab === 'delivery' ? deliveryTotal : pickupTotal) / pageSize) || 1}
-                            total={activeTab === 'sellers' ? sellerTotal : activeTab === 'delivery' ? deliveryTotal : pickupTotal}
+                            page={activeTab === 'sellers' ? sellerPage : activeTab === 'delivery' ? deliveryPage : activeTab === 'pickup' ? pickupPage : customerPage}
+                            totalPages={Math.ceil((activeTab === 'sellers' ? sellerTotal : activeTab === 'delivery' ? deliveryTotal : activeTab === 'pickup' ? pickupTotal : customerTotal) / pageSize) || 1}
+                            total={activeTab === 'sellers' ? sellerTotal : activeTab === 'delivery' ? deliveryTotal : activeTab === 'pickup' ? pickupTotal : customerTotal}
                             pageSize={pageSize}
                             onPageChange={(p) => {
                                 if (activeTab === 'sellers') fetchSellerPage(p);
                                 else if (activeTab === 'delivery') fetchDeliveryPage(p);
-                                else { fetchData(sellerPage, deliveryPage, p); setPickupPage(p); }
+                                else if (activeTab === 'pickup') { fetchData(sellerPage, deliveryPage, p, customerPage); setPickupPage(p); }
+                                else fetchCustomerPage(p);
                             }}
                             onPageSizeChange={(newSize) => {
                                 setPageSize(newSize);
                                 setSellerPage(1);
                                 setDeliveryPage(1);
                                 setPickupPage(1);
+                                setCustomerPage(1);
                             }}
                             loading={loading}
                         />
@@ -428,9 +467,9 @@ const WithdrawalRequests = () => {
                         <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-xl border border-slate-100">
                             <div className={cn(
                                 "h-20 w-20 rounded-xl flex items-center justify-center shadow-xl",
-                                activeTab === 'sellers' ? "bg-indigo-600 text-white" : "bg-emerald-600 text-white"
+                                activeTab === 'sellers' ? "bg-indigo-600 text-white" : activeTab === 'customers' ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"
                             )}>
-                                {activeTab === 'sellers' ? <Building2 className="h-10 w-10" /> : <Truck className="h-10 w-10" />}
+                                {activeTab === 'sellers' ? <Building2 className="h-10 w-10" /> : activeTab === 'customers' ? <Users className="h-10 w-10" /> : <Truck className="h-10 w-10" />}
                             </div>
                             <div>
                                 <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedRequest.user?.shopName || selectedRequest.user?.name || "Unknown"}</h3>
@@ -454,28 +493,58 @@ const WithdrawalRequests = () => {
                             <Card className="p-5 border-none bg-indigo-50/60 ring-1 ring-indigo-100 rounded-xl space-y-3">
                                 <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1.5">
                                     <Building2 className="h-3.5 w-3.5" />
-                                    {activeTab === 'sellers' ? 'Seller Bank Destination' : 'Rider Bank Destination'}
+                                    {activeTab === 'sellers' ? 'Seller Bank Destination' : activeTab === 'customers' ? 'Customer Payout Destination' : 'Rider Bank Destination'}
                                 </p>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1 text-xs">
-                                    {activeTab === 'sellers' && (
-                                        <div>
-                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Bank Name</p>
-                                            <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.bankName || "Not Provided"}</p>
+                                {activeTab === 'customers' ? (
+                                    customerPayout(selectedRequest).upiId ? (
+                                        <div className="pt-1 text-xs">
+                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider flex items-center gap-1">
+                                                <Smartphone className="h-3 w-3" /> UPI ID
+                                            </p>
+                                            <p className="font-black text-slate-950 font-mono mt-0.5">{customerPayout(selectedRequest).upiId}</p>
                                         </div>
-                                    )}
-                                    <div>
-                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Holder</p>
-                                        <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.accountHolder || "Not Provided"}</p>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1 text-xs">
+                                            <div>
+                                                <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Bank Name</p>
+                                                <p className="font-black text-slate-900 uppercase mt-0.5">{customerPayout(selectedRequest).bankName || "Not Provided"}</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Holder</p>
+                                                <p className="font-black text-slate-900 uppercase mt-0.5">{customerPayout(selectedRequest).accountHolder || "Not Provided"}</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Number</p>
+                                                <p className="font-black text-slate-950 font-mono mt-0.5">{customerPayout(selectedRequest).accountNumber || "Not Provided"}</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">IFSC Code</p>
+                                                <p className="font-black text-slate-950 font-mono mt-0.5">{customerPayout(selectedRequest).ifsc || "Not Provided"}</p>
+                                            </div>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1 text-xs">
+                                        {activeTab === 'sellers' && (
+                                            <div>
+                                                <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Bank Name</p>
+                                                <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.bankName || "Not Provided"}</p>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Holder</p>
+                                            <p className="font-black text-slate-900 uppercase mt-0.5">{selectedRequest.user?.accountHolder || "Not Provided"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Number</p>
+                                            <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.accountNumber || "Not Provided"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">IFSC Code</p>
+                                            <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.ifsc || "Not Provided"}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">Account Number</p>
-                                        <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.accountNumber || "Not Provided"}</p>
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-500 uppercase text-[9px] tracking-wider">IFSC Code</p>
-                                        <p className="font-black text-slate-950 font-mono mt-0.5">{selectedRequest.user?.ifsc || "Not Provided"}</p>
-                                    </div>
-                                </div>
+                                )}
                             </Card>
 
                             {activeTab === 'sellers' && !sellerHasBankDetails(selectedRequest) && (

@@ -95,6 +95,12 @@ export const customerApi = {
   // Payments
   createPaymentOrder: (data) => axiosInstance.post("/payments/create-order", data),
   verifyPayment: (data) => axiosInstance.post("/payments/verify", data),
+  createWalletTopupOrder: (data) => axiosInstance.post("/payments/wallet-topup/create-order", data),
+  verifyWalletTopup: (data) => axiosInstance.post("/payments/wallet-topup/verify", data),
+  getBankDetails: () => axiosInstance.get("/customer/wallet/bank-details"),
+  updateBankDetails: (data) => axiosInstance.put("/customer/wallet/bank-details", data),
+  requestWithdrawal: (data) => axiosInstance.post("/customer/wallet/withdraw", data),
+  getMyWithdrawals: (params) => axiosInstance.get("/customer/wallet/withdrawals", { params }),
 
   // Support & Reviews
   getProductReviews: (productId, params) =>
