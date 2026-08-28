@@ -3,6 +3,7 @@ import { useRouteError, useNavigate, isRouteErrorResponse } from 'react-router-d
 import { ShoppingBag, RefreshCw, Home, AlertCircle, Search, ArrowLeft } from 'lucide-react';
 import { useSettings } from '@core/context/SettingsContext';
 import { brandColor } from '@modules/customer/constants/brandTheme';
+import { isChunkLoadError, tryChunkReloadOnce } from '@core/utils/chunkReload';
 
 function buildErrorMeta(error) {
     let status = 500;
@@ -104,6 +105,12 @@ const RootErrorBoundary = () => {
 
     // Keep this for debugging route loader/action errors
     console.error('Route Error:', error);
+
+    // A stale chunk reference from a previous deployment isn't a real error to
+    // show — reload once to pick up the current build, silently.
+    if (isChunkLoadError(error) && tryChunkReloadOnce()) {
+        return null;
+    }
 
     const { status, title, message } = buildErrorMeta(error);
 

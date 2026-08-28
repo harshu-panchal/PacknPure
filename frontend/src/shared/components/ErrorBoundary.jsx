@@ -1,10 +1,11 @@
 import React, { Component } from 'react';
 import { AlertCircle, RefreshCw, Home, ShoppingBag } from 'lucide-react';
+import { isChunkLoadError, tryChunkReloadOnce } from '@core/utils/chunkReload';
 
 class ErrorBoundary extends Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, reloading: false };
     }
 
     static getDerivedStateFromError(error) {
@@ -13,9 +14,17 @@ class ErrorBoundary extends Component {
 
     componentDidCatch(error, errorInfo) {
         console.error("Uncaught error:", error, errorInfo);
+        // A stale chunk reference from a previous deployment isn't a real error
+        // to show — reload once to pick up the current build, silently.
+        if (isChunkLoadError(error) && tryChunkReloadOnce()) {
+            this.setState({ reloading: true });
+        }
     }
 
     render() {
+        if (this.state.reloading) {
+            return null;
+        }
         if (this.state.hasError) {
             return (
                 <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-outfit">

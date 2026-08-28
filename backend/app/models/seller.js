@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
 import {
   buildDefaultNotificationPreferences,
   notificationPreferencesSchema,
@@ -148,8 +149,14 @@ sellerSchema.index({ email: 1 }, { unique: true });
 sellerSchema.index({ phone: 1 }, { unique: true });
 sellerSchema.index({ rating: -1, createdAt: 1 });
 
+sellerSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, 10);
+  next();
+});
+
 sellerSchema.methods.comparePassword = async function (enteredPassword) {
-  return enteredPassword === this.password;
+  return bcrypt.compare(enteredPassword, this.password);
 };
 
 export default mongoose.model("Seller", sellerSchema);

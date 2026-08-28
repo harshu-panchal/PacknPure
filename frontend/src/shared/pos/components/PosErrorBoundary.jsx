@@ -1,11 +1,12 @@
 import React, { Component } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 import { Button } from '@mui/material'; // Or custom button if available
+import { isChunkLoadError, tryChunkReloadOnce } from '@core/utils/chunkReload';
 
 export class PosErrorBoundary extends Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null, errorInfo: null };
+        this.state = { hasError: false, error: null, errorInfo: null, reloading: false };
     }
 
     static getDerivedStateFromError(error) {
@@ -15,9 +16,17 @@ export class PosErrorBoundary extends Component {
     componentDidCatch(error, errorInfo) {
         this.setState({ error, errorInfo });
         console.error("POS Module Error:", error, errorInfo);
+        // A stale chunk reference from a previous deployment isn't a real error
+        // to show — reload once to pick up the current build, silently.
+        if (isChunkLoadError(error) && tryChunkReloadOnce()) {
+            this.setState({ reloading: true });
+        }
     }
 
     render() {
+        if (this.state.reloading) {
+            return null;
+        }
         if (this.state.hasError) {
             return (
                 <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center bg-gray-50 rounded-lg">
