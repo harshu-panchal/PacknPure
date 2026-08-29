@@ -8,10 +8,7 @@ import {
   removeRecipientPushToken,
 } from "../services/notificationHelper.js";
 import { notificationQueue } from "./notificationQueues.js";
-import {
-  sendFcmMulticast,
-  sendFcmToToken,
-} from "../services/firebaseService.js";
+import { sendFcmMulticast } from "../services/firebaseService.js";
 import {
   getNotificationCategoryFromType,
   isPushCategoryEnabled,
@@ -22,6 +19,10 @@ const INVALID_TOKEN_CODES = new Set([
   "messaging/registration-token-not-registered",
   "messaging/invalid-registration-token",
   "messaging/invalid-argument",
+  // Token was minted under a different Firebase project than this server's
+  // service account — permanent, will never succeed (e.g. left over from a
+  // Firebase project migration), so prune it like any other dead token.
+  "messaging/mismatched-credential",
 ]);
 
 const TRANSIENT_ERROR_CODES = new Set([
@@ -144,12 +145,12 @@ async function sendNotificationForOutbox(outboxDoc) {
     }),
   };
 
-  let response = null;
-  if (activeTokens.length === 1) {
-    response = await sendFcmToToken(activeTokens[0].token, pushPayload);
-  } else {
-    response = await sendFcmMulticast(activeTokens.map((entry) => entry.token), pushPayload);
-  }
+  // Always go through the multicast API, even for a single token — it returns
+  // a per-token `responses` entry with the real FCM error code, whereas the
+  // old single-token `send()` path swallowed per-token failures (e.g. a stale
+  // or cross-project token) behind a generic "unavailable" error, which then
+  // masked the real cause, retried pointlessly, and never pruned the bad token.
+  const response = await sendFcmMulticast(activeTokens.map((entry) => entry.token), pushPayload);
 
   if (!response) {
     throw new Error("Firebase messaging unavailable");

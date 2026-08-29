@@ -338,12 +338,23 @@ const broadcastPickupForRequest = async (pr) => {
   if (!hasEligible || pr.pickupPartnerId) return { broadcasting: false, assigned: false };
 
   const hubId = String(pr.hubId || DEFAULT_HUB_ID);
+  // Deliberately NOT gated on genuinely-online/live-location status (unlike
+  // pickBestPickupPartner's direct-assign path, which does need the partner
+  // actually online right now). A broadcast's whole job is to reach partners
+  // whose app is closed via push — requiring them to already be online here
+  // meant an offline partner was silently excluded from both the socket
+  // broadcast AND the push notification below, so their phone never rang.
+  // Only login-token staleness is still checked (dead session, can't act).
   const candidates = await PickupPartner.find({
     hubId,
-    ...genuinelyOnlineFilter(),
     isActive: true,
     isVerified: true,
     status: { $in: ["available", "active"] },
+    $or: [
+      { lastLogin: { $exists: false } },
+      { lastLogin: null },
+      { lastLogin: { $gte: new Date(Date.now() - PICKUP_LOGIN_STALE_MS()) } },
+    ],
   })
     .select("_id")
     .lean();

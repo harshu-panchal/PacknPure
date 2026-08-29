@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, ImagePlus, RotateCcw, Trash2, AlertCircle, RefreshCw, X } from "lucide-react";
 import { cn } from "../utils/cn";
 import { PickupSkeleton } from "./ui";
@@ -349,49 +350,73 @@ const ParcelPhotoCapture = ({
         }}
       />
 
-      {cameraOpen && (
-        <div className="fixed inset-0 z-[80] flex flex-col bg-black/90 p-3 sm:p-6">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-black uppercase tracking-widest text-white/90">
-              Camera capture
-            </p>
-            <button
-              type="button"
-              onClick={stopCamera}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white"
-              aria-label="Close camera"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <div className="mt-4 flex items-center justify-center gap-4 pb-[env(safe-area-inset-bottom)]">
-            <button
-              type="button"
-              onClick={stopCamera}
-              className="rounded-xl bg-white/15 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={snapPhoto}
-              className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-teal-500 shadow-lg"
-              aria-label="Capture photo"
-            >
-              <Camera size={22} className="text-white" />
-            </button>
-          </div>
-        </div>
-      )}
+      {cameraOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[10000] flex flex-col bg-slate-950 p-4 sm:p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 pb-3.5 text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                  <Camera size={20} />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-white">
+                    Parcel Photo Capture
+                  </p>
+                  <p className="text-[10px] font-medium text-slate-400">
+                    Align parcel clearly within viewfinder
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 active:scale-95"
+                aria-label="Close camera"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Large full-screen viewfinder */}
+            <div className="relative min-h-0 flex-1 w-full overflow-hidden rounded-3xl bg-black border border-white/15 shadow-2xl">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+              {/* Target framing guide */}
+              <div className="pointer-events-none absolute inset-6 sm:inset-10 rounded-2xl border-2 border-dashed border-white/40 flex items-center justify-center">
+                <p className="rounded-full bg-black/50 px-4 py-1.5 text-xs font-bold text-white/90 backdrop-blur-md border border-white/10">
+                  Position product / parcel here
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="flex items-center justify-between gap-4 pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] px-4 sm:px-8 bg-slate-950">
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="rounded-2xl bg-white/15 px-6 py-4 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-white/25 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={snapPhoto}
+                className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-teal-500 text-white shadow-[0_0_30px_rgba(20,184,166,0.6)] transition-transform active:scale-90"
+                aria-label="Capture photo"
+              >
+                <Camera size={32} className="text-white" />
+              </button>
+              <div className="w-16" aria-hidden />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

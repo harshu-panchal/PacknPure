@@ -37,6 +37,23 @@ import OrderTabs from '../components/OrderTabs';
 
 const DATE_RANGE_OPTIONS = ['All Time', 'Today', 'This Week', 'This Month', 'Last 30 Days'];
 
+// Friendly labels for the batch-assign "why isn't this order ready" breakdown —
+// only the hub-fulfillment stages that can plausibly block a SLOT order from
+// showing up in the picker.
+const BATCH_STATUS_LABELS = {
+    CREATED: 'just placed',
+    SELLER_PENDING: 'awaiting seller acceptance',
+    SELLER_ACCEPTED: 'accepted, not yet packed',
+    PACKING: 'being packed',
+    PROCUREMENT_REQUIRED: 'awaiting procurement (out of stock at hub)',
+    PROCUREMENT_COMPLETED: 'procurement done, not yet packed',
+    READY_FOR_PICKUP: 'awaiting hub pickup',
+    PICKUP_ASSIGNED: 'pickup partner assigned',
+    SELLER_READY: 'ready at seller',
+    PICKED_UP: 'picked up, not yet at hub',
+    OUT_FOR_DELIVERY: 'already out for delivery',
+};
+
 // Shared by the on-screen table filter and the export — so exported rows
 // always match exactly what's visible with the current date range applied.
 const orderMatchesDateRange = (createdAt, dateRange) => {
@@ -126,6 +143,8 @@ const OrdersList = () => {
     const [selectedBatchOrderIds, setSelectedBatchOrderIds] = useState(new Set());
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchRiderId, setBatchRiderId] = useState("");
+    const [batchSearched, setBatchSearched] = useState(false);
+    const [batchNotReady, setBatchNotReady] = useState({ count: 0, breakdown: {} });
 
     // Express/Slot are server-side filters (see fetchOrders) — mutually
     // exclusive toggles, plus the true dataset-wide counts for their badges
@@ -419,6 +438,8 @@ const OrdersList = () => {
         setBatchOpen(true);
         setBatchOrders([]);
         setSelectedBatchOrderIds(new Set());
+        setBatchSearched(false);
+        setBatchNotReady({ count: 0, breakdown: {} });
         await loadSlotsAndPartners();
     };
 
@@ -433,13 +454,17 @@ const OrdersList = () => {
         setBatchLoading(true);
         try {
             const res = await adminApi.getEligibleTripOrders({ hubId, selectedDate, selectedSlot });
-            const items = res.data?.result?.items || [];
+            const result = res.data?.result || {};
+            const items = result.items || [];
             setBatchOrders(items);
+            setBatchNotReady({ count: result.notReadyCount || 0, breakdown: result.notReadyBreakdown || {} });
+            setBatchSearched(true);
             // All ready orders pre-selected by default; admin can uncheck individual ones.
             setSelectedBatchOrderIds(new Set(items.map((o) => o._id)));
         } catch (e) {
             showToast(e?.response?.data?.message || "Failed to load eligible orders", "error");
             setBatchOrders([]);
+            setBatchNotReady({ count: 0, breakdown: {} });
         } finally {
             setBatchLoading(false);
         }
@@ -456,6 +481,8 @@ const OrdersList = () => {
         setBatchSlotValue(order.selectedSlot || "");
         setBatchOrders([]);
         setSelectedBatchOrderIds(new Set());
+        setBatchSearched(false);
+        setBatchNotReady({ count: 0, breakdown: {} });
         await loadSlotsAndPartners();
         if (order.selectedDate && order.selectedSlot) {
             await loadEligibleOrders({
@@ -477,8 +504,8 @@ const OrdersList = () => {
 
     const submitBatchAssign = async () => {
         const orderIds = Array.from(selectedBatchOrderIds);
-        if (orderIds.length < 2) {
-            showToast("Select at least 2 orders to batch together", "error");
+        if (orderIds.length < 1) {
+            showToast("Select at least 1 order", "error");
             return;
         }
         if (!batchRiderId) {
@@ -487,7 +514,12 @@ const OrdersList = () => {
         }
         try {
             await adminApi.createDeliveryTrip({ orderIds, deliveryBoyId: batchRiderId });
-            showToast(`Trip created — ${orderIds.length} orders assigned, nearest-first`, "success");
+            showToast(
+                orderIds.length > 1
+                    ? `Trip created — ${orderIds.length} orders assigned, nearest-first`
+                    : "Order assigned to rider",
+                "success",
+            );
             setBatchOpen(false);
             await fetchOrders(page);
         } catch (e) {
@@ -904,6 +936,26 @@ const OrdersList = () => {
                     >
                         {batchLoading ? "Loading…" : "Load ready orders"}
                     </button>
+
+                    {batchSearched && batchOrders.length === 0 && (
+                        <div className="rounded-xl bg-amber-50 ring-1 ring-amber-100 px-4 py-3 text-xs text-amber-800">
+                            {batchNotReady.count > 0 ? (
+                                <>
+                                    <p className="font-bold">
+                                        No orders are ready to assign in this slot yet.
+                                    </p>
+                                    <p className="mt-1">
+                                        {batchNotReady.count} order{batchNotReady.count === 1 ? " is" : "s are"} in this
+                                        slot but not ready for a rider — {Object.entries(batchNotReady.breakdown)
+                                            .map(([status, count]) => `${count} ${BATCH_STATUS_LABELS[status] || status}`)
+                                            .join(", ")}.
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="font-bold">No orders found for this hub, date, and slot.</p>
+                            )}
+                        </div>
+                    )}
 
                     {batchOrders.length > 0 && (
                         <div className="max-h-64 overflow-y-auto rounded-xl ring-1 ring-slate-200 divide-y divide-slate-100">

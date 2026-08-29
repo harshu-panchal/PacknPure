@@ -52,9 +52,7 @@
 .pickup-page {
   min-height: 100dvh;
   min-height: 100vh;
-  background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(226, 55, 68, 0.07), transparent 55%),
-    linear-gradient(180deg, #f8fafc 0%, var(--pickup-surface) 40%, #eef2f7 100%);
+  background-color: #f9fafb;
   padding-bottom: calc(var(--pickup-nav-h) + var(--pickup-safe-bottom) + 0.5rem);
 }
 

@@ -264,6 +264,34 @@ const CheckoutPage = () => {
 
   const [manualCode, setManualCode] = useState("");
 
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletBalanceLoading, setWalletBalanceLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setWalletBalance(0);
+      return;
+    }
+    let cancelled = false;
+    setWalletBalanceLoading(true);
+    customerApi
+      .getProfile()
+      .then((res) => {
+        if (cancelled) return;
+        const profile = res.data?.result ?? res.data?.data ?? res.data;
+        setWalletBalance(Number(profile?.walletBalance) || 0);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch wallet balance:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setWalletBalanceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
   const allPaymentMethods = useMemo(
     () => [
       {
@@ -790,8 +818,25 @@ const CheckoutPage = () => {
       return;
     }
 
+    if (selectedPayment === "wallet" && !walletBalanceLoading && walletBalance < totalAmount) {
+      showToast("Insufficient wallet balance. Please add money or choose another payment method.", "error");
+      return;
+    }
+
     executePlaceOrder();
-  }, [isAuthenticated, navigate, executePlaceOrder, savedRecipient, currentAddress, showToast, isSlotExpired]);
+  }, [
+    isAuthenticated,
+    navigate,
+    executePlaceOrder,
+    savedRecipient,
+    currentAddress,
+    showToast,
+    isSlotExpired,
+    selectedPayment,
+    walletBalance,
+    walletBalanceLoading,
+    totalAmount,
+  ]);
 
 
 
@@ -1409,6 +1454,8 @@ const CheckoutPage = () => {
                   {paymentMethods.map((method) => {
                     const Icon = method.icon;
                     const active = selectedPayment === method.id;
+                    const isWallet = method.id === "wallet";
+                    const walletInsufficient = isWallet && !walletBalanceLoading && walletBalance < totalAmount;
                     return (
                       <button
                         key={method.id}
@@ -1433,16 +1480,40 @@ const CheckoutPage = () => {
                           <p className={cn("text-sm font-semibold", active ? "text-[#E23744]" : "text-slate-800")}>
                             {method.label}
                           </p>
-                          <p className="text-xs text-slate-500">{method.sublabel}</p>
+                          <p className="text-xs text-slate-500">
+                            {isWallet
+                              ? walletBalanceLoading
+                                ? "Checking balance…"
+                                : walletInsufficient
+                                  ? `Insufficient balance — ₹${walletBalance.toLocaleString("en-IN")} available`
+                                  : `Available balance: ₹${walletBalance.toLocaleString("en-IN")}`
+                              : method.sublabel}
+                          </p>
                         </div>
-                        <span
-                          className={cn(
-                            "h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors",
-                            active ? "border-[#E23744]" : "border-slate-300",
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          {isWallet && !walletBalanceLoading && (
+                            <span
+                              className={cn(
+                                "rounded-md px-2 py-0.5 text-xs font-bold",
+                                walletInsufficient
+                                  ? "bg-red-50 text-red-600"
+                                  : active
+                                    ? "bg-rose-100 text-[#E23744]"
+                                    : "bg-slate-100 text-slate-700",
+                              )}
+                            >
+                              ₹{walletBalance.toLocaleString("en-IN")}
+                            </span>
                           )}
-                        >
-                          {active && <span className="h-2 w-2 rounded-full bg-[#E23744]" />}
-                        </span>
+                          <span
+                            className={cn(
+                              "h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors",
+                              active ? "border-[#E23744]" : "border-slate-300",
+                            )}
+                          >
+                            {active && <span className="h-2 w-2 rounded-full bg-[#E23744]" />}
+                          </span>
+                        </div>
                       </button>
                     );
                   })}
@@ -1451,6 +1522,12 @@ const CheckoutPage = () => {
                   <p className="mt-3 text-xs font-medium text-amber-600">
                     Cash on Delivery has been disabled for your account due to repeated cancelled COD orders.
                     Please use online or wallet payment.
+                  </p>
+                )}
+                {selectedPayment === "wallet" && !walletBalanceLoading && walletBalance < totalAmount && (
+                  <p className="mt-3 text-xs font-medium text-red-600">
+                    Your wallet balance (₹{walletBalance.toLocaleString("en-IN")}) is less than the order total (₹
+                    {totalAmount.toLocaleString("en-IN")}). Add money to your wallet or choose another payment method.
                   </p>
                 )}
               </CheckoutCollapsible>

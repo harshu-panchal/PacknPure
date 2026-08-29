@@ -65,8 +65,22 @@ export const getEligibleOrdersForTrip = async (req, res) => {
       .lean();
 
     const eligible = orders.filter((o) => LISTABLE_STATES.has(o.workflowStatus));
+    const notReady = orders.filter((o) => !LISTABLE_STATES.has(o.workflowStatus));
 
-    return handleResponse(res, 200, "Eligible orders fetched", { items: eligible });
+    // Surface *why* a slot with no eligible orders isn't actually empty — e.g.
+    // an order that's still waiting on procurement or seller acceptance won't
+    // show up in `items`, and a bare empty list reads as "this is broken"
+    // rather than "nothing is ready yet."
+    const notReadyBreakdown = notReady.reduce((acc, o) => {
+      acc[o.workflowStatus] = (acc[o.workflowStatus] || 0) + 1;
+      return acc;
+    }, {});
+
+    return handleResponse(res, 200, "Eligible orders fetched", {
+      items: eligible,
+      notReadyCount: notReady.length,
+      notReadyBreakdown,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -82,8 +96,8 @@ export const createDeliveryTrip = async (req, res) => {
     const { id: userId } = req.user;
     const { orderIds, deliveryBoyId } = req.body || {};
 
-    if (!Array.isArray(orderIds) || orderIds.length < 2) {
-      return handleResponse(res, 400, "orderIds must include at least 2 orders");
+    if (!Array.isArray(orderIds) || orderIds.length < 1) {
+      return handleResponse(res, 400, "orderIds must include at least 1 order");
     }
     if (!deliveryBoyId) {
       return handleResponse(res, 400, "deliveryBoyId is required");

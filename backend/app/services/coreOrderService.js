@@ -439,7 +439,7 @@ export const executeCoreOrderFulfillment = async ({
       if (sessionIdFromPr) {
         newOrder.procurementSessionId = sessionIdFromPr;
       }
-      await notifyAndEmitPurchaseRequests(purchaseRequests, orderId);
+      await notifyAndEmitPurchaseRequests(purchaseRequests, orderId, newOrder.displayOrderNumber);
       console.info(`[HUB_DEBUG] orderId=${orderId} notifyAndEmitPurchaseRequests completed`);
     }
 

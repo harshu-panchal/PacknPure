@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Camera, RotateCcw, Check } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -30,7 +31,11 @@ export default function CameraCapture({ facingMode = "user", label, onCapture, o
           throw new Error("Camera not supported on this browser");
         }
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode } },
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
           audio: false,
         });
         if (cancelled) {
@@ -95,14 +100,14 @@ export default function CameraCapture({ facingMode = "user", label, onCapture, o
     onClose();
   };
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex flex-col bg-black"
+      className="fixed inset-0 z-[10000] flex flex-col bg-slate-950 p-4 sm:p-6"
     >
-      <div className="flex items-center justify-between px-4 py-3 text-white">
+      <div className="flex items-center justify-between px-2 py-3 text-white">
         <p className="text-sm font-black uppercase tracking-widest">{label || "Take Photo"}</p>
         <button
           type="button"
@@ -113,7 +118,7 @@ export default function CameraCapture({ facingMode = "user", label, onCapture, o
         </button>
       </div>
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden rounded-3xl bg-black border border-white/10 shadow-2xl">
         {capturedUrl ? (
           <img src={capturedUrl} alt="Captured" className="absolute inset-0 h-full w-full object-contain bg-black" />
         ) : (
@@ -132,7 +137,7 @@ export default function CameraCapture({ facingMode = "user", label, onCapture, o
       </div>
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="flex items-center justify-center gap-6 px-6 py-8 bg-black">
+      <div className="flex items-center justify-center gap-6 px-6 py-6 bg-slate-950 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {capturedUrl ? (
           <>
             <button
@@ -161,12 +166,13 @@ export default function CameraCapture({ facingMode = "user", label, onCapture, o
             type="button"
             onClick={handleShoot}
             disabled={!ready}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-white disabled:opacity-40"
+            className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-teal-500 text-white shadow-[0_0_30px_rgba(20,184,166,0.6)] disabled:opacity-40"
           >
-            <Camera className="w-7 h-7 text-black" />
+            <Camera className="w-8 h-8 text-white" />
           </button>
         )}
       </div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }

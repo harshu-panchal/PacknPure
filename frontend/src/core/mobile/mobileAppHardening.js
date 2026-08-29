@@ -106,17 +106,32 @@ export function initMobileAppHardening() {
     }
   };
 
-  // Prevent double-tap zoom on non-editable elements
+  // Prevent double-tap zoom on non-editable elements. A real double-tap is two
+  // quick taps near the same spot — checking time alone isn't enough, since
+  // every touch interaction (including a scroll) fires a touchend. Without the
+  // distance check, scrolling to a link/button and tapping it shortly after
+  // (well within 300ms, a completely normal fast mobile gesture) was
+  // misidentified as a double-tap and had its click silently swallowed.
   let lastTouchEnd = 0;
+  let lastTouchX = 0;
+  let lastTouchY = 0;
+  const DOUBLE_TAP_MAX_DISTANCE_PX = 30;
   const onTouchEnd = (e) => {
     if (!shouldHardenMobileApp()) return;
     const now = Date.now();
-    if (now - lastTouchEnd <= 300) {
+    const touch = e.changedTouches && e.changedTouches[0];
+    const x = touch ? touch.clientX : 0;
+    const y = touch ? touch.clientY : 0;
+    const isNearLastTouch = Math.hypot(x - lastTouchX, y - lastTouchY) <= DOUBLE_TAP_MAX_DISTANCE_PX;
+
+    if (now - lastTouchEnd <= 300 && isNearLastTouch) {
       if (!isEditableTarget(e.target)) {
         e.preventDefault();
       }
     }
     lastTouchEnd = now;
+    lastTouchX = x;
+    lastTouchY = y;
   };
 
   // Suppress long-press context menu / callout (not on editable fields)

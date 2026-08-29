@@ -124,7 +124,7 @@ export const executeRetryBatch = async ({ orderId, procurementSessionId }) => {
     });
 
     if (newPrs.length > 0) {
-      await notifyAndEmitPurchaseRequests(newPrs, order.orderId || orderId);
+      await notifyAndEmitPurchaseRequests(newPrs, order.orderId || orderId, order.displayOrderNumber);
     }
 
     console.log(

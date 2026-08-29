@@ -724,7 +724,7 @@ export const createAutoPurchaseRequests = async ({
  * Notify seller(s) via push notification and Socket.IO real-time 52s alert modal
  * whenever purchase requests are generated or re-allocated during waterfall routing.
  */
-export const notifyAndEmitPurchaseRequests = async (purchaseRequests = [], orderId = "") => {
+export const notifyAndEmitPurchaseRequests = async (purchaseRequests = [], orderId = "", displayOrderNumber = "") => {
   if (!Array.isArray(purchaseRequests) || purchaseRequests.length === 0) return;
 
   await Promise.all(
@@ -762,7 +762,16 @@ export const notifyAndEmitPurchaseRequests = async (purchaseRequests = [], order
         ? new Date(pr.expiresAt).toISOString()
         : new Date(Date.now() + (sellerResponseTimeout || 15) * 60 * 1000).toISOString();
 
-      const orderCode = orderId || pr.orderId?.orderId || pr.orderId || "";
+      // Prefer the friendly, admin-facing order number (same one shown in the
+      // admin order list) over the raw internal orderId, so the seller's alert
+      // matches what admin sees for this order rather than a PR-scoped code.
+      const orderCode =
+        displayOrderNumber ||
+        pr.orderId?.displayOrderNumber ||
+        orderId ||
+        pr.orderId?.orderId ||
+        pr.orderId ||
+        "";
       const totalAmount = itemsDetailed.reduce(
         (sum, it) => sum + (Number(it.totalCost) || 0),
         0,

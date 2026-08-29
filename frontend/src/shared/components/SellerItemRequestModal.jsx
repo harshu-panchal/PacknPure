@@ -123,7 +123,9 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
                 (it.unitCost || it.vendorUnitCost || 0) * (it.requestedQty || 1),
             }));
             const mappedPayload = {
-              orderId: firstPR.orderId?.orderId || firstPR.orderId || "",
+              // orderCode is the human-readable number (matches what admin shows,
+              // e.g. "HUBORD0195") — firstPR.orderId here is just a raw ObjectId.
+              orderId: firstPR.orderCode || firstPR.orderId?.orderId || firstPR.orderId || "",
               purchaseRequestId: firstPR._id?.toString() || firstPR.id,
               requestId: firstPR.requestId,
               hubId: firstPR.hubId || "MAIN_HUB",
@@ -312,7 +314,9 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
                       Hub Shortage Alert
                     </span>
                     <span className="text-xs font-mono font-bold text-slate-300">
-                      {activeRequest.requestId || activeRequest.orderId}
+                      {activeRequest.orderId
+                        ? `#${activeRequest.orderId}`
+                        : activeRequest.requestId}
                     </span>
                   </div>
                   <h3 className="mt-1 text-base font-black tracking-tight text-white sm:text-lg">

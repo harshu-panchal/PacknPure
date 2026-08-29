@@ -449,12 +449,14 @@ const WalletPage = () => {
               <button
                 type="button"
                 onClick={() => openPayoutModal(false)}
-                className="relative mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+                className="relative mt-3 flex w-full min-w-0 items-center gap-1.5 text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white"
               >
-                <Pencil size={12} />
-                {bankDetails?.hasDetails
-                  ? `Payout to ${payoutSummary(bankDetails)} · Edit`
-                  : 'Add payout details'}
+                <Pencil size={12} className="shrink-0" />
+                <span className="min-w-0 truncate">
+                  {bankDetails?.hasDetails
+                    ? `Payout to ${payoutSummary(bankDetails)} · Edit`
+                    : 'Add payout details'}
+                </span>
               </button>
             </div>
 
@@ -553,14 +555,14 @@ const WalletPage = () => {
 
       {/* Add Money modal */}
       {addMoneyOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 md:items-center">
           <div
-            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl"
+            className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:max-h-[90vh] md:rounded-3xl md:p-6 md:pb-6"
             role="dialog"
             aria-modal="true"
             aria-label="Add money to wallet"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900">Add Money</h3>
               <button
                 type="button"
@@ -579,7 +581,7 @@ const WalletPage = () => {
                 </span>
                 <input
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   min="10"
                   max="50000"
                   autoFocus
@@ -633,14 +635,14 @@ const WalletPage = () => {
 
       {/* Withdraw modal */}
       {withdrawOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 md:items-center">
           <div
-            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl"
+            className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:max-h-[90vh] md:rounded-3xl md:p-6 md:pb-6"
             role="dialog"
             aria-modal="true"
             aria-label="Withdraw from wallet"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900">Withdraw Money</h3>
               <button
                 type="button"
@@ -653,7 +655,7 @@ const WalletPage = () => {
             </div>
 
             <p className="mb-4 text-xs font-semibold text-slate-500">
-              Available balance: <span className="text-slate-900">₹{balance.toLocaleString('en-IN')}</span>
+              Available balance: <span className="text-slate-900 font-bold">₹{balance.toLocaleString('en-IN')}</span>
             </p>
 
             <form onSubmit={handleWithdrawSubmit}>
@@ -663,7 +665,7 @@ const WalletPage = () => {
                 </span>
                 <input
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   min={MIN_WITHDRAWAL}
                   max={balance}
                   autoFocus
@@ -678,12 +680,12 @@ const WalletPage = () => {
               <button
                 type="button"
                 onClick={() => openPayoutModal(false)}
-                className="mt-3 flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"
+                className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left hover:bg-slate-100/80 transition-colors"
               >
-                <span className="text-xs text-slate-500">
+                <span className="min-w-0 truncate text-xs text-slate-500">
                   Payout to <span className="font-bold text-slate-900">{payoutSummary(bankDetails)}</span>
                 </span>
-                <span className="text-[11px] font-bold text-[#E23744]">Change</span>
+                <span className="shrink-0 text-[11px] font-bold text-[#E23744]">Change</span>
               </button>
 
               <button
@@ -709,14 +711,14 @@ const WalletPage = () => {
 
       {/* Payout details modal */}
       {payoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm md:items-center">
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 md:items-center">
           <div
-            className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl md:rounded-3xl max-h-[90vh] overflow-y-auto"
+            className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:max-h-[90vh] md:rounded-3xl md:p-6 md:pb-6"
             role="dialog"
             aria-modal="true"
             aria-label="Payout details"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900">Payout Details</h3>
               <button
                 type="button"
@@ -777,7 +779,7 @@ const WalletPage = () => {
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#E23744] focus:ring-2 focus:ring-[#E23744]/20"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 xs:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-[11px] font-bold text-slate-500">IFSC Code</label>
                   <input

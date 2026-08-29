@@ -128,7 +128,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns referralEnabled referralSignupBonus referralBonus referralMinOrderValue createdAt",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns referralEnabled referralSignupBonus referralBonus referralMinOrderValue createdAt facebook twitter instagram linkedin youtube playStoreLink appStoreLink metaTitle metaDescription metaKeywords keywords",
       )
       .lean();
 

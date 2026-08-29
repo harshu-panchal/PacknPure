@@ -24,7 +24,7 @@ const PickupLayout = ({ children }) => {
   }
 
   return (
-    <div className="pickup-app pickup-page flex min-h-[100dvh] flex-col overflow-x-hidden">
+    <div className="pickup-app pickup-page flex min-h-[100dvh] max-w-md mx-auto relative shadow-2xl overflow-x-hidden border-x border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors flex-col">
       <PickupBroadcastAlertModal />
       <main className="flex-1">{children}</main>
 

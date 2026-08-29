@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@core/context/AuthContext";
+import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
 import { pickupApi } from "../services/pickupApi";
 import { getApiErrorMessage } from "../utils/assignmentUtils";
@@ -23,6 +24,8 @@ const RESEND_COOLDOWN_SEC = 30;
 const Auth = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
+  const { settings } = useSettings();
+  const logoUrl = settings?.logoUrl || "";
   const [step, setStep] = useState("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -91,10 +94,10 @@ const Auth = () => {
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-50 via-white to-red-50/40 px-4 py-8 pickup-safe-top">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[#F0F4FF] dark:bg-gray-900 px-4 py-8 pickup-safe-top font-['Outfit',_sans-serif]">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -left-1/4 -top-1/4 h-[50%] w-[50%] rounded-full bg-red-200/30 blur-[90px]" />
-        <div className="absolute -bottom-1/4 -right-1/4 h-[40%] w-[40%] rounded-full bg-slate-200/50 blur-[70px]" />
+        <div className="absolute -left-32 -top-32 h-60 w-60 rounded-full bg-indigo-200/40 blur-3xl sm:h-80 sm:w-80" />
+        <div className="absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-purple-200/30 blur-3xl sm:h-96 sm:w-96" />
       </div>
 
       <motion.div
@@ -103,15 +106,25 @@ const Auth = () => {
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 w-full max-w-md"
       >
-        <div className="overflow-hidden rounded-[1.75rem] border border-white/90 bg-white/95 p-6 shadow-[var(--pickup-shadow-lg)] backdrop-blur-sm sm:rounded-[2rem] sm:p-8">
+        <div className="overflow-hidden rounded-[1.75rem] border border-indigo-50 bg-white/95 p-6 shadow-[0_24px_60px_rgba(99,102,241,0.1)] backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800 sm:rounded-[2rem] sm:p-8">
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#E23744] to-[#C41E35] text-white shadow-[var(--pickup-shadow-glow)] sm:h-20 sm:w-20 sm:rounded-3xl">
-              <Package size={32} aria-hidden />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white border border-indigo-100 shadow-md p-2.5 sm:h-20 sm:w-20 sm:rounded-3xl dark:bg-gray-800 dark:border-gray-700">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={`${settings?.appName || "App"} logo`}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-gray-700 dark:text-indigo-400">
+                  <Package size={32} aria-hidden />
+                </div>
+              )}
             </div>
-            <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+            <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
               Pickup Partner
             </h1>
-            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-red-700/70">
+            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-400">
               PacknPure Logistics
             </p>
           </div>
