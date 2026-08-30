@@ -101,7 +101,15 @@ export const SellerItemRequestModal = ({ isSeller = false }) => {
       try {
         const res = await sellerApi.getPurchaseRequests({ status: "created" });
         const list = res?.data?.result?.items || res?.data?.results || [];
-        const openPRs = Array.isArray(list) ? list : [];
+        // This modal is the hub-shortage real-time alert (52s accept/reject) —
+        // its copy and its accept/reject calls only make sense for automated,
+        // order-triggered PRs. Admin-created standalone manual PRs share the
+        // same "created" status but must be answered via the separate Manual
+        // PR endpoint (see ProcurementRequests.jsx), so they're excluded here
+        // rather than surfacing a wrong-endpoint error when accepted.
+        const openPRs = (Array.isArray(list) ? list : []).filter(
+          (pr) => pr.requestType !== "manual" && Boolean(pr.orderId),
+        );
 
         if (openPRs.length > 0) {
           const firstPR = openPRs[0];
