@@ -30,6 +30,7 @@ export const EMPTY_SELLER_PRODUCT_FORM = {
       name: 'Default',
       unit: DEFAULT_PRODUCT_UNIT,
       supplyPrice: '',
+      mrp: '',
       stock: '',
       gstEnabled: false,
       gstRate: 0,
@@ -90,6 +91,7 @@ export function productToSellerForm(item) {
         unit: v.unit || item.unit || DEFAULT_PRODUCT_UNIT,
         supplyPrice:
           v.supplyPrice ?? v.purchasePrice ?? v.price ?? '',
+        mrp: v.price ?? v.salePrice ?? '',
         masterSalePrice: v.masterSalePrice || item.masterSalePrice || '',
         stock: Number.isFinite(Number(v.stock)) ? Number(v.stock) : '',
         gstEnabled: Boolean(v.gstEnabled),
@@ -102,6 +104,7 @@ export function productToSellerForm(item) {
           unit: item.unit || DEFAULT_PRODUCT_UNIT,
           supplyPrice:
             item.supplyPrice ?? item.purchasePrice ?? item.price ?? '',
+          mrp: item.price ?? item.salePrice ?? '',
           masterSalePrice: item.masterSalePrice || '',
           stock: item.stock ?? '',
         },
@@ -154,6 +157,8 @@ export function validateSellerProductForm(formData) {
       if (!String(v.name || '').trim()) missing.push(`${label} name`);
       const price = Number(v.supplyPrice ?? v.price);
       if (!Number.isFinite(price) || price <= 0) missing.push(`${label} supply price`);
+      const mrp = Number(v.mrp);
+      if (!Number.isFinite(mrp) || mrp <= 0) missing.push(`${label} MRP`);
       const stock = Number(v.stock);
       if (!Number.isFinite(stock) || stock < 0) missing.push(`${label} stock`);
 
@@ -244,12 +249,14 @@ export function buildSellerProductFormData(formData, { editingItem } = {}) {
 
   const cleanVariants = variants.map((v, index) => {
     const supply = Number(v.supplyPrice ?? v.price) || resolvedPrice;
+    const mrp = Number(v.mrp) || supply;
     const row = {
       name: String(v.name || '').trim() || `Variant ${index + 1}`,
       unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
       supplyPrice: supply,
       purchasePrice: supply,
-      price: supply,
+      price: mrp,
+      salePrice: mrp,
       stock: Number(v.stock) || 0,
       gstEnabled: Boolean(v.gstEnabled),
       gstRate: v.gstEnabled ? Math.max(0, Number(v.gstRate) || 0) : 0,

@@ -68,6 +68,7 @@ const AddProduct = () => {
         name: "Default",
         unit: DEFAULT_PRODUCT_UNIT,
         supplyPrice: "",
+        mrp: "",
         stock: "",
         gstEnabled: false,
         gstRate: 0,
@@ -160,6 +161,11 @@ const AddProduct = () => {
       toast.error("Main variant must have supply price and stock");
       return;
     }
+    const firstMrp = Number(firstVariant.mrp);
+    if (!Number.isFinite(firstMrp) || firstMrp <= 0) {
+      toast.error("Main variant must have an MRP");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -196,13 +202,15 @@ const AddProduct = () => {
       
       const syncedVariants = (formData.variants || []).map((v) => {
         const supply = Number(v.supplyPrice ?? v.price) || resolvedSupply;
+        const mrp = Number(v.mrp) || supply;
         const gstEnabled = Boolean(v.gstEnabled);
         return {
           name: v.name || 'Default',
           unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
           supplyPrice: supply,
           purchasePrice: supply,
-          price: supply,
+          price: mrp,
+          salePrice: mrp,
           stock: Number(v.stock) || 0,
           gstEnabled,
           gstRate: gstEnabled ? Math.max(0, Number(v.gstRate) || 0) : 0,
@@ -659,6 +667,7 @@ const AddProduct = () => {
                           name: "",
                           unit: formData.unit || DEFAULT_PRODUCT_UNIT,
                           supplyPrice: "",
+                          mrp: "",
                           stock: "",
                           gstEnabled: false,
                           gstRate: 0,
@@ -705,6 +714,22 @@ const AddProduct = () => {
                           setFormData({ ...formData, variants: newVariants });
                         }}
                         placeholder="500"
+                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                      />
+                    </div>
+                    <div className="col-span-6 md:col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                        MRP
+                      </label>
+                      <input
+                        type="number"
+                        value={variant.mrp ?? ""}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].mrp = e.target.value;
+                          setFormData({ ...formData, variants: newVariants });
+                        }}
+                        placeholder="650"
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>

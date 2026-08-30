@@ -9,6 +9,8 @@ import {
   ChevronDown,
   Loader2,
   MapPin,
+  LayoutGrid,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,8 +27,10 @@ import CategoryProductRow from '../components/category/CategoryProductRow';
 import { PAGE_CONTAINER } from '../components/home/homeLayout';
 import SectionRenderer from '../components/experience/SectionRenderer';
 
-const DEFAULT_SUB_ICON =
-  'https://cdn-icons-png.flaticon.com/128/2321/2321831.png';
+// No custom icon uploaded — SubcategoryButton renders a Lucide icon instead
+// of a generic external placeholder image (which had built-in padding and
+// looked tiny/off-center inside the circular frame).
+const DEFAULT_SUB_ICON = null;
 
 const SORT_OPTIONS = [
   { id: 'relevance', label: 'Relevance' },
@@ -34,6 +38,16 @@ const SORT_OPTIONS = [
   { id: 'price_desc', label: 'Price: High to Low' },
   { id: 'name', label: 'Name (A–Z)' },
 ];
+
+function SubcategoryIcon({ sub, className }) {
+  if (sub.icon) {
+    return <img src={sub.icon} alt="" className={cn(className, 'object-cover')} loading="lazy" />;
+  }
+  const FallbackIcon = sub.id === 'all' ? LayoutGrid : Package;
+  return (
+    <FallbackIcon className={cn(className, 'text-slate-400')} strokeWidth={1.75} />
+  );
+}
 
 function SubcategoryButton({ sub, active, onClick, variant = 'mobile' }) {
   if (variant === 'desktop') {
@@ -50,15 +64,16 @@ function SubcategoryButton({ sub, active, onClick, variant = 'mobile' }) {
       >
         <span
           className={cn(
-            'flex h-12 w-12 shrink-0 items-center justify-center rounded-full p-2.5 transition-all duration-300',
-            active 
-              ? 'scale-110 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)] ring-1 ring-rose-100' 
+            'flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full transition-all duration-300',
+            sub.icon ? 'p-0' : 'p-2.5',
+            active
+              ? 'scale-110 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)] ring-1 ring-rose-100'
               : 'bg-slate-50 shadow-sm opacity-80 hover:opacity-100 hover:shadow-md hover:-translate-y-0.5',
           )}
         >
-          <img src={sub.icon} alt="" className="h-full w-full object-cover drop-shadow-sm" loading="lazy" />
+          <SubcategoryIcon sub={sub} className="h-full w-full drop-shadow-sm" />
         </span>
-        <span 
+        <span
           className={cn(
             'min-w-0 text-sm font-bold leading-tight transition-colors',
             active ? 'text-[#E23744]' : 'text-slate-600',
@@ -83,13 +98,14 @@ function SubcategoryButton({ sub, active, onClick, variant = 'mobile' }) {
     >
       <span
         className={cn(
-          'flex h-12 w-12 items-center justify-center rounded-full p-2.5 transition-all duration-300',
-          active 
-            ? 'scale-110 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)] ring-1 ring-rose-100' 
+          'flex h-12 w-12 items-center justify-center overflow-hidden rounded-full transition-all duration-300',
+          sub.icon ? 'p-0' : 'p-2.5',
+          active
+            ? 'scale-110 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)] ring-1 ring-rose-100'
             : 'bg-slate-50 shadow-sm opacity-80 hover:opacity-100 hover:shadow-md hover:-translate-y-0.5',
         )}
       >
-        <img src={sub.icon} alt="" className="h-full w-full object-cover drop-shadow-sm" loading="lazy" />
+        <SubcategoryIcon sub={sub} className="h-full w-full drop-shadow-sm" />
       </span>
       <span
         className={cn(
@@ -214,7 +230,6 @@ const CategoryProductsPage = () => {
             p.mainImage ||
             p.image ||
             'https://images.unsplash.com/photo-1550989460-0adf9ea622e2',
-          deliveryTime: '8–12 mins',
           brand: p.brand || '',
           subcategoryId: p.subcategoryId,
         }));

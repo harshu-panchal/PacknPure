@@ -1075,6 +1075,7 @@ const ProductManagement = () => {
                                       name: "",
                                       unit: formData.unit || DEFAULT_PRODUCT_UNIT,
                                       supplyPrice: "",
+                                      mrp: "",
                                       stock: "",
                                       gstEnabled: false,
                                       gstRate: 0,
@@ -1094,7 +1095,7 @@ const ProductManagement = () => {
                                 key={variant.id || idx}
                                 className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-12 gap-3 items-end"
                               >
-                                <div className="col-span-12 sm:col-span-4 space-y-1">
+                                <div className="col-span-12 sm:col-span-3 space-y-1">
                                   <label className="text-sm font-medium text-slate-500 ml-1">Name *</label>
                                   <input
                                     value={variant.name}
@@ -1125,7 +1126,7 @@ const ProductManagement = () => {
                                     ))}
                                   </select>
                                 </div>
-                                <div className="col-span-6 sm:col-span-3 space-y-1">
+                                <div className="col-span-6 sm:col-span-2 space-y-1">
                                   <div className="flex items-center justify-between ml-1">
                                     <label className="text-sm font-medium text-emerald-700">Supply price (₹) *</label>
                                     {isCatalogLocked && variant.masterSalePrice && (
@@ -1145,6 +1146,23 @@ const ProductManagement = () => {
                                     className="w-full px-3 py-2 bg-white ring-1 ring-emerald-100 rounded-xl text-sm font-medium outline-none"
                                   />
                                 </div>
+                                {!isCatalogLocked && (
+                                  <div className="col-span-6 sm:col-span-2 space-y-1">
+                                    <label className="text-sm font-medium text-slate-500 ml-1">MRP (₹) *</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={variant.mrp ?? ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const next = [...formData.variants];
+                                        next[idx] = { ...next[idx], mrp: val };
+                                        updateVariants(next);
+                                      }}
+                                      className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 rounded-xl text-sm font-medium outline-none"
+                                    />
+                                  </div>
+                                )}
                                 <div className="col-span-6 sm:col-span-2 space-y-1">
                                   <label className="text-sm font-medium text-sky-700 ml-1">Stock *</label>
                                   <input

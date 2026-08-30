@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { loadGoogleMaps } from "../../../core/services/googleMapsLoader";
 import { useDebouncedValue, DEBOUNCE_MS } from "@shared/hooks/useDebounce";
 import { toast } from 'sonner';
+import LocationOffModal from "@shared/components/LocationOffModal";
+import { getGeolocationErrorInfo } from "@shared/utils/geolocationErrors";
 
 const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -12,6 +14,7 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [placesError, setPlacesError] = useState("");
   const [isDetecting, setIsDetecting] = useState(false);
+  const [locationErrorInfo, setLocationErrorInfo] = useState(null);
 
   const MIN_QUERY_LENGTH = 4;
   const MAX_SUGGESTIONS = 5;
@@ -78,6 +81,7 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
     setIsSearchingPlaces(false);
     setPlacesError("");
     setIsSearchFocused(false);
+    setLocationErrorInfo(null);
     resetAutocompleteSession();
   }, [isOpen, resetAutocompleteSession]);
 
@@ -93,8 +97,9 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
   }, [isOpen]);
 
   const handleDetectLocation = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e?.preventDefault();
+    e?.stopPropagation();
+    setLocationErrorInfo(null);
     setIsDetecting(true);
 
     if (!("geolocation" in navigator)) {
@@ -136,7 +141,7 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
         (error) => {
             console.error("Location Error:", error);
             setIsDetecting(false);
-            toast.error("Failed to detect location. Please search manually.");
+            setLocationErrorInfo(getGeolocationErrorInfo(error));
         }
     );
   };
@@ -407,6 +412,13 @@ const SellerLocationModal = ({ isOpen, onClose, onSelectLocation }) => {
           </div>
         </>
       )}
+      <LocationOffModal
+        isOpen={Boolean(locationErrorInfo)}
+        onClose={() => setLocationErrorInfo(null)}
+        title={locationErrorInfo?.title}
+        message={locationErrorInfo?.message}
+        onRetry={handleDetectLocation}
+      />
     </AnimatePresence>
   );
 };

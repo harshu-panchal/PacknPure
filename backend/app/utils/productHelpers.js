@@ -278,10 +278,16 @@ export function normalizeSellerVariants(variants, opts = {}) {
   return variants.map((v, index) => {
     const name = String(v?.name || "").trim() || `Variant ${index + 1}`;
     const supply = resolveSupplyPriceFromVariantRow(v, baseSupply);
+    // Seller-entered MRP (what they'd sell it for), independent of supply/purchase
+    // cost. Falls back to supply price so callers that never send one (e.g. the
+    // catalog-linked merge path, which intentionally mirrors supply for price/stock
+    // only) keep their existing behavior unchanged.
+    const submittedMrp = Number(v?.price);
+    const mrp = Number.isFinite(submittedMrp) && submittedMrp > 0 ? submittedMrp : supply;
     const stock = Number(v?.stock);
     const variantId = v?._id || v?.id;
     const { gstEnabled, gstRate } = normalizeVariantGstFields(v);
-    
+
     // Pass through admin extra GST fields
     const adminExtraGstEnabled = v?.adminExtraGstEnabled === true || v?.adminExtraGstEnabled === "true";
     const adminExtraGstRate = adminExtraGstEnabled ? (Number(v?.adminExtraGstRate) || 0) : 0;
@@ -289,8 +295,8 @@ export function normalizeSellerVariants(variants, opts = {}) {
     const row = {
       name,
       unit: normalizeUnit(v?.unit, defaultUnit),
-      price: 0,
-      salePrice: 0,
+      price: mrp,
+      salePrice: mrp,
       purchasePrice: supply,
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       gstEnabled,

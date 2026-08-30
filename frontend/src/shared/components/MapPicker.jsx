@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import Modal from "./ui/Modal";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
+import LocationOffModal from "./LocationOffModal";
+import { getGeolocationErrorInfo } from "../utils/geolocationErrors";
 
 const libraries = ["places", "geometry"];
 const mapContainerStyle = {
@@ -58,6 +60,7 @@ const MapPicker = ({
   const [address, setAddress] = useState(initialAddress || "");
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [locationErrorInfo, setLocationErrorInfo] = useState(null);
   const autocompleteRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({
@@ -77,6 +80,8 @@ const MapPicker = ({
     if (isOpen) {
       setAddress(initialAddress || "");
       setRadius(initialRadius);
+    } else {
+      setLocationErrorInfo(null);
     }
   }, [isOpen, initialAddress, initialRadius]);
 
@@ -170,6 +175,7 @@ const MapPicker = ({
       return;
     }
 
+    setLocationErrorInfo(null);
     setIsFetchingLocation(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -186,11 +192,7 @@ const MapPicker = ({
       },
       (err) => {
         setIsFetchingLocation(false);
-        const msg =
-          err.code === 1
-            ? "Location permission denied. Allow location access or pick on the map."
-            : "Unable to get your current location";
-        toast.error(msg);
+        setLocationErrorInfo(getGeolocationErrorInfo(err));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
@@ -294,6 +296,7 @@ const MapPicker = ({
   const busy = isGeocoding || isFetchingLocation;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -478,6 +481,14 @@ const MapPicker = ({
         )}
       </div>
     </Modal>
+    <LocationOffModal
+      isOpen={Boolean(locationErrorInfo)}
+      onClose={() => setLocationErrorInfo(null)}
+      title={locationErrorInfo?.title}
+      message={locationErrorInfo?.message}
+      onRetry={fetchCurrentLocation}
+    />
+    </>
   );
 };
 
