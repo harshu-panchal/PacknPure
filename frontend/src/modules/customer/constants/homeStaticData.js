@@ -4,7 +4,7 @@
  */
 
 export const STATIC_DELIVERY_LABEL = 'Delivery tomorrow';
-export const STATIC_OUTLET = { name: 'Guest Outlet', city: 'Indore' };
+export const STATIC_OUTLET = { name: 'Select Location', city: '' };
 
 /** Hero carousel slides (Pack & Pure–style: split promo + full-bleed image) */
 export const STATIC_HERO_SLIDES = [
