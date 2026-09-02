@@ -109,7 +109,22 @@ const CustomerManagement = () => {
             const matchesSearch = (c.name || '').toLowerCase().includes(q) ||
                 (c.email || '').toLowerCase().includes(q) ||
                 (c.phone || '').includes(debouncedSearchTerm);
-            const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
+            
+            let matchesStatus = true;
+            if (filterStatus === 'all') {
+                matchesStatus = true;
+            } else if (filterStatus === 'active') {
+                matchesStatus = c.status === 'active';
+            } else if (filterStatus === 'inactive') {
+                matchesStatus = c.status === 'inactive' || c.status === 'suspended' || c.status === 'blocked';
+            } else if (filterStatus === 'newToday') {
+                const today = new Date().toISOString().split('T')[0];
+                const joined = c.joinedDate ? new Date(c.joinedDate).toISOString().split('T')[0] : '';
+                matchesStatus = joined === today;
+            } else {
+                matchesStatus = c.status === filterStatus;
+            }
+
             return matchesSearch && matchesStatus;
         });
     }, [customers, debouncedSearchTerm, filterStatus]);
@@ -238,6 +253,11 @@ const CustomerManagement = () => {
                     icon={Users}
                     color="text-sky-600"
                     bg="bg-sky-50"
+                    onClick={() => setFilterStatus('all')}
+                    className={cn(
+                        "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
+                        filterStatus === 'all' && "ring-2 ring-sky-500/50 bg-sky-50/20"
+                    )}
                 />
                 <StatCard
                     label="Active Users"
@@ -245,6 +265,11 @@ const CustomerManagement = () => {
                     icon={Activity}
                     color="text-emerald-600"
                     bg="bg-emerald-50"
+                    onClick={() => setFilterStatus(prev => prev === 'active' ? 'all' : 'active')}
+                    className={cn(
+                        "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
+                        filterStatus === 'active' && "ring-2 ring-emerald-500 bg-emerald-50/20 shadow-sm"
+                    )}
                 />
                 <StatCard
                     label="New Today"
@@ -252,6 +277,11 @@ const CustomerManagement = () => {
                     icon={UserPlus}
                     color="text-indigo-600"
                     bg="bg-indigo-50"
+                    onClick={() => setFilterStatus(prev => prev === 'newToday' ? 'all' : 'newToday')}
+                    className={cn(
+                        "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
+                        filterStatus === 'newToday' && "ring-2 ring-indigo-500 bg-indigo-50/20 shadow-sm"
+                    )}
                 />
             </div>
 
@@ -271,16 +301,21 @@ const CustomerManagement = () => {
 
                     <div className="flex items-center gap-2">
                         <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                            {['all', 'active', 'inactive'].map((status) => (
+                            {[
+                                { id: 'all', label: 'All' },
+                                { id: 'active', label: 'Active' },
+                                { id: 'inactive', label: 'Inactive' },
+                                { id: 'newToday', label: 'New Today' },
+                            ].map((status) => (
                                 <button
-                                    key={status}
-                                    onClick={() => setFilterStatus(status)}
+                                    key={status.id}
+                                    onClick={() => setFilterStatus(status.id)}
                                     className={cn(
-                                        "px-3 py-1.5 rounded-md ds-caption transition-all",
-                                        filterStatus === status ? "bg-white text-primary shadow-sm" : "text-gray-400 hover:text-gray-600"
+                                        "px-3 py-1.5 rounded-md ds-caption transition-all capitalize font-medium",
+                                        filterStatus === status.id ? "bg-white text-primary shadow-sm font-semibold" : "text-gray-400 hover:text-gray-600"
                                     )}
                                 >
-                                    {status}
+                                    {status.label}
                                 </button>
                             ))}
                         </div>

@@ -59,7 +59,9 @@ const Header = ({ showMobile = true, showDesktop = true }) => {
                                         {currentLocation.time}
                                     </span>
                                     <div className="flex items-center gap-1 font-black text-white text-base">
-                                        <span className="max-w-[150px] truncate">{currentLocation.name}</span> <span className="text-[10px] opacity-70">▼</span>
+                                        <span className="max-w-[150px] truncate">
+                                            {currentLocation?.city || (currentLocation?.name && currentLocation.name !== 'Please select your location' ? currentLocation.name : 'Select Location')}
+                                        </span> <span className="text-[10px] opacity-70">▼</span>
                                     </div>
                                 </div>
                             </button>
