@@ -589,7 +589,7 @@ const CategoryProductsPage = () => {
 
       {/* Mobile: sidebar + list */}
       <div className="flex min-h-0 flex-1 md:hidden">
-        <aside className="sticky top-[72px] max-h-[calc(100vh-72px)] w-[76px] shrink-0 self-start overflow-y-auto border-r border-slate-100 bg-white pb-28 hide-scrollbar">
+        <aside className="w-[76px] shrink-0 border-r border-slate-100 bg-white pb-28">
           {subCategories.map((sub) => (
             <SubcategoryButton
               key={sub.id}

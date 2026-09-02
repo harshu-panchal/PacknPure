@@ -8,23 +8,20 @@ import React, {
 import { customerApi } from "../services/customerApi";
 
 const LocationContext = createContext(undefined);
-// v2 key to force one-time refresh from Google Maps for users
+// v3 key to force one-time refresh from Google Maps for users
 // who previously only had the default/static location cached.
-const STORAGE_KEY = "location_v2";
+const STORAGE_KEY = "location_v3";
 
 export const LocationProvider = ({ children }) => {
   // Placeholder only — shown until we resolve the visitor's real location.
-  // Previously this hardcoded a real city (Indore), which every visitor with
-  // no cached location saw as if it had actually been detected, regardless of
-  // where they really were.
   const [currentLocation, setCurrentLocation] = useState({
     name: "Please select your location",
     time: "12-15 mins",
     city: "",
     state: "",
     pincode: "",
-    latitude: 22.711140989838025,
-    longitude: 75.9001552518043,
+    latitude: null,
+    longitude: null,
   });
 
   // Address list for drawer UI – will be hydrated from profile API.
@@ -180,9 +177,9 @@ export const LocationProvider = ({ children }) => {
             const locObj = {
               name: friendlyName,
               time: "12-15 mins",
-              city: locality || "Indore",
-              state: state || "Madhya Pradesh",
-              pincode: pincode || "452018",
+              city: locality || sublocality || "",
+              state: state || "",
+              pincode: pincode || "",
               latitude: latitude,
               longitude: longitude,
             };

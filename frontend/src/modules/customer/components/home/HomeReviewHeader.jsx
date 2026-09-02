@@ -89,7 +89,7 @@ const HomeReviewHeader = ({ outlet, onLocationClick, className = '' }) => {
                     >
                         <MapPin size={16} className="shrink-0" style={{ color: primary }} />
                         <span className="min-w-0 flex-1 text-sm font-bold text-slate-900 truncate">
-                            {user?.businessName || (currentLocation?.name !== 'Please select your location' ? currentLocation?.name : (currentLocation?.city || outlet?.city || 'Guest Outlet'))}
+                            {user?.businessName || (currentLocation?.city ? currentLocation.city : (currentLocation?.name && currentLocation.name !== 'Please select your location' ? currentLocation.name : 'Select Location'))}
                         </span>
                         <ChevronDown size={16} className="text-slate-500 shrink-0 group-hover:text-slate-800" />
                     </button>

@@ -97,7 +97,7 @@ const HomeDesktopNavbar = ({
               <span className="flex w-full items-center gap-1 text-sm font-bold text-slate-900">
                 <MapPin size={14} style={{ color: primary }} className="shrink-0" />
                 <span className="truncate font-bold text-slate-900">
-                  {user?.businessName || (currentLocation?.name !== 'Please select your location' ? currentLocation?.name : (currentLocation?.city || outlet?.city || 'Guest Outlet'))}
+                  {user?.businessName || (currentLocation?.city ? currentLocation.city : (currentLocation?.name && currentLocation.name !== 'Please select your location' ? currentLocation.name : 'Select Location'))}
                 </span>
                 <ChevronDown size={14} className="shrink-0 text-slate-400" />
               </span>
