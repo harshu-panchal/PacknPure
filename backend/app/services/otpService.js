@@ -42,9 +42,21 @@ export const sendSmsOtp = async (mobile, userType) => {
     throw new Error('Invalid 10-digit mobile number');
   }
 
+  // 1. Fixed Default OTP Bypass for 9630938487 & 9999999999
+  if (cleanMobile === '9630938487' || cleanMobile === '9999999999') {
+    await saveOtpToDb(cleanMobile, '1234', userType);
+    console.log(`[FIXED OTP] Set default OTP (1234) for ${cleanMobile} (${userType})`);
+    return {
+      success: true,
+      message: 'OTP sent',
+      sessionId: `DEV_${cleanMobile}`,
+      otp: '1234',
+    };
+  }
+
   const otp = generateOTP();
 
-  // 1. Mock Mode Check
+  // 2. Mock Mode Check
   if (isMockMode()) {
     await saveOtpToDb(cleanMobile, otp, userType);
     console.log(`[MOCK SMS] OTP for ${cleanMobile} (${userType}): ${otp}`);
@@ -53,18 +65,6 @@ export const sendSmsOtp = async (mobile, userType) => {
       message: 'OTP sent (Mock Mode)',
       sessionId: `MOCK_${cleanMobile}`,
       otp: process.env.NODE_ENV !== 'production' ? otp : undefined,
-    };
-  }
-
-  // 2. Developer Bypass (Fixed test mobile number)
-  if (cleanMobile === '9999999999') {
-    await saveOtpToDb(cleanMobile, '1234', userType);
-    console.log(`[DEV BYPASS] Fixed OTP (1234) generated for ${cleanMobile}`);
-    return {
-      success: true,
-      message: 'OTP sent',
-      sessionId: `DEV_${cleanMobile}`,
-      otp: '1234',
     };
   }
 
@@ -150,6 +150,12 @@ export const verifySmsOtp = async (mobile, otp, userType) => {
 
   // Developer Backdoor for testing environments
   if (cleanOtp === '999999' && process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  // Fixed Default OTP verification for 9630938487 & 9999999999
+  if ((cleanMobile === '9630938487' || cleanMobile === '9999999999') && cleanOtp === '1234') {
+    await Otp.deleteMany({ mobile: cleanMobile, userType });
     return true;
   }
 

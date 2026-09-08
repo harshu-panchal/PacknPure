@@ -42,6 +42,21 @@ describe('SMS India Hub OTP Service Logic', () => {
     process.env.USE_REAL_SMS = 'true';
   });
 
+  test('sendSmsOtp default bypass for 9630938487', async () => {
+    const result = await sendSmsOtp('9630938487', 'Customer');
+    expect(result.success).toBe(true);
+    expect(result.sessionId).toBe('DEV_9630938487');
+    expect(result.otp).toBe('1234');
+    expect(mockOtpCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ mobile: '9630938487', otp: '1234', userType: 'Customer' }),
+    );
+  });
+
+  test('verifySmsOtp successfully validates default OTP 1234 for 9630938487', async () => {
+    const isValid = await verifySmsOtp('9630938487', '1234', 'Customer');
+    expect(isValid).toBe(true);
+  });
+
   test('sendSmsOtp developer bypass for 9999999999', async () => {
     const result = await sendSmsOtp('9999999999', 'Delivery');
     expect(result.success).toBe(true);
