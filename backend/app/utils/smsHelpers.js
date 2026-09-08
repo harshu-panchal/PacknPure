@@ -21,9 +21,9 @@ export const normalizeToTenDigits = (raw) => {
  * Normalizes mobile number with '91' prefix for SMS India Hub API calls (msisdn parameter).
  */
 export const normalizeForSmsApi = (mobile) => {
-  let clean = normalizeToTenDigits(mobile);
-  if (!clean.startsWith('91')) {
-    clean = '91' + clean;
+  const clean = normalizeToTenDigits(mobile);
+  if (clean.length === 10) {
+    return '91' + clean;
   }
   return clean;
 };

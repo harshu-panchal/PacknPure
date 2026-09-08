@@ -47,7 +47,8 @@ const OrderTransactionsPage = () => {
     useEffect(() => {
         const fetchOrders = async () => {
             try {
-                const res = await customerApi.getMyOrders();
+                // Orders are paginated server-side; this view wants the fuller history.
+                const res = await customerApi.getMyOrders({ limit: 100 });
                 setOrders(res.data.results || []);
             } catch (error) {
                 console.error('Failed to fetch orders for transaction history:', error);

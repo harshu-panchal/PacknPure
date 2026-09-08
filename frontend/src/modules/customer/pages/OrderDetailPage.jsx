@@ -392,7 +392,9 @@ const OrderDetailPage = () => {
 
     if (status === "delivered") {
       return {
-        arrivalTimeText: "Arrived",
+        arrivalTimeText: order.deliveredAt
+          ? formatArrivalTime(new Date(order.deliveredAt).getTime())
+          : "Arrived",
         arrivingInText: "Delivered",
         totalDistanceText: "—",
         mode: deliverySnapshot?.deliveryMode || "EXPRESS",
@@ -417,51 +419,66 @@ const OrderDetailPage = () => {
     const targetLocation =
       routePhase === "delivery" ? order?.address?.location : sellerLocation;
 
-    let minutes = null;
+    // Minutes measured from *now*, derived from where the rider actually is.
+    let liveMinutes = null;
     const routeDurationSeconds = Number(activeRoutePolyline?.duration);
     if (Number.isFinite(routeDurationSeconds) && routeDurationSeconds > 0) {
-      minutes = routeDurationSeconds / 60;
+      liveMinutes = routeDurationSeconds / 60;
     } else {
       const routeDistanceMeters = Number(activeRoutePolyline?.distanceMeters);
-      minutes =
+      liveMinutes =
         estimateMinutesFromDistance(routeDistanceMeters) ??
         estimateMinutesFromDistance(distanceMeters(liveLocation, targetLocation));
-    }
-
-    // Fallback to immutable snapshot ETA — never hardcode 8/12 mins
-    if (!Number.isFinite(minutes) || minutes <= 0) {
-      const snapMin = Number(deliverySnapshot?.estimatedMin);
-      const snapMax = Number(deliverySnapshot?.estimatedMax);
-      if (Number.isFinite(snapMin) && Number.isFinite(snapMax)) {
-        minutes = (snapMin + snapMax) / 2;
-      } else if (Number.isFinite(snapMin)) {
-        minutes = snapMin;
-      }
     }
 
     const routeDistanceMeters = Number(
       activeRoutePolyline?.distanceMeters ?? activeRoutePolyline?.distance,
     );
+    const distanceText = formatDistance(
+      routeDistanceMeters || distanceMeters(liveLocation, targetLocation),
+    );
 
-    if (!Number.isFinite(minutes) || minutes <= 0) {
+    if (Number.isFinite(liveMinutes) && liveMinutes > 0) {
       return {
-        arrivalTimeText: deliverySnapshot?.estimatedText || "Express",
-        arrivingInText: deliverySnapshot?.estimatedText || "Express delivery",
-        totalDistanceText: formatDistance(
-          routeDistanceMeters || distanceMeters(liveLocation, targetLocation),
-        ),
+        arrivalTimeText: formatArrivalTime(clockTick + liveMinutes * 60 * 1000),
+        arrivingInText: formatArrivingIn(liveMinutes),
+        totalDistanceText: distanceText,
         mode: "EXPRESS",
       };
     }
 
-    const arrivalMs = clockTick + minutes * 60 * 1000;
+    // No rider position yet: fall back to the immutable promise from checkout.
+    // That promise is anchored to when the order was PLACED, so the countdown has
+    // to run from createdAt. Adding the window to "now" on every tick made the ETA
+    // stand still — an hour-old order still read "Arriving in 45 mins".
+    const snapMax = Number(deliverySnapshot?.estimatedMax);
+    const snapMin = Number(deliverySnapshot?.estimatedMin);
+    const promisedMinutes = Number.isFinite(snapMax)
+      ? snapMax
+      : Number.isFinite(snapMin)
+        ? snapMin
+        : null;
+    const placedAtMs = order?.createdAt ? new Date(order.createdAt).getTime() : null;
+
+    if (Number.isFinite(promisedMinutes) && Number.isFinite(placedAtMs)) {
+      const promisedArrivalMs = placedAtMs + promisedMinutes * 60 * 1000;
+      const remainingMinutes = (promisedArrivalMs - clockTick) / 60000;
+
+      return {
+        arrivalTimeText: formatArrivalTime(promisedArrivalMs),
+        // Past the promised window we stop counting down rather than showing a
+        // negative or stale figure.
+        arrivingInText:
+          remainingMinutes > 0 ? formatArrivingIn(remainingMinutes) : "Any moment now",
+        totalDistanceText: distanceText,
+        mode: "EXPRESS",
+      };
+    }
+
     return {
-      arrivalTimeText: formatArrivalTime(arrivalMs),
-      arrivingInText: formatArrivingIn(minutes),
-      totalDistanceText: formatDistance(
-        routeDistanceMeters ||
-          distanceMeters(liveLocation, targetLocation),
-      ),
+      arrivalTimeText: deliverySnapshot?.estimatedText || "Express",
+      arrivingInText: deliverySnapshot?.estimatedText || "Express delivery",
+      totalDistanceText: distanceText,
       mode: "EXPRESS",
     };
   }, [

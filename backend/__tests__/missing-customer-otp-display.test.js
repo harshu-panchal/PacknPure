@@ -23,6 +23,7 @@ import User from "../app/models/customer.js";
 import jwt from "jsonwebtoken";
 import { WORKFLOW_STATUS } from "../app/constants/orderWorkflow.js";
 import setupRoutes from "../app/routes/index.js";
+import { connectIfMongoAvailable, describeIfMongo } from "./helpers/mongoAvailable.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -32,26 +33,32 @@ const JWT_SECRET = process.env.JWT_SECRET || "test-secret-key";
 // Create test app instance
 let app;
 
-// Test database connection
-beforeAll(async () => {
-  const mongoUri = process.env.MONGO_URI_TEST || "mongodb://localhost:27017/quick-commerce-test";
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(mongoUri);
-  }
+const MONGO_URI =
+  process.env.MONGO_URI_TEST || "mongodb://localhost:27017/quick-commerce-test";
+// Integration suite: needs a real MongoDB. Skip (rather than spend ~100s timing out in
+// every hook) when none is reachable, so a plain `npm test` stays meaningful.
+const mongoAvailable = await connectIfMongoAvailable(MONGO_URI);
+if (!mongoAvailable) {
+  console.warn("[missing-customer-otp-display] Skipped — no MongoDB at " + MONGO_URI);
+}
 
-  // Setup test app
+beforeAll(async () => {
+  if (!mongoAvailable) return;
+  // Connection is already established above (see connectIfMongoAvailable).
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   setupRoutes(app);
-}, 30000); // 30 second timeout for database connection
+}, 30000);
 
 afterAll(async () => {
+  if (!mongoAvailable) return;
   await mongoose.connection.close();
 }, 30000); // 30 second timeout
 
 // Clean up test data after each test
 afterEach(async () => {
+  if (!mongoAvailable) return;
   await Order.deleteMany({ orderId: /^TEST_/ });
   await OrderOtp.deleteMany({ orderId: /^TEST_/ });
   await User.deleteMany({ email: /^test.*@test\.com$/ });
@@ -148,7 +155,7 @@ async function createValidOtp(orderId, orderMongoId, code = "1234") {
   return { otp, code };
 }
 
-describe("Bug Condition Exploration: Customer Cannot See OTP After Page Refresh or Late View", () => {
+describeIfMongo(mongoAvailable)("Bug Condition Exploration: Customer Cannot See OTP After Page Refresh or Late View", () => {
   /**
    * Property 1: Fault Condition - Customer Cannot See OTP After Page Refresh or Late View
    * 

@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import mongoose from 'mongoose';
+import { connectIfMongoAvailable, describeIfMongo } from './helpers/mongoAvailable.js';
 
 /**
  * Bug Exploration Test: Order Deletion on Refresh Bug
@@ -20,18 +21,21 @@ import mongoose from 'mongoose';
  * DO NOT attempt to fix the test or the code when it fails.
  */
 
-describe('Property 1: Fault Condition - Customer Reference Integrity During Delivery', () => {
+const MONGO_URI =
+  process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/test-order-bug';
+// Integration suite: needs a real MongoDB. Skip (rather than time out and report red)
+// when none is reachable, so a plain `npm test` stays meaningful without local infra.
+const mongoAvailable = await connectIfMongoAvailable(MONGO_URI);
+if (!mongoAvailable) {
+  console.warn('[order-deletion-on-refresh-bug] Skipped — no MongoDB at ' + MONGO_URI);
+}
+
+describeIfMongo(mongoAvailable)('Property 1: Fault Condition - Customer Reference Integrity During Delivery', () => {
   let Order, Customer, Seller, Delivery, OrderOtp, getOrderDetails, requestHandoffOtpAtomic;
   let testCustomer, testSeller, testDeliveryBoy, testOrder;
 
   beforeAll(async () => {
-    // Connect to test database
-    if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/test-order-bug', {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
-    }
+    // Connection is already established above (see connectIfMongoAvailable).
 
     // Import models and functions
     Order = (await import('../app/models/order.js')).default;

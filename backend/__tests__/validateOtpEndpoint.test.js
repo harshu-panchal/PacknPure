@@ -34,17 +34,76 @@ jest.unstable_mockModule('../app/socket/socketManager.js', () => ({
   getIO: mockGetIO
 }));
 
+// Post-delivery side effects. Each is wrapped in try/catch by the controller, but
+// unmocked they block on a database connection instead of throwing, so the success
+// path timed out rather than failing fast.
+jest.unstable_mockModule('../app/services/deliveryTripService.js', () => ({
+  advanceTripOnOrderDelivered: jest.fn(async () => null)
+}));
+
+jest.unstable_mockModule('../app/services/inventory/inventoryEngine.js', () => ({
+  finalizeHubInventoryOnDelivery: jest.fn(async () => ({ ok: true }))
+}));
+
+jest.unstable_mockModule('../app/services/orderSettlement.js', () => ({
+  applyDeliveredSettlement: jest.fn(async () => undefined)
+}));
+
+jest.unstable_mockModule('../app/services/notificationService.js', () => ({
+  createNotification: jest.fn(async () => ({})),
+  createNotificationBatch: jest.fn(async () => [])
+}));
+
+jest.unstable_mockModule('../app/services/deliveryAuditService.js', () => ({
+  recordDeliveryAudit: jest.fn(async () => ({})),
+  getDeliveryAuditEvents: jest.fn(async () => []),
+  maybeRecordGpsSnapshot: jest.fn(async () => ({}))
+}));
+
 jest.unstable_mockModule('../app/utils/helper.js', () => ({
   default: mockHandleResponse
 }));
 
+// orderWorkflow.js is a side-effect-free constants module, but the controller pulls
+// fulfillmentWorkflowEngine in transitively, which also needs the two mapping helpers.
+// A WORKFLOW_STATUS-only mock made that import fail with a missing-export SyntaxError
+// before any test could run.
 jest.unstable_mockModule('../app/constants/orderWorkflow.js', () => ({
   WORKFLOW_STATUS: {
-    DELIVERED: 'delivered'
-  }
+    DELIVERED: 'delivered',
+    OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+    DELIVERY_OTP_VERIFIED: 'DELIVERY_OTP_VERIFIED'
+  },
+  legacyStatusFromWorkflow: (state) =>
+    state === 'delivered' ? 'delivered' : 'pending',
+  workflowFromLegacyStatus: (legacy) =>
+    legacy === 'delivered' ? 'delivered' : 'OUT_FOR_DELIVERY',
+  DEFAULT_SELLER_TIMEOUT_MS: () => 52000,
+  DEFAULT_DELIVERY_TIMEOUT_MS: () => 60000
 }));
 
 const { validateDeliveryOtp } = await import('../app/controller/deliveryController.js');
+
+/**
+ * Document-like order fixture. The controller mutates the loaded order and persists
+ * it with `.save()` rather than going through findOneAndUpdate, so a plain object
+ * fixture fails with "order.save is not a function".
+ */
+function makeOrderDoc(overrides = {}) {
+  const doc = {
+    _id: 'order-mongo-id',
+    orderId: 'ORD123456',
+    deliveryBoy: 'delivery-user-id',
+    workflowStatus: 'OUT_FOR_DELIVERY',
+    status: 'out_for_delivery',
+    workflowVersion: 2,
+    fulfillmentEvents: [],
+    customer: { _id: 'customer-id', name: 'John Doe', phone: '1234567890' },
+    ...overrides
+  };
+  doc.save = jest.fn(async () => doc);
+  return doc;
+}
 
 describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
   let req, res;
@@ -75,11 +134,7 @@ describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
       mockOrderMatchQueryFromRouteParam.mockReturnValue({ orderId: 'ORD123456' });
       
       mockOrderFindOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({
-          orderId: 'ORD123456',
-          deliveryBoy: 'delivery-user-id',
-          customer: { _id: 'customer-id', name: 'John Doe', phone: '1234567890' }
-        })
+        populate: jest.fn().mockResolvedValue(makeOrderDoc())
       });
 
       // Mock OTP validation success
@@ -274,11 +329,9 @@ describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
     it('should return 404 when no active OTP found', async () => {
       mockOrderMatchQueryFromRouteParam.mockReturnValue({ orderId: 'ORD123456' });
       mockOrderFindOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({
-          orderId: 'ORD123456',
-          deliveryBoy: 'delivery-user-id',
-          customer: { _id: 'customer-id' }
-        })
+        populate: jest.fn().mockResolvedValue(
+          makeOrderDoc({ customer: { _id: 'customer-id' } })
+        )
       });
 
       mockValidateDeliveryOtp.mockResolvedValue({
@@ -306,11 +359,9 @@ describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
     beforeEach(() => {
       mockOrderMatchQueryFromRouteParam.mockReturnValue({ orderId: 'ORD123456' });
       mockOrderFindOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({
-          orderId: 'ORD123456',
-          deliveryBoy: 'delivery-user-id',
-          customer: { _id: 'customer-id' }
-        })
+        populate: jest.fn().mockResolvedValue(
+          makeOrderDoc({ customer: { _id: 'customer-id' } })
+        )
       });
     });
 
@@ -388,11 +439,9 @@ describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
     it('should return 500 when validation service fails', async () => {
       mockOrderMatchQueryFromRouteParam.mockReturnValue({ orderId: 'ORD123456' });
       mockOrderFindOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({
-          orderId: 'ORD123456',
-          deliveryBoy: 'delivery-user-id',
-          customer: { _id: 'customer-id' }
-        })
+        populate: jest.fn().mockResolvedValue(
+          makeOrderDoc({ customer: { _id: 'customer-id' } })
+        )
       });
 
       mockValidateDeliveryOtp.mockResolvedValue({
@@ -418,11 +467,9 @@ describe('POST /api/delivery/orders/:orderId/validate-otp', () => {
     it('should handle Socket.IO errors gracefully', async () => {
       mockOrderMatchQueryFromRouteParam.mockReturnValue({ orderId: 'ORD123456' });
       mockOrderFindOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({
-          orderId: 'ORD123456',
-          deliveryBoy: 'delivery-user-id',
-          customer: { _id: 'customer-id' }
-        })
+        populate: jest.fn().mockResolvedValue(
+          makeOrderDoc({ customer: { _id: 'customer-id' } })
+        )
       });
 
       mockValidateDeliveryOtp.mockResolvedValue({

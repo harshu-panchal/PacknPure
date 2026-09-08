@@ -451,6 +451,19 @@ export const executeRollbackEvent = async ({
             markOrderOnHold(order, { reason: "Procurement failed" });
           }
           await order.save({ session: inventorySession });
+          if (autoCancel) {
+            // Dynamic import: orderCompensation imports this module, so a static
+            // import here would close the cycle.
+            const { refundCancelledOrder } = await import("./orderCompensation.js");
+            try {
+              await refundCancelledOrder(order, order.orderId);
+            } catch (refundErr) {
+              console.error(
+                `[transactionEngine] Refund failed for ${order.orderId}:`,
+                refundErr.message,
+              );
+            }
+          }
           return [...releaseOps, ...procurementOps];
         }
 

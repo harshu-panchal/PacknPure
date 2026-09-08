@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -139,16 +139,20 @@ function OrderCard({ order }) {
   const deliveryBadge = getDeliveryModeBadge(deliverySnapshot);
   const deliverySubline = getDeliverySubline(deliverySnapshot);
 
-  const created = new Date(order.createdAt);
-  const dateStr = created.toLocaleDateString('en-IN', {
+  // Once an order is delivered, when it *arrived* is the useful timestamp —
+  // the placement time is what the card showed before, for every status alike.
+  const showDelivered = legacy === 'delivered' && order.deliveredAt;
+  const stamp = new Date(showDelivered ? order.deliveredAt : order.createdAt);
+  const dateStr = stamp.toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
-  const timeStr = created.toLocaleTimeString('en-IN', {
+  const timeStr = stamp.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
   });
+  const stampLabel = showDelivered ? 'Delivered' : 'Placed';
 
   return (
     <Link
@@ -178,7 +182,7 @@ function OrderCard({ order }) {
                 Order #{String(order.orderId).slice(-8)}
               </p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                {dateStr} · {timeStr}
+                {stampLabel} {dateStr} · {timeStr}
               </p>
             </div>
             <span
@@ -242,23 +246,65 @@ const OrdersPage = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [tab, setTab] = useState('all');
 
+  const PAGE_SIZE = 20;
+
+  const loadPage = useCallback(async (targetPage) => {
+    const response = await customerApi.getMyOrders({
+      page: targetPage,
+      limit: PAGE_SIZE,
+    });
+    const data = response.data?.results ?? [];
+    return {
+      rows: Array.isArray(data) ? data : [],
+      hasMore: Boolean(response.data?.pagination?.hasMore),
+    };
+  }, []);
+
   useEffect(() => {
-    const fetchOrders = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        const response = await customerApi.getMyOrders();
-        const data = response.data?.results ?? response.data?.result ?? [];
-        setOrders(Array.isArray(data) ? data : []);
+        const { rows, hasMore: more } = await loadPage(1);
+        if (cancelled) return;
+        setOrders(rows);
+        setHasMore(more);
+        setPage(1);
       } catch (error) {
         console.error('Failed to fetch orders:', error);
-        setOrders([]);
+        if (!cancelled) setOrders([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    fetchOrders();
-  }, []);
+  }, [loadPage]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const { rows, hasMore: more } = await loadPage(nextPage);
+      // Guard against a duplicate row if an order is created between pages.
+      setOrders((prev) => {
+        const seen = new Set(prev.map((o) => o.orderId));
+        return [...prev, ...rows.filter((o) => !seen.has(o.orderId))];
+      });
+      setHasMore(more);
+      setPage(nextPage);
+    } catch (error) {
+      console.error('Failed to load more orders:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [hasMore, loadPage, loadingMore, page]);
 
   const filteredOrders = useMemo(
     () => orders.filter((o) => matchesTab(o, tab)),
@@ -351,6 +397,19 @@ const OrdersPage = () => {
                 ))}
               </div>
             )}
+
+            {hasMore ? (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="rounded-full bg-white px-5 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {loadingMore ? 'Loading…' : 'Load older orders'}
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </main>

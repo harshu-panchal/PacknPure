@@ -30,6 +30,7 @@ const VariantGstFields = ({
   className,
   title = "GST on this variant",
   description,
+  finalLabel = "Final price",
 }) => {
   const enabled = Boolean(variant.gstEnabled);
   const rate = Number(variant.gstRate) || 0;
@@ -101,7 +102,7 @@ const VariantGstFields = ({
                 <p className="text-sm font-bold text-amber-700">₹{gstAmt.toLocaleString("en-IN")}</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-semibold uppercase text-slate-500">Final cost</p>
+                <p className="text-[10px] font-semibold uppercase text-slate-500">{finalLabel || "Final price"}</p>
                 <p className="text-sm font-bold text-indigo-700">₹{(Number(taxablePrice) + gstAmt).toLocaleString("en-IN")}</p>
               </div>
             </>

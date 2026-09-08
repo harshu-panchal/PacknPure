@@ -276,7 +276,10 @@ const OrderHistory = () => {
                         <div className="flex items-center text-gray-400 text-xs min-w-0">
                           <Calendar size={12} className="mr-1 shrink-0" />
                           <span className="truncate">
-                            {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {(() => {
+                              const displayDate = order.assignedAt ? new Date(order.assignedAt) : new Date(order.createdAt);
+                              return `${displayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                            })()}
                           </span>
                         </div>
                         {(() => {
@@ -289,7 +292,7 @@ const OrderHistory = () => {
                       </div>
                       <div className="text-right shrink-0 min-w-[64px]">
                         <span className="block font-bold text-base sm:text-lg text-green-600 leading-tight">
-                          ₹{Math.round((order.pricing?.total || 0) * 0.1)}
+                          ₹{Math.max(order.pricing?.deliveryFee ?? 0, 25)}
                         </span>
                         <span className="ds-caption text-gray-400 text-[10px] sm:text-xs">Earnings</span>
                       </div>

@@ -34,10 +34,10 @@ const Earnings = () => {
     recentTransactions: []
   });
 
-  const fetchEarnings = async () => {
+  const fetchEarnings = async (period = activeTab) => {
     try {
       setLoading(true);
-      const response = await deliveryApi.getEarnings();
+      const response = await deliveryApi.getEarnings({ period });
       if (response.data.success && response.data.result) {
         const result = response.data.result;
         setEarningsData({
@@ -58,8 +58,13 @@ const Earnings = () => {
   };
 
   React.useEffect(() => {
-    fetchEarnings();
+    fetchEarnings(activeTab);
   }, []);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    fetchEarnings(tab);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -74,7 +79,7 @@ const Earnings = () => {
     visible: { opacity: 1, y: 0 },
   };
 
-  if (loading) {
+  if (loading && !earningsData.totalEarnings && earningsData.chartData.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900 transition-colors">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -101,7 +106,7 @@ const Earnings = () => {
               type="button"
               role="tab"
               aria-selected={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={`flex-1 py-2.5 min-h-10 text-sm font-bold rounded-lg transition-all duration-200 capitalize cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${activeTab === tab
                 ? "bg-white dark:bg-gray-800 text-primary shadow-sm"
                 : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -125,7 +130,7 @@ const Earnings = () => {
             <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 dark:bg-gray-800/20 rounded-full -ml-10 -mb-10 blur-xl"></div>
 
             <p className="text-blue-100 font-medium text-sm uppercase tracking-wide mb-1 relative z-10">
-              Total Earnings
+              {activeTab === "today" ? "Today's Earnings" : activeTab === "monthly" ? "Monthly Earnings" : "Weekly Earnings"}
             </p>
             <div className="flex items-baseline mb-6 relative z-10">
               <span className="text-3xl font-bold mr-1">₹</span>
@@ -149,52 +154,49 @@ const Earnings = () => {
 
         {/* Chart */}
         <motion.div variants={itemVariants}>
-          <Card className="p-6 h-80">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center">
-                <TrendingUp size={20} className="mr-2 text-green-500" />
+          <Card className="p-5 flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center text-sm">
+                <TrendingUp size={18} className="mr-2 text-green-500" />
                 Earnings Trend
               </h3>
-              <Button variant="ghost" size="sm" className="h-8 text-xs">
-                Last 7 Days
-              </Button>
+              <span className="text-xs font-semibold text-gray-400 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 rounded-full border border-gray-100 dark:border-gray-700">
+                {activeTab === "today" ? "Today (Hourly)" : activeTab === "monthly" ? "Last 30 Days" : "Last 7 Days"}
+              </span>
             </div>
-            <ResponsiveContainer width="100%" height="85%">
-              <BarChart data={earningsData.chartData} barSize={20}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f3f4f6"
-                />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: "#9ca3af" }}
-                  dy={10}
-                />
-                <Tooltip
-                  cursor={{ fill: "#f9fafb" }}
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "none",
-                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                  }}
-                />
-                <Bar
-                  dataKey="earnings"
-                  fill="var(--primary)"
-                  radius={[4, 4, 0, 0]}
-                  stackId="a"
-                />
-                <Bar
-                  dataKey="incentives"
-                  fill="#93c5fd"
-                  radius={[4, 4, 0, 0]}
-                  stackId="a"
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="w-full h-56 min-h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={earningsData.chartData} barSize={22} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f1f5f9"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
+                    dy={6}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(0, 102, 255, 0.05)" }}
+                    formatter={(value) => [`₹${value}`, "Earnings"]}
+                    contentStyle={{
+                      borderRadius: "12px",
+                      border: "1px solid #e2e8f0",
+                      boxShadow: "0 8px 16px -4px rgba(0, 0, 0, 0.1)",
+                      fontWeight: "bold",
+                    }}
+                  />
+                  <Bar
+                    dataKey="earnings"
+                    fill="#0066FF"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </motion.div>
 
@@ -234,7 +236,7 @@ const Earnings = () => {
         <motion.div variants={itemVariants}>
           <Card className="overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-100 dark:bg-gray-900 transition-colors">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100">Recent Withdrawals</h3>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100">Recent Activity</h3>
               <Button
                 variant="link"
                 className="text-primary text-xs font-bold h-auto p-0">
@@ -242,31 +244,56 @@ const Earnings = () => {
               </Button>
             </div>
             <div className="divide-y divide-gray-100">
-              {earningsData.recentTransactions.length > 0 ? earningsData.recentTransactions.map((txn, idx) => (
-                <div
-                  key={txn._id || txn.id || `txn-${idx}`}
-                  className="p-4 flex justify-between items-center hover:bg-gray-100 dark:bg-gray-900 transition-colors cursor-pointer">
-                  <div className="flex items-center">
-                    <div
-                      className={`p-2 rounded-full mr-3 ${txn.status === "Settled" || txn.status === "Completed" ? "bg-green-100 text-green-600" : "bg-yellow-100 text-yellow-600"}`}>
-                      <ArrowUpRight size={16} />
+              {earningsData.recentTransactions.length > 0 ? earningsData.recentTransactions.map((txn, idx) => {
+                const isDebit = txn.type.includes('Withdrawal') || txn.type.includes('Cash Settlement');
+                const getStatusBadge = () => {
+                  if (txn.type === "Delivery Earning" || txn.type === "Incentive" || txn.type === "Bonus") {
+                    return { label: "In Wallet", className: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800" };
+                  }
+                  if (txn.type === "Cash Collection") {
+                    return { label: "In Hand", className: "text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800" };
+                  }
+                  if (txn.type === "Withdrawal") {
+                    if (txn.status === "Settled") return { label: "Paid to Bank", className: "text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800" };
+                    if (txn.status === "Pending" || txn.status === "Processing") return { label: "Pending Approval", className: "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800" };
+                    return { label: "Rejected", className: "text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800" };
+                  }
+                  if (txn.type === "Cash Settlement") {
+                    if (txn.status === "Settled") return { label: "Remitted to Admin", className: "text-green-600 bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800" };
+                    if (txn.status === "Pending" || txn.status === "Processing") return { label: "Pending Approval", className: "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800" };
+                    return { label: "Rejected", className: "text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800" };
+                  }
+                  return { label: txn.status || "Settled", className: "text-gray-600 bg-gray-50 border-gray-200" };
+                };
+                const badge = getStatusBadge();
+
+                return (
+                  <div
+                    key={txn._id || txn.id || `txn-${idx}`}
+                    className="p-4 flex justify-between items-center hover:bg-gray-100 dark:bg-gray-900 transition-colors cursor-pointer">
+                    <div className="flex items-center">
+                      <div
+                        className={`p-2 rounded-full mr-3 ${!isDebit ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"}`}>
+                        <ArrowUpRight size={16} className={isDebit ? "rotate-180" : ""} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900 dark:text-white">{txn.type}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {txn.date || new Date(txn.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} • {txn.id || (txn._id ? txn._id.toString().slice(-6).toUpperCase() : 'N/A')}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-gray-900 dark:text-white">{txn.type}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {txn.date || new Date(txn.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} • {txn.id || (txn._id ? txn._id.toString().slice(-6).toUpperCase() : 'N/A')}
+                    <div className="text-right">
+                      <p className={`font-bold ${isDebit ? 'text-gray-900 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {isDebit ? '-' : '+'}₹{Math.abs(txn.amount)}
                       </p>
+                      <span className={`inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${badge.className}`}>
+                        {badge.label}
+                      </span>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900 dark:text-white">{txn.type.includes('Withdrawal') ? '-' : '+'}₹{txn.amount}</p>
-                    <p
-                      className={`text-xs font-bold ${txn.status === "Settled" || txn.status === "Completed" ? "text-green-500" : "text-yellow-500"}`}>
-                      {txn.status}
-                    </p>
-                  </div>
-                </div>
-              )) : (
+                );
+              }) : (
                 <div className="p-12 text-center text-gray-400 text-sm italic">
                   No recent earnings or withdrawals.
                 </div>

@@ -66,7 +66,25 @@ export const customerApi = {
   // Explicit timeout so checkout never waits forever if the server blocks (e.g. Redis/Bull).
   placeOrder: (data) =>
     axiosInstance.post("/orders/place", data, { timeout: 120000 }),
-  getMyOrders: () => getWithDedupe("/orders/my-orders"),
+  /**
+   * Orders are paginated server-side. Normalized back to the flat `results` array
+   * callers already expect, with `pagination` alongside for callers that want it.
+   */
+  getMyOrders: async (params = {}) => {
+    const response = await getWithDedupe("/orders/my-orders", params);
+    const payload = response?.data?.result;
+    if (payload && Array.isArray(payload.items)) {
+      return {
+        ...response,
+        data: {
+          ...response.data,
+          results: payload.items,
+          pagination: payload.pagination ?? null,
+        },
+      };
+    }
+    return response;
+  },
   /** No dedupe: order detail must reflect live workflow; cache caused stale/empty client state on refresh. */
   getOrderDetails: (orderId) =>
     axiosInstance.get(

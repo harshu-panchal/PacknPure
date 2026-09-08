@@ -316,12 +316,8 @@ export function variantHubProfitRow(variant, itemFallback = null) {
     0;
   
   const baseCost = Number(variant?.purchasePrice ?? itemFallback?.purchasePrice);
-  const gstEnabled = Boolean(variant?.gstEnabled ?? itemFallback?.gstEnabled);
-  const gstRate = Number(variant?.gstRate ?? itemFallback?.gstRate) || 0;
-  
   const hasHubCost = Number.isFinite(baseCost) && baseCost > 0;
-  const gstAmt = gstEnabled ? Math.round((baseCost * gstRate) / 100) : 0;
-  const cost = baseCost + gstAmt;
+  const cost = hasHubCost ? baseCost : 0;
 
   if (!sell || !hasHubCost) {
     return {

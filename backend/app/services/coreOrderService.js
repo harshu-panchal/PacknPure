@@ -41,6 +41,58 @@ import { validatePromoRules } from "./promotionValidationService.js";
 const ORDER_CART_POPULATE = "name mainImage price salePrice gstRate gstEnabled variants purchasePrice";
 
 /**
+ * End of a booked delivery slot as a Date, from "YYYY-MM-DD" + "HH:MM-HH:MM".
+ * Returns null when either half is missing or malformed so callers can fall back.
+ */
+const slotWindowEnd = (selectedDate, selectedSlot) => {
+  if (!selectedDate || !selectedSlot) return null;
+  const [y, m, d] = String(selectedDate).split("-").map(Number);
+  const [, endTime] = String(selectedSlot).split("-");
+  const [endHour, endMin] = String(endTime || "").split(":").map(Number);
+  if (![y, m, d, endHour, endMin].every(Number.isFinite)) return null;
+  return new Date(y, m - 1, d, endHour, endMin, 0, 0);
+};
+
+/**
+ * Undo a half-created order when fulfillment fails after the Order document was
+ * already saved. Inside a Mongo session the abort does this for us; on the COD
+ * path there is no session, so the rows have to be removed by hand or the
+ * customer is left staring at a pending order that holds no stock.
+ *
+ * Aborting is deliberately swallowed: callers always throw straight after this,
+ * and a failure to clean up must not replace the real error with a confusing one.
+ */
+const discardUnfulfilledOrder = async (
+  order,
+  { procurementSession = null, promotionId = null, session = null } = {},
+) => {
+  if (session) {
+    try {
+      if (session.inTransaction()) await session.abortTransaction();
+    } catch (abortErr) {
+      console.warn("[discardUnfulfilledOrder] abort failed:", abortErr.message);
+    }
+    return;
+  }
+
+  try {
+    await Order.deleteOne({ _id: order._id });
+    if (procurementSession?._id) {
+      await ProcurementSession.deleteOne({ _id: procurementSession._id });
+    }
+    if (promotionId) {
+      const PromotionModel = mongoose.model("Promotion");
+      await PromotionModel.findByIdAndUpdate(promotionId, { $inc: { usedCount: -1 } });
+    }
+  } catch (cleanupErr) {
+    console.error(
+      `[discardUnfulfilledOrder] cleanup failed for ${order?.orderId}:`,
+      cleanupErr.message,
+    );
+  }
+};
+
+/**
  * Reusable Core Order Fulfillment Service
  * Handles unified business logic for order creation across all payment gateways (COD, Wallet, Razorpay).
  */
@@ -209,36 +261,25 @@ export const executeCoreOrderFulfillment = async ({
       orderItems = normalizedItems;
     }
 
-    const slaDeadlineAt = await getSlaDeadline();
+    // SLA is measured against the promise actually made to the customer. A scheduled
+    // slot order is not late until its slot window closes — using "now + slaHours"
+    // for those marked every future-dated order as breached within hours of checkout.
+    const slaDeadlineAt =
+      deliveryMode === "SLOT"
+        ? slotWindowEnd(selectedDate, selectedSlot) || (await getSlaDeadline())
+        : await getSlaDeadline();
 
     // 5. Pricing and GST calculation
     let validatedPricing = { ...pricing };
     // Never trust a client-supplied discount — it is only ever set below after a
     // coupon is re-validated server-side against this exact cart/customer.
     validatedPricing.discount = 0;
-    if (normalizedAddress?.location) {
-      const calc = await calculateDeliveryFee(normalizedAddress.location);
-      if (calc.isOutOfRange) {
-        throw new Error(`Address is outside our delivery range (${calc.maxServiceRadius}km)`);
-      }
-
-      validatedPricing.deliveryFee = calc.deliveryFee;
-      validatedPricing.distanceKm = calc.distanceKm;
-      validatedPricing.platformFee = calc.platformFee;
-      
-      if ((validatedPricing.subtotal || 0) >= calc.freeDeliveryThreshold) {
-        validatedPricing.deliveryFee = 0;
-      }
-
-      if (deliveryMode === "EXPRESS") {
-        const delSettings = await DeliverySettings.getSingleton();
-        // Express charge always applies; delivery fee is only waived when the
-        // customer is within the admin-configured free-delivery distance.
-        applyExpressDeliveryCharge(validatedPricing, deliveryMode, delSettings);
-      } else {
-        validatedPricing.expressCharge = 0;
-      }
-
+    // Every money field below is recomputed from the database, never taken from the
+    // request body. This block must stay unconditional — gating it on the presence of
+    // address coordinates let a client without saved coords dictate its own total.
+    // `calculateDeliveryFee` already degrades to the configured base fee when the
+    // coordinates are missing or non-finite, so it is safe to call either way.
+    {
       let totalItemGst = 0;
       let trueSubtotal = 0;
       // GST-inclusive running total — matches what the customer actually saw as
@@ -268,11 +309,11 @@ export const executeCoreOrderFulfillment = async ({
         const finalCost = Number((costTotal + vendorGstAmount).toFixed(2));
         const profit = Number((itemSellingTotal - finalCost).toFixed(2));
 
-        return { 
-          ...item, 
+        return {
+          ...item,
           baseCost,
           gstEnabled: Boolean(item.gstEnabled),
-          gstRate: rate, 
+          gstRate: rate,
           gstAmount: Number(itemGstAmount.toFixed(2)),
           finalCost,
           profit
@@ -282,6 +323,31 @@ export const executeCoreOrderFulfillment = async ({
       const serviceGst = 0;
       validatedPricing.subtotal = Number(trueSubtotal.toFixed(2));
       validatedPricing.gst = Number((totalItemGst + serviceGst).toFixed(2));
+
+      const calc = await calculateDeliveryFee(normalizedAddress?.location || {});
+      if (calc.isOutOfRange) {
+        throw new Error(`Address is outside our delivery range (${calc.maxServiceRadius}km)`);
+      }
+
+      validatedPricing.deliveryFee = calc.deliveryFee;
+      validatedPricing.distanceKm = calc.distanceKm;
+      validatedPricing.platformFee = calc.platformFee;
+
+      // Free-delivery threshold is measured against what the customer actually pays
+      // for goods (GST-inclusive), not the ex-GST subtotal.
+      const freeDeliveryThreshold = calc.freeDeliveryThreshold ?? Infinity;
+      if (Number(grossSubtotal.toFixed(2)) >= freeDeliveryThreshold) {
+        validatedPricing.deliveryFee = 0;
+      }
+
+      if (deliveryMode === "EXPRESS") {
+        const delSettings = await DeliverySettings.getSingleton();
+        // Express charge always applies; delivery fee is only waived when the
+        // customer is within the admin-configured free-delivery distance.
+        applyExpressDeliveryCharge(validatedPricing, deliveryMode, delSettings);
+      } else {
+        validatedPricing.expressCharge = 0;
+      }
 
       // Re-validate the selected coupon server-side (min order value, first-order-only,
       // per-user limit, expiry, etc.) — the client only ever *suggests* a promotionId,
@@ -312,6 +378,7 @@ export const executeCoreOrderFulfillment = async ({
         }
       }
 
+      validatedPricing.tip = Math.max(0, Number(pricing?.tip) || 0);
       validatedPricing.total = Number((validatedPricing.subtotal
         + validatedPricing.gst
         - (validatedPricing.discount || 0)
@@ -405,9 +472,19 @@ export const executeCoreOrderFulfillment = async ({
     }
 
     // 8. Inventory Reservation
-    const reserveResult = await reserveHubInventory(hubPlan.allocations, hubPlan.hubId, newOrder._id);
+    // Pass the session so a reservation joins the payment transaction — without it,
+    // an aborted checkout left hub stock frozen against an order that never existed.
+    const reserveResult = await reserveHubInventory(
+      hubPlan.allocations,
+      hubPlan.hubId,
+      newOrder._id,
+      session,
+    );
     if (!reserveResult.ok) {
-      if (session) await session.abortTransaction(); // Ensure rollback if in trans
+      // The order document is already persisted at this point. Without a session
+      // (the COD path) nothing rolls it back, so it would linger in the customer's
+      // order list as a permanently pending order holding no stock.
+      await discardUnfulfilledOrder(newOrder, { procurementSession, promotionId, session });
       throw new Error("Stock unavailable: inventory was updated by another request. Please refresh and try again.");
     }
 
@@ -429,7 +506,7 @@ export const executeCoreOrderFulfillment = async ({
         reason: "procurement_creation_failed_after_reserve",
         actor: { type: "system" },
       });
-      if (session) await session.abortTransaction();
+      await discardUnfulfilledOrder(newOrder, { procurementSession, promotionId, session });
       throw new Error(procurementErr.message || "Unable to procure items for this order.");
     }
 
@@ -504,7 +581,14 @@ export const executeCoreOrderFulfillment = async ({
     const walletUsed = payment.walletUsed || (payment.method === "wallet" ? Number(validatedPricing?.total || pricing?.total || 0) : 0);
     
     if (walletUsed > 0) {
-      customer.walletBalance = Math.max(0, Number(customer.walletBalance || 0) - walletUsed);
+      // Re-check against the server-computed total. The caller's pre-check ran on the
+      // client's figures; clamping at zero here would silently hand out free credit
+      // whenever the recomputed total came out higher than what the client sent.
+      const availableBalance = Number(customer.walletBalance || 0);
+      if (availableBalance < walletUsed) {
+        throw new Error("Insufficient wallet balance");
+      }
+      customer.walletBalance = Number((availableBalance - walletUsed).toFixed(2));
       await customer.save({ session });
       
       const tx = new Transaction({

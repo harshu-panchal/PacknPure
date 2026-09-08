@@ -143,20 +143,29 @@ export const placeOrder = async (req, res) => {
 export const getMyOrders = async (req, res) => {
   try {
     const customerId = req.user.id;
-    const orders = await Order.find({ customer: customerId })
-      .select(
-        "orderId customer seller items address payment pricing totalAmount payableAmount grandTotal total amount status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate deliverySnapshot createdAt",
-      )
-      .sort({ createdAt: -1 })
-      .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)
-      .lean();
+    const { limit, skip, page } = getPagination(req, { defaultLimit: 20 });
 
-    return handleResponse(
-      res,
-      200,
-      "Orders fetched successfully",
-      orders.map((o) => enrichOrderDoc(o)),
-    );
+    const filter = { customer: customerId };
+    const [orders, total] = await Promise.all([
+      Order.find(filter)
+        .select(
+          // deliveredAt / assignedAt / outForDeliveryAt / deliveryRiderStep are what the
+          // list needs to show *when* an order was delivered and to resolve its status
+          // for legacy orders — omitting them made every card fall back to createdAt.
+          "orderId customer seller items address payment pricing totalAmount payableAmount grandTotal total amount status workflowStatus workflowVersion returnStatus timeSlot deliveryMode selectedSlot selectedDate deliverySnapshot createdAt deliveredAt assignedAt outForDeliveryAt pickupConfirmedAt deliveryRiderStep deliveryBoy cancelReason cancelledBy",
+        )
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)
+        .lean(),
+      Order.countDocuments(filter),
+    ]);
+
+    return handleResponse(res, 200, "Orders fetched successfully", {
+      items: orders.map((o) => enrichOrderDoc(o)),
+      pagination: { page, limit, total, hasMore: skip + orders.length < total },
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
@@ -421,14 +430,14 @@ export const cancelOrder = async (req, res) => {
 
     if (order.workflowVersion >= 2) {
       try {
+        // customerCancelV2 already applies the COD strike. Applying it again here
+        // double-counted every cancellation, blocking COD at half the configured
+        // threshold.
         const updated = await customerCancelV2(
           customerId,
           order.orderId,
           reason,
         );
-        if (isCodMethod(order.payment?.method)) {
-          await applyCodCancellationStrike(customerId);
-        }
         return handleResponse(res, 200, "Order cancelled successfully", updated);
       } catch (e) {
         return handleResponse(res, e.statusCode || 500, e.message);
@@ -889,11 +898,37 @@ export const updateOrderStatus = async (req, res) => {
         };
         const targetState = statusToState[normalized] || null;
         if (targetState) {
-          transitionOrderFulfillment(order, {
-            toState: targetState,
-            actor: { id: userId, role },
-            reason: `Legacy status update requested: ${normalized}`,
-          });
+          // "confirmed"/"packed" from the admin dropdown are coarse buckets that map
+          // onto several workflow states. Try the canonical target, then the nearest
+          // legal alternative, so a dropdown change doesn't 409 on an order that is
+          // already further along a different branch.
+          const fallbacks = {
+            [WORKFLOW_STATUS.READY_FOR_DELIVERY]: [
+              WORKFLOW_STATUS.SELLER_ACCEPTED,
+              WORKFLOW_STATUS.DELIVERY_SEARCH,
+            ],
+            [WORKFLOW_STATUS.PACKING]: [
+              WORKFLOW_STATUS.READY_FOR_DELIVERY,
+              WORKFLOW_STATUS.SELLER_ACCEPTED,
+            ],
+          };
+          const candidates = [targetState, ...(fallbacks[targetState] || [])];
+          let transitioned = false;
+          let lastErr = null;
+          for (const candidate of candidates) {
+            try {
+              transitionOrderFulfillment(order, {
+                toState: candidate,
+                actor: { id: userId, role },
+                reason: `Legacy status update requested: ${normalized}`,
+              });
+              transitioned = true;
+              break;
+            } catch (err) {
+              lastErr = err;
+            }
+          }
+          if (!transitioned) throw lastErr;
         } else {
           order.status = status;
         }
@@ -916,13 +951,10 @@ export const updateOrderStatus = async (req, res) => {
     // Handle Cancellation (Stock Reversal & Transaction Update)
     if (status === "cancelled" && oldStatus !== "cancelled") {
       await compensateOrderCancellation(order, canonicalOrderId);
-      
+
       if (order.workflowVersion >= 2) {
-        transitionOrderFulfillment(order, {
-          toState: WORKFLOW_STATUS.CANCELLED,
-          actor: { id: userId, role },
-          reason: order.cancelReason || "Order cancelled",
-        });
+        // The transition to CANCELLED already happened in the status block above;
+        // repeating it here only appended a duplicate fulfillmentEvent.
         if (isAdmin) {
           order.cancelledBy = "admin";
           order.cancelReason = "Cancelled manually by Admin via Dashboard";
@@ -938,54 +970,20 @@ export const updateOrderStatus = async (req, res) => {
       }
     }
 
-    // Handle Confirmation/Delivery (Settle Transaction for Demo)
-    if (status === "delivered" && oldStatus !== "delivered") {
+    const newlyDelivered = status === "delivered" && oldStatus !== "delivered";
+    if (newlyDelivered) {
       order.deliveredAt = new Date();
       await Transaction.findOneAndUpdate(
         { reference: canonicalOrderId, userModel: "Seller" },
         { status: "Settled" },
       );
-
-      // Create Delivery Earning Transaction
-      if (order.deliveryBoy) {
-        const deliveryEarning = order.pricing?.deliveryFee || 0;
-        await Transaction.create({
-          user: order.deliveryBoy,
-          userModel: "Delivery",
-          order: order._id,
-          type: "Delivery Earning",
-          amount: deliveryEarning,
-          status: "Settled",
-          reference: `DEL-ERN-${canonicalOrderId}`,
-        });
-
-        // --- NEW: Cash Collection Logic for COD ---
-        if (
-          order.payment?.method?.toLowerCase() === "cash" ||
-          order.payment?.method?.toLowerCase() === "cod"
-        ) {
-          console.log(
-            "Creating Cash Collection Transaction for order:",
-            canonicalOrderId,
-          );
-          await Transaction.create({
-            user: order.deliveryBoy,
-            userModel: "Delivery",
-            order: order._id,
-            type: "Cash Collection",
-            amount: order.pricing.total,
-            status: "Settled", // Settled means rider has the cash
-            reference: `CASH-COL-${canonicalOrderId}`,
-          });
-        }
-      }
     }
 
     console.log("Saving order with new status:", status);
     await order.save();
 
-    // Deduct Hub Reserved (HR) when order is newly marked delivered
-    if (status === "delivered" && oldStatus !== "delivered") {
+    if (newlyDelivered) {
+      // Deduct Hub Reserved (HR) now that the order is delivered.
       try {
         const { finalizeHubInventoryOnDelivery } = await import(
           "../services/inventory/inventoryEngine.js"
@@ -995,6 +993,22 @@ export const updateOrderStatus = async (req, res) => {
         console.error(
           "[updateOrderStatus] Hub inventory deduction failed:",
           inventoryErr.message,
+        );
+      }
+
+      // Use the same settlement routine the rider's OTP path uses. This block
+      // previously hand-rolled a different set of transactions, so an order closed
+      // by an admin was booked differently from an identical one closed by a rider
+      // — and the two could double-credit if both ever ran.
+      try {
+        const { applyDeliveredSettlement } = await import(
+          "../services/orderSettlement.js"
+        );
+        await applyDeliveredSettlement(order, canonicalOrderId);
+      } catch (settlementErr) {
+        console.error(
+          "[updateOrderStatus] Delivered settlement failed:",
+          settlementErr.message,
         );
       }
     }

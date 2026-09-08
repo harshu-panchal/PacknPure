@@ -2448,8 +2448,7 @@ const ProductManagement = () => {
                                                                             {(() => {
                                                                                 const sell = Number(variant.salePrice ?? variant.price ?? 0);
                                                                                 const buy = Number(vendorCostValue || 0);
-                                                                                const gstAmt = variant.gstEnabled ? Math.round((buy * (Number(variant.gstRate) || 0)) / 100) : 0;
-                                                                                const cost = buy + gstAmt;
+                                                                                const cost = buy;
                                                                                 const profit = sell - cost;
                                                                                 const margin = cost > 0 ? ((profit / cost) * 100).toFixed(0) : 0;
                                                                                 return (
@@ -2573,10 +2572,11 @@ const ProductManagement = () => {
                                                                     <VariantGstFields
                                                                         variant={variant}
                                                                         gstRates={gstRates}
-                                                                        taxablePrice={Number(vendorCostValue) || 0}
+                                                                        taxablePrice={Number(variant.salePrice ?? variant.price) || 0}
                                                                         compact
-                                                                        title="Hub GST"
-                                                                        description="Tax applied by Hub on this master product"
+                                                                        title="Customer GST (User Price)"
+                                                                        description="Tax applied to customer selling price"
+                                                                        finalLabel="Final user price"
                                                                         onChange={(patch) => {
                                                                             const newVariants = [...formData.variants];
                                                                             newVariants[idx] = { ...newVariants[idx], ...patch };
@@ -3244,13 +3244,11 @@ const ProductManagement = () => {
                                     const finalSupplyCost = variantSupply + variantGstAmount;
 
                                     const purchase = Number(row.purchasePrice) || 0;
-                                    const rowGstAmt = row.gstEnabled ? Math.round((purchase * (Number(row.gstRate) || 0)) / 100) : 0;
-                                    const finalPurchaseCost = purchase + rowGstAmt;
                                     const sell = Number(row.salePrice) || 0;
                                     const mrp = Number(row.price) || sell;
                                     
-                                    const marginAmt = sell - finalPurchaseCost;
-                                    const marginPct = finalPurchaseCost > 0 ? ((marginAmt / finalPurchaseCost) * 100).toFixed(1) : 0;
+                                    const marginAmt = sell - purchase;
+                                    const marginPct = purchase > 0 ? ((marginAmt / purchase) * 100).toFixed(1) : 0;
                                     const isNegativeMargin = marginAmt < 0;
                                     
                                     return (
@@ -3293,31 +3291,26 @@ const ProductManagement = () => {
                                                         value={row.salePrice}
                                                         onChange={(e) =>
                                                             updateGoLiveVariantField(
-                                                                idx,
-                                                                'salePrice',
-                                                                e.target.value,
-                                                            )
+                                                                 idx,
+                                                                 'salePrice',
+                                                                 e.target.value,
+                                                             )
                                                         }
                                                         className="w-full mt-1 px-2 py-2 bg-white rounded-lg text-sm font-black outline-none ring-1 ring-emerald-200"
                                                         placeholder="Customer price"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="text-[9px] font-bold text-violet-600 uppercase">
-                                                        Purchase
+                                                    <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                                        <span>Purchase</span>
+                                                        <span className="text-[8px] text-slate-400 font-semibold normal-case">Fixed</span>
                                                     </label>
                                                     <input
                                                         type="number"
-                                                        min="0"
                                                         value={row.purchasePrice}
-                                                        onChange={(e) =>
-                                                            updateGoLiveVariantField(
-                                                                idx,
-                                                                'purchasePrice',
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        className="w-full mt-1 px-2 py-2 bg-white rounded-lg text-sm font-black outline-none ring-1 ring-violet-200"
+                                                        readOnly
+                                                        disabled
+                                                        className="w-full mt-1 px-2 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-black outline-none ring-1 ring-slate-200 cursor-not-allowed select-none"
                                                         placeholder="Hub cost"
                                                     />
                                                 </div>
@@ -3353,8 +3346,11 @@ const ProductManagement = () => {
                                             <VariantGstFields
                                                 variant={row}
                                                 gstRates={gstRates}
-                                                taxablePrice={purchase}
+                                                taxablePrice={sell || mrp}
                                                 compact
+                                                title="Customer GST (User Price)"
+                                                description="Tax applied to customer selling price"
+                                                finalLabel="Final user price"
                                                 onChange={(patch) => patchGoLiveVariant(idx, patch)}
                                             />
                                         </div>

@@ -112,74 +112,236 @@ export const getDeliveryStats = async (req, res) => {
 export const getDeliveryEarnings = async (req, res) => {
     try {
         const deliveryBoyId = new mongoose.Types.ObjectId(req.user.id);
-        const transactions = await Transaction.find({ user: deliveryBoyId, userModel: 'Delivery' })
-            .sort({ createdAt: -1 })
-            .populate("order", "orderId pricing")
-            .lean();
+        const { period = "weekly" } = req.query;
+        const normalizedPeriod = String(period).toLowerCase();
 
-        const totalEarnings = transactions
-            .filter(t => t.status === 'Settled' && (t.type === 'Delivery Earning' || t.type === 'Incentive' || t.type === 'Bonus'))
-            .reduce((acc, t) => acc + t.amount, 0);
+        const now = new Date();
+        let startDate;
+        let chartData = [];
 
-        const onlinePay = transactions
-            .filter(t => t.type === 'Delivery Earning' && t.status === 'Settled')
-            .reduce((acc, t) => acc + t.amount, 0);
+        if (normalizedPeriod === "today") {
+            startDate = new Date(now);
+            startDate.setHours(0, 0, 0, 0);
 
-        const incentives = transactions
-            .filter(t => (t.type === 'Incentive' || t.type === 'Bonus') && t.status === 'Settled')
-            .reduce((acc, t) => acc + t.amount, 0);
-
-        // Calculate Real Cash Collected
-        const cashTransactions = transactions.filter(t => t.status === 'Settled' && (t.type === 'Cash Collection' || t.type === 'Cash Settlement'));
-        const cashCollected = cashTransactions.reduce((acc, t) => {
-            return t.type === 'Cash Collection' ? acc + t.amount : acc - Math.abs(t.amount);
-        }, 0);
-
-        // Last 7 days aggregation for chart
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const dailyAggregation = await Transaction.aggregate([
-            {
-                $match: {
+            const [allPeriodTransactions, hourlyAggregation] = await Promise.all([
+                Transaction.find({
                     user: deliveryBoyId,
-                    userModel: 'Delivery',
-                    status: 'Settled',
-                    createdAt: { $gte: sevenDaysAgo },
-                    type: { $in: ['Delivery Earning', 'Incentive', 'Bonus'] }
-                }
-            },
-            {
-                $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-                    amount: { $sum: "$amount" }
-                }
-            },
-            { $sort: { _id: 1 } }
-        ]);
+                    userModel: "Delivery",
+                    createdAt: { $gte: startDate }
+                }).sort({ createdAt: -1 }).populate("order", "orderId pricing").lean(),
+                Transaction.aggregate([
+                    {
+                        $match: {
+                            user: deliveryBoyId,
+                            userModel: "Delivery",
+                            status: "Settled",
+                            createdAt: { $gte: startDate },
+                            type: { $in: ["Delivery Earning", "Incentive", "Bonus"] }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: { $hour: "$createdAt" },
+                            amount: { $sum: "$amount" }
+                        }
+                    }
+                ])
+            ]);
 
-        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        const chartData = [];
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
-            const foundAt = dailyAggregation.find(a => a._id === dateStr);
-            chartData.push({
-                name: dayNames[d.getDay()],
-                earnings: foundAt ? foundAt.amount : 0,
-                incentives: 0 // Could be further aggregated if needed
+            const slots = [
+                { label: "12-4 AM", hours: [0, 1, 2, 3] },
+                { label: "4-8 AM", hours: [4, 5, 6, 7] },
+                { label: "8-12 PM", hours: [8, 9, 10, 11] },
+                { label: "12-4 PM", hours: [12, 13, 14, 15] },
+                { label: "4-8 PM", hours: [16, 17, 18, 19] },
+                { label: "8-12 AM", hours: [20, 21, 22, 23] },
+            ];
+
+            chartData = slots.map((slot) => {
+                const total = slot.hours.reduce((acc, h) => {
+                    const match = hourlyAggregation.find((item) => item._id === h);
+                    return acc + (match ? match.amount : 0);
+                }, 0);
+                return { name: slot.label, earnings: total, incentives: 0 };
+            });
+
+            const totalEarnings = allPeriodTransactions
+                .filter((t) => t.status === "Settled" && (t.type === "Delivery Earning" || t.type === "Incentive" || t.type === "Bonus"))
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const onlinePay = allPeriodTransactions
+                .filter((t) => t.type === "Delivery Earning" && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const incentives = allPeriodTransactions
+                .filter((t) => (t.type === "Incentive" || t.type === "Bonus") && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const cashTransactions = allPeriodTransactions.filter((t) => t.status === "Settled" && (t.type === "Cash Collection" || t.type === "Cash Settlement"));
+            const cashCollected = cashTransactions.reduce((acc, t) => {
+                return t.type === "Cash Collection" ? acc + t.amount : acc - Math.abs(t.amount);
+            }, 0);
+
+            return handleResponse(res, 200, "Earnings fetched", {
+                period: "today",
+                totalEarnings,
+                onlinePay,
+                incentives,
+                bonuses: 0,
+                cashCollected,
+                chartData,
+                transactions: allPeriodTransactions.slice(0, 20)
+            });
+        } else if (normalizedPeriod === "monthly") {
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 30);
+            startDate.setHours(0, 0, 0, 0);
+
+            const [allPeriodTransactions, dailyAggregation] = await Promise.all([
+                Transaction.find({
+                    user: deliveryBoyId,
+                    userModel: "Delivery",
+                    createdAt: { $gte: startDate }
+                }).sort({ createdAt: -1 }).populate("order", "orderId pricing").lean(),
+                Transaction.aggregate([
+                    {
+                        $match: {
+                            user: deliveryBoyId,
+                            userModel: "Delivery",
+                            status: "Settled",
+                            createdAt: { $gte: startDate },
+                            type: { $in: ["Delivery Earning", "Incentive", "Bonus"] }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                            amount: { $sum: "$amount" }
+                        }
+                    }
+                ])
+            ]);
+
+            const weeks = [
+                { label: "W1", daysAgoStart: 30, daysAgoEnd: 22 },
+                { label: "W2", daysAgoStart: 21, daysAgoEnd: 15 },
+                { label: "W3", daysAgoStart: 14, daysAgoEnd: 8 },
+                { label: "W4", daysAgoStart: 7, daysAgoEnd: 0 },
+            ];
+
+            chartData = weeks.map((w) => {
+                let total = 0;
+                for (let i = w.daysAgoStart; i >= w.daysAgoEnd; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    const dateStr = d.toISOString().split("T")[0];
+                    const found = dailyAggregation.find((a) => a._id === dateStr);
+                    if (found) total += found.amount;
+                }
+                return { name: w.label, earnings: total, incentives: 0 };
+            });
+
+            const totalEarnings = allPeriodTransactions
+                .filter((t) => t.status === "Settled" && (t.type === "Delivery Earning" || t.type === "Incentive" || t.type === "Bonus"))
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const onlinePay = allPeriodTransactions
+                .filter((t) => t.type === "Delivery Earning" && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const incentives = allPeriodTransactions
+                .filter((t) => (t.type === "Incentive" || t.type === "Bonus") && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const cashTransactions = allPeriodTransactions.filter((t) => t.status === "Settled" && (t.type === "Cash Collection" || t.type === "Cash Settlement"));
+            const cashCollected = cashTransactions.reduce((acc, t) => {
+                return t.type === "Cash Collection" ? acc + t.amount : acc - Math.abs(t.amount);
+            }, 0);
+
+            return handleResponse(res, 200, "Earnings fetched", {
+                period: "monthly",
+                totalEarnings,
+                onlinePay,
+                incentives,
+                bonuses: 0,
+                cashCollected,
+                chartData,
+                transactions: allPeriodTransactions.slice(0, 20)
+            });
+        } else {
+            // Weekly (Last 7 Days)
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 7);
+            startDate.setHours(0, 0, 0, 0);
+
+            const [allPeriodTransactions, dailyAggregation] = await Promise.all([
+                Transaction.find({
+                    user: deliveryBoyId,
+                    userModel: "Delivery",
+                    createdAt: { $gte: startDate }
+                }).sort({ createdAt: -1 }).populate("order", "orderId pricing").lean(),
+                Transaction.aggregate([
+                    {
+                        $match: {
+                            user: deliveryBoyId,
+                            userModel: "Delivery",
+                            status: "Settled",
+                            createdAt: { $gte: startDate },
+                            type: { $in: ["Delivery Earning", "Incentive", "Bonus"] }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                            amount: { $sum: "$amount" }
+                        }
+                    },
+                    { $sort: { _id: 1 } }
+                ])
+            ]);
+
+            const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            chartData = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().split("T")[0];
+                const foundAt = dailyAggregation.find((a) => a._id === dateStr);
+                chartData.push({
+                    name: dayNames[d.getDay()],
+                    earnings: foundAt ? foundAt.amount : 0,
+                    incentives: 0
+                });
+            }
+
+            const totalEarnings = allPeriodTransactions
+                .filter((t) => t.status === "Settled" && (t.type === "Delivery Earning" || t.type === "Incentive" || t.type === "Bonus"))
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const onlinePay = allPeriodTransactions
+                .filter((t) => t.type === "Delivery Earning" && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const incentives = allPeriodTransactions
+                .filter((t) => (t.type === "Incentive" || t.type === "Bonus") && t.status === "Settled")
+                .reduce((acc, t) => acc + t.amount, 0);
+
+            const cashTransactions = allPeriodTransactions.filter((t) => t.status === "Settled" && (t.type === "Cash Collection" || t.type === "Cash Settlement"));
+            const cashCollected = cashTransactions.reduce((acc, t) => {
+                return t.type === "Cash Collection" ? acc + t.amount : acc - Math.abs(t.amount);
+            }, 0);
+
+            return handleResponse(res, 200, "Earnings fetched", {
+                period: "weekly",
+                totalEarnings,
+                onlinePay,
+                incentives,
+                bonuses: 0,
+                cashCollected,
+                chartData,
+                transactions: allPeriodTransactions.slice(0, 20)
             });
         }
-
-        return handleResponse(res, 200, "Earnings fetched", {
-            totalEarnings,
-            onlinePay,
-            incentives,
-            cashCollected,
-            chartData,
-            transactions: transactions.slice(0, 20)
-        });
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }

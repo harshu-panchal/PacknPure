@@ -32,8 +32,9 @@ export function buildDeliveryTimeline(order, audits = []) {
   const legacy = String(order.status || "").toLowerCase();
 
   const timestamps = {
+    // `readyForDeliveryAt` is not a field on the Order schema — it was always
+    // undefined here. sellerAcceptedAt is what the hub flow actually stamps.
     packed:
-      order.readyForDeliveryAt ||
       order.sellerAcceptedAt ||
       (wf === "DELIVERY_SEARCH" || wf === "READY_FOR_DELIVERY" ? order.updatedAt : null),
     delivery_assigned: order.assignedAt || tsFromAudit(audits, "assigned"),

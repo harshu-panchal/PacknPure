@@ -44,6 +44,13 @@ export const uploadMultipleMedia = createUpload({
     maxCount: 10,
 }).array("files", 10);
 
+/** Seller onboarding documents upload (images + PDFs up to 15MB per file) */
+export const uploadSellerDocs = multer({
+    storage,
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: mediaFileFilter,
+});
+
 /** Legacy image-only upload (5MB) — used by existing category/product routes */
 const legacyUpload = multer({
     storage,

@@ -24,24 +24,60 @@ const LEGACY_ENUM = new Set([
   "cancelled",
 ]);
 
+/**
+ * Terminal failure states. The backend's legacyStatusFromWorkflow maps every one of
+ * these to "cancelled"; falling through to the "pending" default here left a
+ * cancelled order reading as Pending in the app forever while admin showed
+ * Cancelled. Keep this list in sync with backend/app/constants/orderWorkflow.js.
+ */
+const FAILED_WORKFLOW_STATUSES = new Set([
+  "CANCELLED",
+  "ORDER_CANCELLED",
+  "PAYMENT_FAILED",
+  "PROCUREMENT_FAILED",
+  "SELLER_REJECTED",
+  "SELLER_TIMEOUT",
+  "QA_FAILED",
+  "PICKUP_FAILED",
+  "DELIVERY_FAILED",
+  "NO_SELLER_AVAILABLE",
+]);
+
 function legacyFromWorkflow(workflowStatus) {
+  if (FAILED_WORKFLOW_STATUSES.has(workflowStatus)) return "cancelled";
+
   switch (workflowStatus) {
     case WORKFLOW_STATUS.CREATED:
     case WORKFLOW_STATUS.SELLER_PENDING:
+    case "ORDER_PLACED":
+    case "PENDING_SELLER_OFFER":
       return "pending";
     // Match backend legacyStatusFromWorkflow — search/accepted means confirmed.
     case WORKFLOW_STATUS.DELIVERY_SEARCH:
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
     case WORKFLOW_STATUS.DELIVERY_ASSIGNED:
     case WORKFLOW_STATUS.PICKUP_READY:
+    case "PAYMENT_CONFIRMED":
+    case "INVENTORY_RESERVED":
+    case "PROCUREMENT_REQUIRED":
+    case "PROCUREMENT_COMPLETED":
+    case "SELLER_OFFER_ACCEPTED":
+    case "READY_FOR_PICKUP":
+    case "PICKUP_ASSIGNED":
+    case "SELLER_READY":
+    case "PICKED_UP":
+    case "IN_TRANSIT_TO_HUB":
+    case "RECEIVED_AT_HUB":
+    case "QA_PENDING":
+    case "QA_PASSED":
+    case "PACKING":
+    case "READY_FOR_DELIVERY":
       return "confirmed";
     case WORKFLOW_STATUS.OUT_FOR_DELIVERY:
+    case "DELIVERY_OTP_VERIFIED":
       return "out_for_delivery";
     case WORKFLOW_STATUS.DELIVERED:
       return "delivered";
-    case WORKFLOW_STATUS.CANCELLED:
-    case "ORDER_CANCELLED":
-      return "cancelled";
     default:
       return "pending";
   }
@@ -56,7 +92,9 @@ const EARLY_WORKFLOW_STATUSES = new Set([
   "ORDER_PLACED",
   "PAYMENT_CONFIRMED",
   "INVENTORY_RESERVED",
+  "PROCUREMENT_REQUIRED",
   "PROCUREMENT_COMPLETED",
+  "SELLER_OFFER_ACCEPTED",
   "READY_FOR_DELIVERY",
   "PACKING",
   "QA_PENDING",
@@ -81,10 +119,7 @@ export function getLegacyStatusFromOrder(order) {
     if (workflowStatus === WORKFLOW_STATUS.DELIVERED) {
       return "delivered";
     }
-    if (
-      workflowStatus === WORKFLOW_STATUS.CANCELLED ||
-      workflowStatus === "ORDER_CANCELLED"
-    ) {
+    if (FAILED_WORKFLOW_STATUSES.has(workflowStatus)) {
       return "cancelled";
     }
     if (

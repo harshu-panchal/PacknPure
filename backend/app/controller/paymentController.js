@@ -371,7 +371,13 @@ export const verifyPayment = async (req, res) => {
             hubMeta
         });
     } catch (error) {
-        await session.abortTransaction();
+        // Inner failures may already have aborted. Calling abort twice throws and
+        // replaced the real error with a confusing transaction error in the response.
+        try {
+            if (session.inTransaction()) await session.abortTransaction();
+        } catch (abortErr) {
+            console.warn("[PAYMENT_VERIFY] abort failed", abortErr.message);
+        }
         session.endSession();
         console.error("[PAYMENT_VERIFY] Error", error);
         return handleResponse(res, 500, error.message);

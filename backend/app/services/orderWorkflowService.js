@@ -43,6 +43,20 @@ import Delivery from "../models/delivery.js";
 const DELIVERY_SEARCH_MAX_ATTEMPTS = () =>
   parseInt(process.env.DELIVERY_SEARCH_MAX_ATTEMPTS || "3", 10);
 
+/**
+ * States a hub order can be dispatched to a rider from. Procurement-backed orders
+ * finish on INVENTORY_RESERVED / PROCUREMENT_COMPLETED / READY_FOR_DELIVERY rather
+ * than a seller state, and omitting those left every shortage order undispatchable.
+ */
+const DISPATCHABLE_WORKFLOW_STATUSES = new Set([
+  WORKFLOW_STATUS.CREATED,
+  WORKFLOW_STATUS.SELLER_PENDING,
+  WORKFLOW_STATUS.SELLER_ACCEPTED,
+  WORKFLOW_STATUS.INVENTORY_RESERVED,
+  WORKFLOW_STATUS.PROCUREMENT_COMPLETED,
+  WORKFLOW_STATUS.READY_FOR_DELIVERY,
+]);
+
 const DELIVERY_RADIUS_MULTIPLIER = () =>
   parseFloat(process.env.DELIVERY_RADIUS_MULTIPLIER || "1.5");
 const INITIAL_DELIVERY_RADIUS_M = () =>
@@ -400,13 +414,7 @@ export async function startHubDeliverySearchAtomic(orderId, { session = null } =
     workflowVersion: { $gte: 2 },
     hubFlowEnabled: true,
     deliveryBoy: null,
-    workflowStatus: {
-      $in: [
-        WORKFLOW_STATUS.CREATED,
-        WORKFLOW_STATUS.SELLER_PENDING,
-        WORKFLOW_STATUS.SELLER_ACCEPTED,
-      ],
-    },
+    workflowStatus: { $in: [...DISPATCHABLE_WORKFLOW_STATUSES] },
   }).populate([
     "customer",
     { path: "seller", select: "shopName address name location serviceRadius" },
@@ -428,9 +436,22 @@ export async function startHubDeliverySearchAtomic(orderId, { session = null } =
       reason: "hub_ready_for_delivery_search",
     });
   }
+  // Orders that came through procurement land on a hub state rather than a seller
+  // one; route them through SELLER_ACCEPTED (the hub's pre-dispatch state) so they
+  // reach DELIVERY_SEARCH by the same edge every other order uses.
+  if (
+    order.workflowStatus === WORKFLOW_STATUS.INVENTORY_RESERVED ||
+    order.workflowStatus === WORKFLOW_STATUS.PROCUREMENT_COMPLETED
+  ) {
+    transitionOrder(order, WORKFLOW_STATUS.SELLER_ACCEPTED, {
+      actor,
+      reason: "hub_stock_secured",
+    });
+  }
   if (
     order.workflowStatus === WORKFLOW_STATUS.SELLER_PENDING ||
-    order.workflowStatus === WORKFLOW_STATUS.SELLER_ACCEPTED
+    order.workflowStatus === WORKFLOW_STATUS.SELLER_ACCEPTED ||
+    order.workflowStatus === WORKFLOW_STATUS.READY_FOR_DELIVERY
   ) {
     transitionOrder(order, WORKFLOW_STATUS.DELIVERY_SEARCH, {
       actor,
@@ -782,10 +803,14 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
       .populate("seller", "shopName address name location serviceRadius")
       .lean();
     if (orderRich) {
+      const retrySettings = await getSettings();
       await emitDeliveryBroadcastForSeller(
         orderRich.seller,
-        deliveryBroadcastPayloadFromOrder(orderRich, {
+        // `settings` is the second parameter — passing the extras there dropped
+        // retryAttempt and made the payload fall back to env hub coordinates.
+        deliveryBroadcastPayloadFromOrder(orderRich, retrySettings, {
           retryAttempt: currentAttempt + 1,
+          hubFlow: Boolean(orderRich.hubFlowEnabled),
         }),
       );
     }
@@ -837,11 +862,19 @@ export async function customerCancelV2(customerId, orderId, reason) {
   }
 
   const ws = resolveWorkflowStatus(order);
+  // DELIVERY_SEARCH is included deliberately: an express in-stock order reaches it in
+  // the same request that creates it, so leaving it out meant the most common order
+  // type could never be cancelled by the customer at all. A rider has not accepted
+  // yet at this point — once one has (DELIVERY_ASSIGNED), cancellation is closed.
   const hubCancellable = new Set([
     WORKFLOW_STATUS.CREATED,
     WORKFLOW_STATUS.PROCUREMENT_REQUIRED,
+    WORKFLOW_STATUS.PROCUREMENT_COMPLETED,
     WORKFLOW_STATUS.INVENTORY_RESERVED,
     WORKFLOW_STATUS.SELLER_PENDING,
+    WORKFLOW_STATUS.SELLER_ACCEPTED,
+    WORKFLOW_STATUS.DELIVERY_SEARCH,
+    WORKFLOW_STATUS.READY_FOR_DELIVERY,
     WORKFLOW_STATUS.ORDER_PLACED,
     WORKFLOW_STATUS.PAYMENT_CONFIRMED,
   ]);
@@ -888,6 +921,12 @@ export async function customerCancelV2(customerId, orderId, reason) {
   await removeSellerTimeoutJob(orderId);
   await compensateOrderCancellation(updated, orderId);
 
+  // Pull the job off any rider's screen if the search was still running.
+  try {
+    await retractDeliveryBroadcastForOrder(orderId);
+  } catch (retractErr) {
+    console.warn("[customerCancelV2] broadcast retract failed:", retractErr.message);
+  }
 
   emitOrderStatusUpdate(orderId, { workflowStatus: toState }, updated.customer);
   return updated;
@@ -1266,7 +1305,11 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
     toState: WORKFLOW_STATUS.DELIVERED,
     assign: {
       deliveredAt: now,
-      deliveryRiderStep: 5,
+      otpValidatedAt: now,
+      // Schema caps this at 4 ("at customer / pre-OTP"). Writing 5 failed validation
+      // on save — after the OTP had already been consumed, so the rider was left with
+      // a burned code and an order stuck in OUT_FOR_DELIVERY.
+      deliveryRiderStep: 4,
       status: "delivered",
     },
     options: {

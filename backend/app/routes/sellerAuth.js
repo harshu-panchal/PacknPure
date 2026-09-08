@@ -7,7 +7,7 @@ import {
     sendSellerSignupOtp,
     verifySellerSignupOtp,
 } from "../controller/sellerAuthController.js";
-import upload from "../middleware/uploadMiddleware.js";
+import upload, { uploadSellerDocs } from "../middleware/uploadMiddleware.js";
 import {
     getSellerProfile,
     updateSellerProfile,
@@ -33,7 +33,7 @@ const router = express.Router();
 
 router.post(
     "/signup",
-    upload.fields([
+    uploadSellerDocs.fields([
         { name: "tradeLicense", maxCount: 1 },
         { name: "gstCertificate", maxCount: 1 },
         { name: "idProof", maxCount: 1 },

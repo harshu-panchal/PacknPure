@@ -301,7 +301,12 @@ export const planHubFulfillment = async (orderItems, hubId = HUB_ID) => {
  * Reserve inventory rows for fully-available orders.
  * Returns false if any reserve check fails (race-safe).
  */
-export const reserveHubInventory = async (allocations, hubId = HUB_ID, orderId = null) => {
+export const reserveHubInventory = async (
+  allocations,
+  hubId = HUB_ID,
+  orderId = null,
+  session = null,
+) => {
   const { freezeHubInventory, releaseHubReservation } = await import("./inventory/inventoryEngine.js");
   const reservedRows = [];
   for (const row of allocations) {
@@ -313,15 +318,15 @@ export const reserveHubInventory = async (allocations, hubId = HUB_ID, orderId =
       row.productId,
       row.variantId,
       row.reserveQty,
-      null,
+      session,
       idempotencyKey,
       orderId,
     );
-    
+
     if (!updated) {
       // Roll back partial reservations when any line fails (race-safe best effort).
       for (const applied of reservedRows) {
-         await releaseHubReservation(applied.productId, applied.variantId, applied.reserveQty);
+         await releaseHubReservation(applied.productId, applied.variantId, applied.reserveQty, session);
       }
       return { ok: false, reservedRows: [] };
     }

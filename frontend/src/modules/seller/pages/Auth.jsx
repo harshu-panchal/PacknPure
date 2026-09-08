@@ -141,7 +141,13 @@ const Auth = () => {
             const cleaned = value.replace(/\s+/g, '').toLowerCase();
             setFormData({ ...formData, [name]: cleaned });
         } else if (name === 'phone' || name === 'forgotPhone') {
-            const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
+            let digits = value.replace(/\D/g, '');
+            if (digits.length === 12 && digits.startsWith('91')) {
+                digits = digits.slice(2);
+            } else if (digits.length === 11 && digits.startsWith('0')) {
+                digits = digits.slice(1);
+            }
+            const digitsOnly = digits.slice(0, 10);
             setFormData({ ...formData, [name]: digitsOnly });
             if (name === 'phone' && digitsOnly !== verifiedPhone) {
                 // Number changed after verifying (or mid-verification) — the old
@@ -167,7 +173,12 @@ const Auth = () => {
     const handleFileChange = (e) => {
         const { name, files } = e.target;
         if (files && files[0]) {
-            setDocuments(prev => ({ ...prev, [name]: files[0] }));
+            const file = files[0];
+            if (file.size > 15 * 1024 * 1024) {
+                toast.error("File size must be under 15MB");
+                return;
+            }
+            setDocuments(prev => ({ ...prev, [name]: file }));
             toast.success(`${name.replace(/([A-Z])/g, ' $1')} attached`);
         }
     };

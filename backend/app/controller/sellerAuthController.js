@@ -99,6 +99,13 @@ export const signupSeller = async (req, res) => {
             return handleResponse(res, 400, "All fields are required");
         }
 
+        const cleanPhone = normalizePhone(phone);
+        const cleanEmail = String(email || "").trim().toLowerCase();
+
+        if (!isValidIndianPhone(cleanPhone)) {
+            return handleResponse(res, 400, "Enter a valid 10-digit mobile number");
+        }
+
         if (!phoneVerificationToken) {
             return handleResponse(res, 400, "Please verify your phone number before registering");
         }
@@ -106,7 +113,7 @@ export const signupSeller = async (req, res) => {
             const payload = jwt.verify(phoneVerificationToken, process.env.JWT_SECRET);
             if (
                 payload.purpose !== "seller_signup_phone_verified" ||
-                normalizePhone(payload.phone) !== normalizePhone(phone)
+                normalizePhone(payload.phone) !== cleanPhone
             ) {
                 return handleResponse(res, 400, "Phone verification doesn't match this number — please verify again");
             }
@@ -114,57 +121,66 @@ export const signupSeller = async (req, res) => {
             return handleResponse(res, 400, "Phone verification expired — please verify again");
         }
 
+        const numLat = lat !== undefined && lat !== "" ? Number(lat) : undefined;
+        const numLng = lng !== undefined && lng !== "" ? Number(lng) : undefined;
+        const numRadius = radius !== undefined && radius !== "" ? Number(radius) : undefined;
+
         // Validate coordinates and radius if provided
-        if (lat !== undefined && (lat < -90 || lat > 90)) {
+        if (numLat !== undefined && (Number.isNaN(numLat) || numLat < -90 || numLat > 90)) {
             return handleResponse(res, 400, "Invalid latitude");
         }
-        if (lng !== undefined && (lng < -180 || lng > 180)) {
+        if (numLng !== undefined && (Number.isNaN(numLng) || numLng < -180 || numLng > 180)) {
             return handleResponse(res, 400, "Invalid longitude");
         }
-        if (radius !== undefined && (radius < 1 || radius > 100)) {
+        if (numRadius !== undefined && (Number.isNaN(numRadius) || numRadius < 1 || numRadius > 100)) {
             return handleResponse(res, 400, "Radius must be between 1 and 100 km");
         }
 
-        let seller = await Seller.findOne({ $or: [{ email }, { phone }] });
+        let seller = await Seller.findOne({ $or: [{ email: cleanEmail }, { phone: cleanPhone }] });
 
         if (seller) {
             return handleResponse(res, 400, "Seller with this email or phone already exists");
         }
 
         const sellerData = {
-            name,
-            email,
-            phone,
+            name: String(name).trim(),
+            email: cleanEmail,
+            phone: cleanPhone,
             password,
-            shopName,
-            address: address || "",
-            description: description || "",
+            shopName: String(shopName).trim(),
+            address: address ? String(address).trim() : "",
+            description: description ? String(description).trim() : "",
             category: category || "General",
             documents: {}
         };
 
         // Handle SOP Documents
         if (req.files) {
-            if (req.files.tradeLicense && req.files.tradeLicense[0]) {
-                sellerData.documents.tradeLicense = await uploadToCloudinary(req.files.tradeLicense[0].buffer, "seller_docs");
-            }
-            if (req.files.gstCertificate && req.files.gstCertificate[0]) {
-                sellerData.documents.gstCertificate = await uploadToCloudinary(req.files.gstCertificate[0].buffer, "seller_docs");
-            }
-            if (req.files.idProof && req.files.idProof[0]) {
-                sellerData.documents.idProof = await uploadToCloudinary(req.files.idProof[0].buffer, "seller_docs");
+            try {
+                if (req.files.tradeLicense && req.files.tradeLicense[0]) {
+                    sellerData.documents.tradeLicense = await uploadToCloudinary(req.files.tradeLicense[0].buffer, "seller_docs");
+                }
+                if (req.files.gstCertificate && req.files.gstCertificate[0]) {
+                    sellerData.documents.gstCertificate = await uploadToCloudinary(req.files.gstCertificate[0].buffer, "seller_docs");
+                }
+                if (req.files.idProof && req.files.idProof[0]) {
+                    sellerData.documents.idProof = await uploadToCloudinary(req.files.idProof[0].buffer, "seller_docs");
+                }
+            } catch (uploadError) {
+                console.error("[signupSeller] Document upload failed:", uploadError);
+                return handleResponse(res, 500, `Failed to upload documents: ${uploadError.message || "Please check your file formats and try again"}`);
             }
         }
 
-        if (lat !== undefined && lng !== undefined) {
+        if (numLat !== undefined && numLng !== undefined) {
             sellerData.location = {
                 type: "Point",
-                coordinates: [Number(lng), Number(lat)],
+                coordinates: [numLng, numLat],
             };
         }
 
-        if (radius !== undefined) {
-            sellerData.serviceRadius = Number(radius);
+        if (numRadius !== undefined) {
+            sellerData.serviceRadius = numRadius;
         }
 
         seller = await Seller.create(sellerData);
@@ -195,6 +211,9 @@ export const signupSeller = async (req, res) => {
             seller,
         });
     } catch (error) {
+        if (error?.code === 11000) {
+            return handleResponse(res, 400, "A seller with this email or phone number is already registered.");
+        }
         return handleResponse(res, 500, error.message);
     }
 };

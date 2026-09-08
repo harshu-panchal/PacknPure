@@ -9,7 +9,7 @@ export const deliveryApi = {
   getProfile: () => axiosInstance.get("/delivery/profile"),
   updateProfile: (data) => axiosInstance.put("/delivery/profile", data),
   getStats: () => axiosInstance.get("/delivery/stats"),
-  getEarnings: () => axiosInstance.get("/delivery/earnings"),
+  getEarnings: (params) => axiosInstance.get("/delivery/earnings", { params }),
   uploadFile: (formData) => axiosInstance.post("/upload/single", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   }),

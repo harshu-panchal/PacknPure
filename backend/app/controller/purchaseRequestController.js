@@ -1819,7 +1819,16 @@ export const verifyInward = async (req, res) => {
         }
       }
       if (allDone) {
-        markOrderReadyForPacking(parentOrder);
+        // A rejected workflow edge must not abandon the save — that left the order
+        // frozen mid-procurement with nothing persisted and no way forward.
+        try {
+          markOrderReadyForPacking(parentOrder);
+        } catch (workflowErr) {
+          console.error(
+            `[verifyInward] ready-for-packing transition failed for ${parentOrder.orderId} (from ${parentOrder.workflowStatus}):`,
+            workflowErr.message,
+          );
+        }
         await persistOrder(parentOrder);
         console.info(`[HUB_DEBUG] orderId=${parentOrder.orderId} verifyInward allDone=true verified=${verified} workflowVersion=${parentOrder.workflowVersion} hubFlowEnabled=${parentOrder.hubFlowEnabled} deliveryMode=${parentOrder.deliveryMode} inventoryReady=${isOrderInventoryReadyForDelivery(parentOrder)}`);
         if (
