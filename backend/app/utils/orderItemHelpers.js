@@ -32,13 +32,18 @@ export function resolveOrderItemVariantLabel(item) {
 
 export function resolveOrderItemPrice(productDoc, variant, fallbackPrice) {
   if (variant) {
-    return Number(variant.salePrice ?? variant.price) || fallbackPrice || 0;
+    const rawSale = Number(variant.salePrice ?? variant.price) || fallbackPrice || 0;
+    const isGst = !!variant.gstEnabled && Number(variant.gstRate) > 0;
+    const gstAmt = isGst ? Math.round((rawSale * Number(variant.gstRate)) / 100) : 0;
+    return rawSale + gstAmt;
   }
-  return (
+  const rawSale =
     fallbackPrice ||
     Number(productDoc?.salePrice ?? productDoc?.price) ||
-    0
-  );
+    0;
+  const isGst = !!productDoc?.gstEnabled && Number(productDoc?.gstRate) > 0;
+  const gstAmt = isGst ? Math.round((rawSale * Number(productDoc?.gstRate)) / 100) : 0;
+  return rawSale + gstAmt;
 }
 
 export function enrichOrderItem(item) {

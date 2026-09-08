@@ -11,10 +11,10 @@ export const calculateGstCostings = (doc, ownerType) => {
     doc.variants.forEach(v => {
       const vBaseCost = Number(v.purchasePrice) || 0;
       const vGstRate = v.gstEnabled ? (Number(v.gstRate) || 0) : 0;
-      const vGstAmount = Number((vBaseCost * (vGstRate / 100)).toFixed(2));
       
-      v.gstAmount = vGstAmount;
       if (isSeller) {
+        const vGstAmount = Number((vBaseCost * (vGstRate / 100)).toFixed(2));
+        v.gstAmount = vGstAmount;
         v.finalSupplyPrice = vBaseCost + vGstAmount;
         
         // Admin Extra GST on top of Seller's Final Supply Price
@@ -23,7 +23,11 @@ export const calculateGstCostings = (doc, ownerType) => {
         
         v.finalVendorCost = v.finalSupplyPrice + extraGstAmount;
       } else {
-        v.finalVendorCost = vBaseCost + vGstAmount;
+        // Admin Master Catalog: GST applies to customer selling price
+        const vBaseSale = Number(v.salePrice ?? v.price) || 0;
+        const vGstAmount = Number((vBaseSale * (vGstRate / 100)).toFixed(2));
+        v.gstAmount = vGstAmount;
+        v.finalVendorCost = vBaseCost;
         v.finalSupplyPrice = 0;
       }
     });
@@ -728,6 +732,9 @@ export const PRODUCT_WRITABLE_KEYS = [
   "status",
   "isFeatured",
   "masterProductId",
+  "price",
+  "salePrice",
+  "purchasePrice",
   "variants",
 ];
 
@@ -790,18 +797,22 @@ export function firstVariantPricing(product) {
   }
   const first = variants[0];
   const mrp = Number(first.price) || 0;
-  const sale = Number(first.salePrice ?? first.price) || mrp;
+  const rawSale = Number(first.salePrice ?? first.price) || mrp;
   
   const rawGstRateFirst = Number(first.gstRate) || 0;
   const isGstFirst = !!first.gstEnabled && rawGstRateFirst > 0;
+  const gstAmt = isGstFirst ? Math.round((rawSale * rawGstRateFirst) / 100) : 0;
+  const finalSale = rawSale + gstAmt;
   
   return {
     price: mrp,
-    salePrice: sale,
+    salePrice: finalSale,
+    baseSalePrice: rawSale,
     purchasePrice: Number(first.purchasePrice) || 0,
     unit: first.unit || "Pieces",
     gstEnabled: isGstFirst,
     gstRate: isGstFirst ? rawGstRateFirst : 0,
+    gstAmount: gstAmt,
   };
 }
 
@@ -815,19 +826,28 @@ export function enrichCustomerProduct(item) {
   }
 
   const variants = Array.isArray(item.variants) ? item.variants.map(v => {
-    const vObj = { ...v };
+    const vObj = typeof v?.toObject === "function" ? v.toObject() : { ...v };
     if (vObj.ratingDistribution instanceof Map) {
       vObj.ratingDistribution = Object.fromEntries(vObj.ratingDistribution);
     }
-    return vObj;
+    const rawSale = Number(vObj.salePrice ?? vObj.price) || 0;
+    const isGst = !!vObj.gstEnabled && Number(vObj.gstRate) > 0;
+    const gstRate = isGst ? Number(vObj.gstRate) : 0;
+    const gstAmt = isGst ? Math.round((rawSale * gstRate) / 100) : 0;
+    const finalCustomerPrice = rawSale + gstAmt;
+
+    return {
+      ...vObj,
+      baseSalePrice: rawSale,
+      salePrice: finalCustomerPrice,
+      price: Number(vObj.price) || finalCustomerPrice,
+      gstAmount: gstAmt,
+    };
   }) : [];
 
   const first = firstVariantPricing(item);
   const sellPrices = variants
-    .map((v) => {
-      const base = Number(v.salePrice ?? v.price) || 0;
-      return base;
-    })
+    .map((v) => Number(v.salePrice) || 0)
     .filter((n) => n > 0);
   const minSell = sellPrices.length ? Math.min(...sellPrices) : first.salePrice;
   const maxSell = sellPrices.length ? Math.max(...sellPrices) : first.salePrice;
@@ -855,11 +875,14 @@ export function enrichCustomerProduct(item) {
     variantLabel,
     price: first.price,
     salePrice: minSell,
+    baseSalePrice: first.baseSalePrice,
     purchasePrice: first.purchasePrice,
     unit: first.unit,
     stockQty: availableQty,
     inStock: availableQty > 0,
     gstEnabled: gstEnabled,
+    gstRate: first.gstRate,
+    gstAmount: first.gstAmount,
   };
 }
 

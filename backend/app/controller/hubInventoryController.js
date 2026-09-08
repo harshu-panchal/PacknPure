@@ -569,6 +569,10 @@ export const adjustHubInventoryStock = async (req, res) => {
         reason: "hub_inventory_adjust_variant",
       });
 
+      if (applyAdminPricingFromStockPayload(product, req.body, idx)) {
+        await product.save();
+      }
+
       const updatedRow = await HubInventory.findById(id);
       const updatedProduct = await Product.findById(product._id);
       return handleResponse(res, 200, "Variant hub stock updated", {
@@ -591,6 +595,10 @@ export const adjustHubInventoryStock = async (req, res) => {
       hubId: row.hubId || DEFAULT_HUB_ID,
       reason: "hub_inventory_adjust",
     });
+
+    if (applyAdminPricingFromStockPayload(product, req.body, -1)) {
+      await product.save();
+    }
 
     const updatedRow = await HubInventory.findById(id);
     const updatedProduct = await Product.findById(product._id);
