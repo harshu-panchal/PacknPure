@@ -99,12 +99,30 @@ function resolveStockQty(p, variants) {
 export function normalizeCustomerProduct(p) {
   if (!p || typeof p !== 'object') return p;
 
-  const variants = Array.isArray(p.variants) ? p.variants : [];
+  const variants = Array.isArray(p.variants)
+    ? p.variants.map((v) => {
+        const rawSale = Number(v.salePrice ?? v.price) || 0;
+        const isGst = !!v.gstEnabled && Number(v.gstRate) > 0;
+        const gstAmt = isGst && v.baseSalePrice === undefined ? Math.round((rawSale * Number(v.gstRate)) / 100) : 0;
+        const finalSale = rawSale + gstAmt;
+        return {
+          ...v,
+          salePrice: finalSale,
+          price: Number(v.price) || finalSale,
+          baseSalePrice: rawSale,
+          gstAmount: gstAmt,
+        };
+      })
+    : [];
+
   const sellPrices = variants
-    .map((v) => Number(v.salePrice ?? v.price) || 0)
+    .map((v) => Number(v.salePrice) || 0)
     .filter((n) => n > 0);
 
-  let price = Number(p.salePrice ?? p.displayPrice ?? p.price) || 0;
+  const rawPrice = Number(p.salePrice ?? p.displayPrice ?? p.price) || 0;
+  const isProductGst = !!p.gstEnabled && Number(p.gstRate) > 0;
+  const productGstAmt = isProductGst && p.baseSalePrice === undefined ? Math.round((rawPrice * Number(p.gstRate)) / 100) : 0;
+  let price = rawPrice + productGstAmt;
   let originalPrice = Number(p.price) || price;
   let weight = p.weight || p.unit || '1 pc';
 
@@ -117,7 +135,7 @@ export function normalizeCustomerProduct(p) {
 
   if (variants.length > 0) {
     const first = variants[0];
-    const firstSale = Number(first.salePrice ?? first.price) || 0;
+    const firstSale = Number(first.salePrice) || 0;
     const firstMrp = Number(first.price) || firstSale;
     const minSell = sellPrices.length ? Math.min(...sellPrices) : firstSale;
     const maxSell = sellPrices.length ? Math.max(...sellPrices) : firstSale;
@@ -136,6 +154,7 @@ export function normalizeCustomerProduct(p) {
       _id: p._id || p.id,
       image: resolveProductImageUrl(p),
       price,
+      salePrice: minSell,
       originalPrice: originalPrice > price ? originalPrice : firstMrp,
       displayPrice: p.displayPrice ?? minSell,
       displayPriceMax: p.displayPriceMax ?? maxSell,
@@ -162,6 +181,7 @@ export function normalizeCustomerProduct(p) {
     _id: p._id || p.id,
     image: resolveProductImageUrl(p),
     price,
+    salePrice: price,
     originalPrice,
     displayPrice: p.displayPrice ?? price,
     displayPriceMax: p.displayPriceMax ?? price,

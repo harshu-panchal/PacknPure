@@ -15,7 +15,10 @@ export function cartKey(productId, variantId) {
 }
 
 export function getVariantPricing(v) {
-  const sale = Number(v?.salePrice ?? v?.price) || 0;
+  const rawSale = Number(v?.salePrice ?? v?.price) || 0;
+  const isGst = !!v?.gstEnabled && Number(v?.gstRate) > 0;
+  const gstAmt = isGst && v?.baseSalePrice === undefined ? Math.round((rawSale * Number(v.gstRate)) / 100) : 0;
+  const sale = rawSale + gstAmt;
   const mrp = Number(v?.price) || sale;
   const savings = Math.max(0, mrp - sale);
   const discountPct = mrp > 0 ? Math.round((savings / mrp) * 100) : 0;

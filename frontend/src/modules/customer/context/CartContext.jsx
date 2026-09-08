@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer } fro
 import { customerApi } from "../services/customerApi";
 import { useAuth } from "../../../core/context/AuthContext";
 import { toast } from "sonner";
-import { resolveCartStockQty } from "@shared/utils/variantHelpers";
+import { resolveCartStockQty, getVariantPricing } from "@shared/utils/variantHelpers";
 
 const CartContext = createContext();
 
@@ -70,14 +70,13 @@ function applyVariantToProduct(product, variantId) {
       inStock: stock > 0,
     };
   }
-  const saleBase = Number(v.salePrice ?? v.price) || 0;
-  const mrpBase = Number(v.price) || saleBase;
+  const { sale, mrp } = getVariantPricing(v);
 
   return {
     ...product,
     selectedVariantId: String(v?._id || v?.id || variantId || ""),
-    price: saleBase || Number(product.price || 0),
-    originalPrice: mrpBase || Number(product.originalPrice || 0),
+    price: sale || Number(product.price || 0),
+    originalPrice: mrp || Number(product.originalPrice || 0),
     weight: v.name || product.weight,
     variantLabel: v.name || product.variantLabel,
     stockQty: stock,

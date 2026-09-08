@@ -19,7 +19,10 @@ function findVariant(productDoc, variantId) {
 function getSellPrice(productDoc, variant) {
   const v = variant || productDoc?.variants?.[0];
   if (v) {
-    const sale = Number(v.salePrice ?? v.price) || 0;
+    const rawSale = Number(v.salePrice ?? v.price) || 0;
+    const isGst = !!v.gstEnabled && Number(v.gstRate) > 0;
+    const gstAmt = isGst ? Math.round((rawSale * Number(v.gstRate)) / 100) : 0;
+    const sale = rawSale + gstAmt;
     const mrp = Number(v.price) || sale;
     return { sale, mrp };
   }

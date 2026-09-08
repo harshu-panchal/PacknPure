@@ -47,7 +47,8 @@ const HomeProductCard = ({ product }) => {
     product.weight ||
     (product.unit ? `1 ${getUnitLabel(product.unit)}` : null);
 
-  const showMrp = Number(product.originalPrice) > Number(product.price);
+  const currentPrice = Number(product.salePrice ?? product.displayPrice ?? product.price ?? 0);
+  const showMrp = Number(product.originalPrice) > currentPrice;
 
   const [imageSrc, setImageSrc] = useState(() => resolveProductImageUrl(product));
 
@@ -128,7 +129,7 @@ const HomeProductCard = ({ product }) => {
                 >
                   {product.hasMultipleVariants && product.displayPrice != null
                     ? `From ₹${Number(product.displayPrice).toLocaleString('en-IN')}`
-                    : `₹${Number(product.price || product.displayPrice || 0).toLocaleString('en-IN')}`}
+                    : `₹${currentPrice.toLocaleString('en-IN')}`}
                 </span>
                 {showMrp && inStock ? (
                   <span className="text-[11px] font-medium text-slate-400 line-through">

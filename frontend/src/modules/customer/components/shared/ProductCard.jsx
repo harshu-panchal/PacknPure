@@ -198,6 +198,11 @@ const ProductCard = React.memo(
       ],
     );
 
+    const currentPrice = Number(product.salePrice ?? product.displayPrice ?? product.price ?? 0);
+    const originalPrice = Number(product.originalPrice ?? 0);
+    const hasDiscount = originalPrice > currentPrice;
+    const discountPercent = hasDiscount && originalPrice > 0 ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100) : 0;
+
     return (
       <motion.div
         whileHover={{ scale: 1.02 }}
@@ -216,7 +221,7 @@ const ProductCard = React.memo(
           {/* Badge (Custom or Discount) */}
           {(badge ||
             product.discount ||
-            product.originalPrice > product.price) && (
+            hasDiscount) && (
             <div
               className={cn(
                 "absolute z-10 bg-[#E23744] text-white font-black rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
@@ -226,7 +231,7 @@ const ProductCard = React.memo(
               )}>
               {badge ||
                 product.discount ||
-                `${Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF`}
+                `${discountPercent}% OFF`}
             </div>
           )}
 
@@ -357,11 +362,11 @@ const ProductCard = React.memo(
                   ? product.displayPriceMax > product.displayPrice
                     ? `₹${Number(product.displayPrice).toLocaleString('en-IN')}–₹${Number(product.displayPriceMax).toLocaleString('en-IN')}`
                     : `From ₹${Number(product.displayPrice).toLocaleString('en-IN')}`
-                  : `₹${Number(product.price || 0).toLocaleString('en-IN')}`}
+                  : `₹${currentPrice.toLocaleString('en-IN')}`}
               </span>
-              {product.originalPrice > product.price && product.inStock !== false && (
+              {hasDiscount && product.inStock !== false && (
                 <span className="text-[10px] font-medium leading-none text-slate-400 line-through whitespace-nowrap">
-                  ₹{Number(product.originalPrice).toLocaleString('en-IN')}
+                  ₹{originalPrice.toLocaleString('en-IN')}
                 </span>
               )}
             </div>

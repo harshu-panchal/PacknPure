@@ -13,11 +13,11 @@ const ACCENT = '#E23744';
 function formatPrice(product) {
   if (product.hasMultipleVariants && product.displayPrice != null) {
     if (product.displayPriceMax > product.displayPrice) {
-      return `₹${product.displayPrice.toLocaleString('en-IN')} – ₹${product.displayPriceMax.toLocaleString('en-IN')}`;
+      return `₹${Number(product.displayPrice).toLocaleString('en-IN')} – ₹${Number(product.displayPriceMax).toLocaleString('en-IN')}`;
     }
-    return `From ₹${product.displayPrice.toLocaleString('en-IN')}`;
+    return `From ₹${Number(product.displayPrice).toLocaleString('en-IN')}`;
   }
-  return `₹${Number(product.price || 0).toLocaleString('en-IN')}`;
+  return `₹${Number(product.salePrice ?? product.displayPrice ?? product.price ?? 0).toLocaleString('en-IN')}`;
 }
 
 const WishlistProductRow = ({ product }) => {
@@ -50,7 +50,8 @@ const WishlistProductRow = ({ product }) => {
     product.weight ||
     (product.unit ? `1 ${getUnitLabel(product.unit)}` : null);
 
-  const showMrp = Number(product.originalPrice) > Number(product.price);
+  const currentPrice = Number(product.salePrice ?? product.displayPrice ?? product.price ?? 0);
+  const showMrp = Number(product.originalPrice) > currentPrice;
 
   const handleOpenDetail = () => openProduct?.(product);
 

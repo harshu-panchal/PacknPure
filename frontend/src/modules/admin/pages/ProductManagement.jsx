@@ -2391,7 +2391,11 @@ const ProductManagement = () => {
                                                                         const val = e.target.value;
                                                                         const newVariants = [...formData.variants];
                                                                         newVariants[idx].purchasePrice = val;
-                                                                        setFormData({ ...formData, variants: newVariants });
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            variants: newVariants,
+                                                                            ...(idx === 0 ? { purchasePrice: val } : {}),
+                                                                        });
                                                                     }}
                                                                     placeholder="0.00"
                                                                     className={cn(

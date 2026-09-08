@@ -242,12 +242,13 @@ export function buildAdminProductFormData(formData, { editingItem, activeTab }) 
   const cleanVariants = variants.map((v, index) => {
     const rowSale = Number(v.salePrice ?? v.price) || salePrice;
     const rowMrp = Number(v.price) || rowSale;
+    const rowPurchase = Number(v.purchasePrice);
     const row = {
       name: String(v.name || '').trim() || `Variant ${index + 1}`,
       unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
       price: Math.max(rowMrp, rowSale),
       salePrice: rowSale,
-      purchasePrice: Number(v.purchasePrice ?? purchasePrice) || 0,
+      purchasePrice: Number.isFinite(rowPurchase) && rowPurchase >= 0 ? rowPurchase : purchasePrice,
       stock: Number(v.stock) || 0,
       gstEnabled: Boolean(v.gstEnabled),
       gstRate: v.gstEnabled ? Math.max(0, Number(v.gstRate) || 0) : 0,

@@ -40,10 +40,11 @@ const CategoryProductRow = ({ product }) => {
         ? `1 ${getUnitLabel(product.unit)}`
         : '1 pc';
 
-  const showMrp = product.originalPrice > product.price;
+  const currentPrice = Number(product.salePrice ?? product.displayPrice ?? product.price ?? 0);
+  const showMrp = Number(product.originalPrice) > currentPrice;
   const perPc =
     Number(product.packSize) > 1
-      ? product.price / Number(product.packSize)
+      ? currentPrice / Number(product.packSize)
       : null;
 
   const handleOpenDetail = () => openProduct?.(product);
@@ -127,7 +128,7 @@ const CategoryProductRow = ({ product }) => {
                 >
                   {product.hasMultipleVariants && product.displayPrice != null
                     ? `From ₹${product.displayPrice.toLocaleString('en-IN')}`
-                    : `₹${product.price.toLocaleString('en-IN')}`}
+                    : `₹${currentPrice.toLocaleString('en-IN')}`}
                 </span>
                 {showMrp && inStock && (
                   <span className="text-[11px] text-gray-400 line-through font-medium">

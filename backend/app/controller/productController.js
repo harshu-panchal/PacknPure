@@ -1164,10 +1164,9 @@ export const updateProduct = async (req, res) => {
             baseSupply,
           });
           syncRootFromFirstVariant(productData, "seller");
-        } else {
-          const basePrice = Number(productData.price ?? product.price) || 0;
-          const baseSale = Number(productData.salePrice ?? product.salePrice) || basePrice;
-          const basePurchase = Number(productData.purchasePrice ?? product.purchasePrice) || 0;
+          const basePrice = Number(req.body.price ?? productData.price ?? product.price) || 0;
+          const baseSale = Number(req.body.salePrice ?? productData.salePrice ?? product.salePrice) || basePrice;
+          const basePurchase = Number(req.body.purchasePrice ?? productData.purchasePrice ?? product.purchasePrice) || 0;
           productData.variants = normalizeAdminVariants(rawVariants, {
             defaultUnit,
             basePrice,
@@ -1175,7 +1174,7 @@ export const updateProduct = async (req, res) => {
             basePurchasePrice: basePurchase,
           });
           syncRootFromFirstVariant(productData, "admin");
-          if (productData.price === undefined && productData.variants[0]) {
+          if (productData.variants[0]) {
             productData.price = productData.variants[0].price;
             productData.salePrice = productData.variants[0].salePrice;
             productData.purchasePrice = productData.variants[0].purchasePrice;
