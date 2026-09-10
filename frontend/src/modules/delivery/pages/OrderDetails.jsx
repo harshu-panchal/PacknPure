@@ -10,17 +10,21 @@ import {
   CheckCircle,
   Store,
   User,
+  MapPin,
   AlertTriangle,
   ShieldCheck,
   Zap,
   CalendarClock,
+  Banknote,
+  IndianRupee,
+  Coins,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import { toast } from "sonner";
 import { deliveryApi } from "../services/deliveryApi";
-import { Loader2 } from "lucide-react";
 import DeliveryTrackingMap from "../components/DeliveryTrackingMap";
 import DeliverySlideButton from "../components/DeliverySlideButton";
 import OtpInput from "../components/OtpInput";
@@ -155,6 +159,8 @@ const OrderDetails = () => {
   const SLIDE_PAD = 4;
   const slideMaxDrag = Math.max(0, slideTrackWidth - SLIDE_THUMB - SLIDE_PAD * 2);
   const [showOtpInput, setShowOtpInput] = useState(false);
+  const [cashReceived, setCashReceived] = useState("");
+  const [cashConfirmed, setCashConfirmed] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
 
@@ -767,120 +773,209 @@ const OrderDetails = () => {
         </div>
       </Card>
 
-      <AnimatePresence mode="wait">
-        {step <= 2 && (
-          <motion.div
-            key="pickup"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-orange-50/50 flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm mr-3">
-                    <Store className="text-orange-600" size={20} />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-800 dark:text-gray-100">Pickup Location</h2>
-                    <p className="text-xs text-orange-600 font-medium">
-                      {order?.hubFlowEnabled ? "Main Logistics Hub" : "Store Location"}
-                    </p>
-                  </div>
-                </div>
-                {order.seller?.phone && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9"
-                    onClick={(e) => handlePhoneClick(e, order.seller.phone)}
-                  >
-                    <Phone size={18} />
-                  </Button>
-                )}
-              </div>
-              <div className="p-4">
-                <h3 className="font-bold text-lg mb-1">
-                  {order?.hubFlowEnabled ? (order.hubAddress || "Pack n Pure Hub") : (order?.seller?.shopName || "Seller Store")}
-                </h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mb-4 leading-relaxed">
-                  {order?.hubFlowEnabled ? (order.hubAddress || "Main Logistics Hub") : (order?.seller?.address || "Address not available")}
-                </p>
-                <Button onClick={handleNavigate} className="w-full" variant="outline">
-                  <Navigation size={18} className="mr-2" /> Navigate to Store
-                </Button>
-              </div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Resolved Customer Address Info */}
+      {(() => {
+        const customerName =
+          order.address?.name ||
+          order.customer?.name ||
+          order.guestCustomer?.name ||
+          "Customer";
+        const customerAddressType = (order.address?.type || "Home").toUpperCase();
+        const customerAddressText =
+          order.address?.address ||
+          order.address?.fullAddress ||
+          order.address?.full ||
+          order.customer?.businessAddress ||
+          "Address provided at checkout";
+        const customerLandmark = order.address?.landmark;
+        const customerCity = order.address?.city;
 
-      <AnimatePresence mode="wait">
-        {step >= 3 && (
-          <motion.div
-            key="customer"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-blue-50/50 flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm mr-3">
-                    <User className="text-blue-600" size={20} />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-800 dark:text-gray-100">Customer Details</h2>
-                    <div className="flex items-center space-x-2 mt-0.5">
-                      <p
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                          order.payment?.method?.toLowerCase() === "cash" ||
-                          order.payment?.method?.toLowerCase() === "cod"
-                            ? "bg-orange-50 text-orange-700 border-orange-200"
-                            : "bg-green-50 text-green-700 border-green-200"
-                        }`}
-                      >
-                        {order.payment?.method?.toUpperCase() || "PENDING"}
-                      </p>
-                      <p className="text-[10px] text-gray-400 font-medium">Bill: Rs.{order.pricing?.total}</p>
+        return (
+          <>
+            <AnimatePresence mode="wait">
+              {step <= 2 && (
+                <motion.div
+                  key="pickup"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-4"
+                >
+                  <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-orange-50/50 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm mr-3">
+                          <Store className="text-orange-600" size={20} />
+                        </div>
+                        <div>
+                          <h2 className="font-bold text-gray-800 dark:text-gray-100">Pickup Location</h2>
+                          <p className="text-xs text-orange-600 font-medium">
+                            {order?.hubFlowEnabled ? "Main Logistics Hub" : "Store Location"}
+                          </p>
+                        </div>
+                      </div>
+                      {order.seller?.phone && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={(e) => handlePhoneClick(e, order.seller.phone)}
+                        >
+                          <Phone size={18} />
+                        </Button>
+                      )}
                     </div>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    type="button"
-                    disabled
-                    title="Chat coming soon"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400"
-                  >
-                    <MessageSquare size={18} />
-                  </button>
-                  <MaskedCallButton
-                    orderId={orderId}
-                    role="delivery"
-                    initiateCall={(id) => deliveryApi.initiateMaskedCall(id)}
-                    compact
-                  />
-                </div>
-              </div>
-              <div className="p-4">
-                <h3 className="font-bold text-lg mb-1">{order.address?.name || "Customer"}</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">{order.address?.address}</p>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">{order.address?.city}</p>
-                {order.address?.landmark ? (
-                  <p className="text-xs font-medium text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mb-3">
-                    Landmark: {order.address.landmark}
-                  </p>
-                ) : null}
-                <Button onClick={handleNavigate} className="w-full bg-blue-600 hover:bg-blue-700 text-white border-none min-h-[48px]">
-                  <Navigation size={18} className="mr-2" /> Navigate to Customer
-                </Button>
-              </div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                    <div className="p-4">
+                      <h3 className="font-bold text-lg mb-1">
+                        {order?.hubFlowEnabled ? (order.hubAddress || "PacknPure Hub") : (order?.seller?.shopName || "PacknPure")}
+                      </h3>
+                      <p className="text-gray-500 dark:text-gray-400 text-sm mb-4 leading-relaxed">
+                        {order?.hubFlowEnabled ? (order.hubAddress || "PacknPure Main Logistics Hub") : (order?.seller?.address || "PacknPure Hub")}
+                      </p>
+                      <Button onClick={handleNavigate} className="w-full" variant="outline">
+                        <Navigation size={18} className="mr-2" /> Navigate to Store
+                      </Button>
+                    </div>
+                  </Card>
+
+                  {/* Drop Location Preview for Rider during Pickup phase */}
+                  <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-3.5 px-4 bg-blue-50/40 dark:bg-gray-700/40 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="text-blue-600" size={16} />
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                          Next Stop: Delivery Drop Location
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 tracking-wider">
+                        {customerAddressType}
+                      </span>
+                    </div>
+                    <div className="p-4 space-y-1.5">
+                      <p className="font-bold text-sm text-gray-900 dark:text-gray-100">{customerName}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                        {customerAddressText}
+                      </p>
+                      {customerLandmark && (
+                        <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-lg px-2 py-1 inline-block">
+                          Landmark: {customerLandmark}
+                        </p>
+                      )}
+                      {customerCity && (
+                        <p className="text-[11px] text-gray-400 font-medium">
+                          {customerCity}
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
+              {step >= 3 && (
+                <motion.div
+                  key="customer"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-blue-50/50 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-sm mr-3">
+                          <User size={20} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="font-bold text-gray-900 dark:text-gray-100 text-base">Customer Details</h2>
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 tracking-wider">
+                              {customerAddressType}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 mt-0.5">
+                            <p
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                order.payment?.method?.toLowerCase() === "cash" ||
+                                order.payment?.method?.toLowerCase() === "cod"
+                                  ? "bg-orange-50 text-orange-700 border-orange-200"
+                                  : "bg-green-50 text-green-700 border-green-200"
+                              }`}
+                            >
+                              {order.payment?.method?.toUpperCase() || "PENDING"}
+                            </p>
+                            <p className="text-[10px] text-gray-500 font-medium">Bill: Rs.{order.pricing?.total}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          disabled
+                          title="Chat coming soon"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 shadow-sm"
+                        >
+                          <MessageSquare size={18} />
+                        </button>
+                        <MaskedCallButton
+                          orderId={orderId}
+                          role="delivery"
+                          initiateCall={(id) => deliveryApi.initiateMaskedCall(id)}
+                          compact
+                        />
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <h3 className="font-extrabold text-lg text-gray-900 dark:text-white leading-tight">
+                          {customerName}
+                        </h3>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 dark:bg-gray-700/50 p-3.5 border border-slate-100 dark:border-gray-700/80 space-y-2">
+                        <div className="flex items-start gap-2.5">
+                          <MapPin className="text-blue-600 mt-0.5 shrink-0" size={18} />
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Delivery Address
+                            </p>
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200 leading-relaxed">
+                              {customerAddressText}
+                            </p>
+                            {customerCity && (
+                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                {customerCity}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {customerLandmark && (
+                          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-2.5 py-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Landmark:</span>
+                            <span>{customerLandmark}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {order?.notes && (
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-900 font-medium">
+                          <span className="font-bold">Instructions:</span> {order.notes}
+                        </div>
+                      )}
+
+                      <Button onClick={handleNavigate} className="w-full bg-blue-600 hover:bg-blue-700 text-white border-none min-h-[48px] rounded-2xl shadow-sm text-sm font-bold">
+                        <Navigation size={18} className="mr-2" /> Navigate to Customer
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        );
+      })()}
 
       <Card className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <motion.div
@@ -953,33 +1048,193 @@ const OrderDetails = () => {
         </p>
       </motion.div>
 
-      {step === 3 && !showOtpInput && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <Card className="p-6 rounded-3xl shadow-sm border border-slate-100">
-            <div className="flex items-center mb-4 text-gray-800 dark:text-gray-100">
-              <ShieldCheck className="mr-2 text-primary" size={24} />
-              <h3 className="font-bold text-lg">Generate Delivery OTP</h3>
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-              Slide to generate an OTP for the customer. You must be within reach of the delivery location.
-            </p>
-            <DeliverySlideButton orderId={orderId} onSuccess={handleOtpGenerated} onError={handleOtpGenerationError} />
-          </Card>
-        </motion.div>
-      )}
+      {step === 3 && (() => {
+        const paymentMethod = (order.payment?.method || "").toLowerCase();
+        const paymentMode = (order.payment?.paymentMode || order.paymentMode || "").toLowerCase();
+        const paymentStatus = (order.payment?.status || "").toLowerCase();
+        const isCod = paymentMethod === "cash" || paymentMethod === "cod" || paymentMode === "cash" || (paymentStatus !== "completed" && paymentStatus !== "paid" && paymentMethod !== "online" && paymentMethod !== "wallet" && paymentMethod !== "upi" && paymentMethod !== "card");
+        const totalBill = order.pricing?.total || 0;
 
-      {showOtpInput && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="p-6 rounded-3xl shadow-sm border border-slate-100">
-            <OtpInput
-              orderId={orderId}
-              onSuccess={handleOtpValidationSuccess}
-              onError={handleOtpValidationError}
-              onCancel={() => setShowOtpInput(false)}
-            />
-          </Card>
-        </motion.div>
-      )}
+        return (
+          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {/* Cash on Delivery / Payment Status Card */}
+            <Card
+              className={`p-5 rounded-3xl shadow-sm border-2 overflow-hidden ${
+                isCod
+                  ? "border-amber-400/80 bg-gradient-to-br from-amber-50/90 via-orange-50/60 to-white dark:from-amber-950/40 dark:via-gray-800 dark:to-gray-800 dark:border-amber-600/70"
+                  : "border-emerald-300 bg-gradient-to-br from-emerald-50/80 to-white dark:from-emerald-950/30 dark:to-gray-800 dark:border-emerald-700/60"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-3 rounded-2xl shadow-md ${
+                      isCod ? "bg-amber-500 text-white" : "bg-emerald-600 text-white"
+                    }`}
+                  >
+                    {isCod ? <Banknote size={24} /> : <CheckCircle size={24} />}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                          isCod
+                            ? "bg-amber-200/80 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200"
+                            : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+                        }`}
+                      >
+                        {isCod ? "Cash on Delivery" : "Paid Online"}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-black text-gray-900 dark:text-white mt-0.5">
+                      {isCod ? `Collect: ₹${totalBill}` : `₹${totalBill} Paid`}
+                    </h3>
+                  </div>
+                </div>
+
+                {isCod && (
+                  <span className="bg-orange-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-sm animate-pulse shrink-0 uppercase tracking-wide">
+                    Collect Cash
+                  </span>
+                )}
+              </div>
+
+              {isCod ? (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs font-semibold text-amber-900/90 dark:text-amber-200/90">
+                    💵 <strong>Cash Collection Required:</strong> Please collect <strong>₹{totalBill}</strong> in cash from the customer before or when entering the OTP.
+                  </p>
+
+                  {/* Cash Calculator Box */}
+                  <div className="bg-white dark:bg-gray-800/90 p-4 rounded-2xl border border-amber-200/70 dark:border-amber-800/50 shadow-sm space-y-3">
+                    <div>
+                      <label htmlFor="rider-cash-received" className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+                        Cash Received from Customer
+                      </label>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                          <span className="text-gray-500 font-extrabold text-base">₹</span>
+                        </div>
+                        <input
+                          id="rider-cash-received"
+                          type="number"
+                          inputMode="decimal"
+                          placeholder={String(totalBill)}
+                          value={cashReceived}
+                          onChange={(e) => {
+                            setCashReceived(e.target.value);
+                            if (Number(e.target.value) >= totalBill) {
+                              setCashConfirmed(true);
+                            }
+                          }}
+                          className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-base font-bold outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick fill buttons */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold text-gray-400">Quick fill:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCashReceived(String(totalBill));
+                          setCashConfirmed(true);
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 dark:bg-amber-900/50 dark:text-amber-200 border border-amber-300/60 transition-all active:scale-95"
+                      >
+                        Exact (₹{totalBill})
+                      </button>
+                      {[500, 1000, 2000]
+                        .filter((amt) => amt > totalBill && amt <= totalBill + 1500)
+                        .map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              setCashReceived(String(amt));
+                              setCashConfirmed(true);
+                            }}
+                            className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-gray-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 transition-all active:scale-95"
+                          >
+                            ₹{amt}
+                          </button>
+                        ))}
+                    </div>
+
+                    {/* Change to return */}
+                    {Number(cashReceived) > totalBill && (
+                      <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-3 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
+                          <Coins size={18} className="text-emerald-600 shrink-0" />
+                          <span>Return Change to Customer:</span>
+                        </div>
+                        <span className="text-base font-black text-emerald-700 dark:text-emerald-300 font-mono">
+                          ₹{Number(cashReceived) - totalBill}
+                        </span>
+                      </div>
+                    )}
+
+                    {Number(cashReceived) > 0 && Number(cashReceived) < totalBill && (
+                      <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl p-2.5 flex items-center gap-2 text-xs font-bold text-rose-800 dark:text-rose-300">
+                        <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                        <span>Underpaid by ₹{totalBill - Number(cashReceived)}. Please collect the full amount.</span>
+                      </div>
+                    )}
+
+                    {/* Confirmation Checkbox */}
+                    <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={cashConfirmed}
+                        onChange={(e) => setCashConfirmed(e.target.checked)}
+                        className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                        I confirm I have collected ₹{totalBill} cash from the customer
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="pt-1 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+                  ✅ The customer has already paid <strong>₹{totalBill}</strong> online. No cash collection is required for this delivery.
+                </div>
+              )}
+            </Card>
+
+            {/* OTP Action Card */}
+            {!showOtpInput ? (
+              <Card className="p-6 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex items-center mb-4 text-gray-800 dark:text-gray-100">
+                  <ShieldCheck className="mr-2 text-primary" size={24} />
+                  <h3 className="font-bold text-lg">Generate Delivery OTP</h3>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
+                  {isCod
+                    ? `Slide to generate the OTP for the customer. Remember to collect ₹${totalBill} cash upon arrival.`
+                    : "Slide to generate an OTP for the customer. You must be within reach of the delivery location."}
+                </p>
+                <DeliverySlideButton orderId={orderId} onSuccess={handleOtpGenerated} onError={handleOtpGenerationError} />
+              </Card>
+            ) : (
+              <Card className="p-6 rounded-3xl shadow-sm border border-slate-100">
+                <OtpInput
+                  orderId={orderId}
+                  order={order}
+                  isCod={isCod}
+                  orderAmount={totalBill}
+                  cashReceived={cashReceived}
+                  cashConfirmed={cashConfirmed}
+                  onSuccess={handleOtpValidationSuccess}
+                  onError={handleOtpValidationError}
+                  onCancel={() => setShowOtpInput(false)}
+                />
+              </Card>
+            )}
+          </motion.div>
+        );
+      })()}
 
       </div>
 

@@ -86,10 +86,14 @@ export const createRazorpayOrder = async (req, res) => {
             const [startTimeStr] = selectedSlot.split("-");
             const [startHour, startMin] = startTimeStr.split(":").map(Number);
             
+            const delSettings = await DeliverySettings.getSingleton();
+            const acceptanceMinutes = delSettings?.slotAcceptanceWindowMinutes ?? 60;
+
             const now = new Date();
             const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
-            if (now.getTime() > slotStart.getTime()) {
-                return handleResponse(res, 400, "The selected slot has already expired. Please select a valid slot.");
+            const slotCutoff = new Date(slotStart.getTime() + acceptanceMinutes * 60 * 1000);
+            if (now.getTime() > slotCutoff.getTime()) {
+                return handleResponse(res, 400, "The order acceptance window for this delivery slot has closed. Please select an active slot.");
             }
         }
 
@@ -120,9 +124,16 @@ export const createRazorpayOrder = async (req, res) => {
             },
             coupon: appliedCoupon || null,
             address: {
+                type: address?.type || "Home",
+                name: address?.name || user?.name || "Customer",
+                address: address?.address || address?.fullAddress || address?.completeAddress || address?.full || "",
+                landmark: address?.landmark || "",
+                city: address?.city || "",
+                phone: address?.phone || user?.phone || "",
                 lat: deliveryCoords.lat,
                 lng: deliveryCoords.lng,
-                full: address?.full || null,
+                location: address?.location || { lat: deliveryCoords.lat, lng: deliveryCoords.lng },
+                full: address?.address || address?.fullAddress || address?.completeAddress || address?.full || null,
             },
             deliverySlot: checkout.deliverySlot || null,
             // Delivery Mode feature: snapshot so the order created after
@@ -306,6 +317,19 @@ export const verifyPayment = async (req, res) => {
             return handleResponse(res, 404, "Customer not found during verification");
         }
 
+        const rawAddress = intent.address || intent.checkout?.address || {};
+        const resolvedAddress = {
+            type: rawAddress.type || "Home",
+            name: rawAddress.name || intent.checkout?.address?.name || customer?.name || "Customer",
+            address: rawAddress.address || rawAddress.full || intent.checkout?.address?.address || intent.checkout?.address?.completeAddress || intent.checkout?.address?.fullAddress || "",
+            landmark: rawAddress.landmark || intent.checkout?.address?.landmark || "",
+            city: rawAddress.city || intent.checkout?.address?.city || "",
+            phone: rawAddress.phone || intent.checkout?.address?.phone || customer?.phone || "",
+            location: (rawAddress.lat && rawAddress.lng)
+                ? { lat: rawAddress.lat, lng: rawAddress.lng }
+                : (intent.checkout?.deliveryCoords || intent.checkout?.address?.location || rawAddress.location),
+        };
+
         const { orderForResponse, hubMeta } = await executeCoreOrderFulfillment({
             customerId: intent.user,
             customer,
@@ -315,7 +339,7 @@ export const verifyPayment = async (req, res) => {
             items: (intent.cartSnapshot?.items || []).map((item) =>
                 typeof item?.toObject === "function" ? item.toObject() : item
             ),
-            address: intent.address,
+            address: resolvedAddress,
             payment: {
                 method: "online",
                 status: "completed",

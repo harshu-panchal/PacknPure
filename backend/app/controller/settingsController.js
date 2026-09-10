@@ -36,6 +36,11 @@ const ALLOWED_KEYS = [
   "baseFreeKm",
   "perKmDeliveryCharge",
   "freeDeliveryThreshold",
+  "deliveryBoyPayoutMode",
+  "deliveryBoyBasePayout",
+  "deliveryBoyBaseCoverageKm",
+  "deliveryBoyPerKmPayout",
+  "deliveryBoyMinPayout",
   "platformFee",
   "gstPercentage",
   "maxServiceRadius",
@@ -93,6 +98,11 @@ const updateSettingsSchema = Joi.object({
   baseFreeKm: Joi.number().min(0),
   perKmDeliveryCharge: Joi.number().min(0),
   freeDeliveryThreshold: Joi.number().min(0),
+  deliveryBoyPayoutMode: Joi.string().valid("distance_matrix", "pass_through", "fixed"),
+  deliveryBoyBasePayout: Joi.number().min(0),
+  deliveryBoyBaseCoverageKm: Joi.number().min(0),
+  deliveryBoyPerKmPayout: Joi.number().min(0),
+  deliveryBoyMinPayout: Joi.number().min(0),
   platformFee: Joi.number().min(0),
   gstPercentage: Joi.number().min(0).max(100),
   maxServiceRadius: Joi.number().min(0),
@@ -128,7 +138,7 @@ export const getPublicSettings = async (req, res) => {
 
     let settings = await Setting.findOne(filter)
       .select(
-        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns referralEnabled referralSignupBonus referralBonus referralMinOrderValue createdAt facebook twitter instagram linkedin youtube playStoreLink appStoreLink metaTitle metaDescription metaKeywords keywords",
+        "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address returnDeliveryCommission codCancelBlockThreshold hubLocation baseDeliveryFee baseFreeKm perKmDeliveryCharge freeDeliveryThreshold deliveryBoyPayoutMode deliveryBoyBasePayout deliveryBoyBaseCoverageKm deliveryBoyPerKmPayout deliveryBoyMinPayout platformFee gstPercentage maxServiceRadius sellerResponseTimeout pickupTimeout hubReceiveTimeout returnConfirmationTimeout deliveryTimeout pickupOtpTimeout deliveryOtpExpiry deliveryOtpProximityThreshold slaHours procurementFailureAction enableMultiSellerAllocation enableReturns referralEnabled referralSignupBonus referralBonus referralMinOrderValue createdAt facebook twitter instagram linkedin youtube playStoreLink appStoreLink metaTitle metaDescription metaKeywords keywords",
       )
       .lean();
 

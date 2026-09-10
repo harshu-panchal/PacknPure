@@ -156,12 +156,12 @@ const AddProduct = () => {
     }
 
     const firstVariant = formData.variants[0] || {};
-    const firstSupply = Number(firstVariant.supplyPrice ?? firstVariant.price);
+    const firstSupply = Number(firstVariant.supplyPrice ?? firstVariant.purchasePrice ?? firstVariant.price);
     if (!Number.isFinite(firstSupply) || firstSupply <= 0 || !firstVariant.stock) {
       toast.error("Main variant must have supply price and stock");
       return;
     }
-    const firstMrp = Number(firstVariant.mrp);
+    const firstMrp = Number(firstVariant.mrp ?? firstVariant.price);
     if (!Number.isFinite(firstMrp) || firstMrp <= 0) {
       toast.error("Main variant must have an MRP");
       return;
@@ -172,9 +172,13 @@ const AddProduct = () => {
       const data = new FormData();
 
       const resolvedSupply =
-        formData.price !== undefined && formData.price !== null && String(formData.price).trim() !== ""
-          ? Number(formData.price)
+        formData.supplyPrice !== undefined && formData.supplyPrice !== null && String(formData.supplyPrice).trim() !== ""
+          ? Number(formData.supplyPrice)
           : firstSupply;
+      const resolvedMrp =
+        formData.mrp !== undefined && formData.mrp !== null && String(formData.mrp).trim() !== ""
+          ? Number(formData.mrp)
+          : firstMrp;
       const resolvedStock = (formData.variants || []).reduce(
         (sum, v) => sum + (Number(v.stock) || 0),
         0,
@@ -194,21 +198,25 @@ const AddProduct = () => {
 
       data.set("supplyPrice", Number.isFinite(resolvedSupply) ? resolvedSupply : 0);
       data.set("purchasePrice", Number.isFinite(resolvedSupply) ? resolvedSupply : 0);
-      data.set("price", Number.isFinite(resolvedSupply) ? resolvedSupply : 0);
+      data.set("mrp", Number.isFinite(resolvedMrp) ? resolvedMrp : resolvedSupply);
+      data.set("price", Number.isFinite(resolvedMrp) ? resolvedMrp : resolvedSupply);
+      data.set("salePrice", Number.isFinite(resolvedMrp) ? resolvedMrp : resolvedSupply);
       data.set("stock", Number.isFinite(resolvedStock) ? resolvedStock : 0);
 
       data.append("categoryId", formData.category);
       data.append("subcategoryId", formData.subcategory);
       
       const syncedVariants = (formData.variants || []).map((v) => {
-        const supply = Number(v.supplyPrice ?? v.price) || resolvedSupply;
-        const mrp = Number(v.mrp) || supply;
+        const supply = Number(v.supplyPrice ?? v.purchasePrice) || resolvedSupply;
+        const mrp = Number(v.mrp ?? v.price) || supply;
         const gstEnabled = Boolean(v.gstEnabled);
         return {
+          ...(v.id && String(v.id).length === 24 ? { _id: v.id } : {}),
           name: v.name || 'Default',
           unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
           supplyPrice: supply,
           purchasePrice: supply,
+          mrp: mrp,
           price: mrp,
           salePrice: mrp,
           stock: Number(v.stock) || 0,
@@ -342,6 +350,7 @@ const AddProduct = () => {
             name: mv.name || "Default",
             unit: mv.unit || prod.unit || DEFAULT_PRODUCT_UNIT,
             supplyPrice: "",
+            mrp: mv.price ?? mv.salePrice ?? "",
             stock: "",
             gstEnabled: Boolean(mv.gstEnabled),
             gstRate: Number(mv.gstRate) || 0,
@@ -707,7 +716,7 @@ const AddProduct = () => {
                       </label>
                       <input
                         type="number"
-                        value={variant.supplyPrice ?? variant.price ?? ""}
+                        value={variant.supplyPrice ?? variant.purchasePrice ?? ""}
                         onChange={(e) => {
                           const newVariants = [...formData.variants];
                           newVariants[index].supplyPrice = e.target.value;
@@ -723,7 +732,7 @@ const AddProduct = () => {
                       </label>
                       <input
                         type="number"
-                        value={variant.mrp ?? ""}
+                        value={variant.mrp ?? variant.price ?? ""}
                         onChange={(e) => {
                           const newVariants = [...formData.variants];
                           newVariants[index].mrp = e.target.value;

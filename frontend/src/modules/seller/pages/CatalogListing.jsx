@@ -494,7 +494,7 @@ const CatalogListing = () => {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={row.supplyPrice ?? row.price ?? ""}
+                        value={row.supplyPrice ?? row.purchasePrice ?? ""}
                         onChange={(e) =>
                           updateVariantRow(index, "supplyPrice", e.target.value)
                         }

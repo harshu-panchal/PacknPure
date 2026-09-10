@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Transaction from "../models/transaction.js";
+import { calculateDeliveryBoyEarning } from "../utils/deliveryFeeUtil.js";
 
 /**
  * Financial side effects when order becomes delivered (mirrors orderController).
@@ -65,7 +66,7 @@ export async function applyDeliveredSettlement(order, orderIdString) {
 
     // 3. Delivery Partner Earnings & Cash Collection
     if (order.deliveryBoy) {
-      const deliveryEarning = Math.max(order.pricing?.deliveryFee || 0, 25); // Min payout ₹25 even if free delivery
+      const deliveryEarning = await calculateDeliveryBoyEarning(order);
       await Transaction.create(
         [
           {

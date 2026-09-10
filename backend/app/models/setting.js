@@ -108,6 +108,28 @@ const settingSchema = new mongoose.Schema(
             type: Number,
             default: 500,
         },
+        // Delivery Boy / Partner Fare Configuration
+        deliveryBoyPayoutMode: {
+            type: String,
+            enum: ["distance_matrix", "pass_through", "fixed"],
+            default: "distance_matrix",
+        },
+        deliveryBoyBasePayout: {
+            type: Number,
+            default: 20,
+        },
+        deliveryBoyBaseCoverageKm: {
+            type: Number,
+            default: 1,
+        },
+        deliveryBoyPerKmPayout: {
+            type: Number,
+            default: 10,
+        },
+        deliveryBoyMinPayout: {
+            type: Number,
+            default: 20,
+        },
         platformFee: {
             type: Number,
             default: 3,

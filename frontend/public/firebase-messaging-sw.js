@@ -21,13 +21,18 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   const title = payload?.notification?.title || payload?.data?.title || "PacknPure";
+  const body = payload?.notification?.body || payload?.data?.body || payload?.data?.message || "You have a new notification.";
+  const orderId = payload?.data?.orderId;
   const options = {
-    body: payload?.notification?.body || payload?.data?.body || "You have a new notification.",
+    body,
     icon: payload?.data?.imageUrl || "/packnpure-icon.svg",
     badge: "/packnpure-icon.svg",
+    vibrate: [200, 100, 200, 100, 200],
+    requireInteraction: true,
+    tag: orderId ? `delivery-otp-${orderId}` : "packnpure-notification",
     data: {
       ...payload?.data,
-      deepLink: payload?.data?.deepLink || payload?.data?.route || "/",
+      deepLink: payload?.data?.deepLink || (orderId ? `/orders/${orderId}` : "/"),
     },
   };
 

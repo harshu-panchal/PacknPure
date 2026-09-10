@@ -215,8 +215,8 @@ const ProductManagement = () => {
         id: Date.now() + i,
         name: v.name || "",
         unit: v.unit || master.unit || prev.unit,
-        supplyPrice: v.supplyPrice ?? v.price ?? "",
-        salePrice: v.salePrice || "",
+        supplyPrice: v.supplyPrice ?? v.purchasePrice ?? "",
+        mrp: v.price ?? v.salePrice ?? "",
         purchasePrice: v.purchasePrice || "",
         stock: "", // Seller must enter their own stock
       })) : prev.variants,
@@ -433,7 +433,7 @@ const ProductManagement = () => {
   const formSummary = useMemo(() => {
     const variants = formData.variants || [];
     const totalStock = totalVariantStock(variants);
-    const prices = variants.map((v) => Number(v.supplyPrice ?? v.price) || 0).filter((n) => n > 0);
+    const prices = variants.map((v) => Number(v.supplyPrice ?? v.purchasePrice ?? v.price) || 0).filter((n) => n > 0);
     const minP = prices.length ? Math.min(...prices) : 0;
     const maxP = prices.length ? Math.max(...prices) : 0;
     const priceLabel =
@@ -1136,7 +1136,7 @@ const ProductManagement = () => {
                                   <input
                                     type="number"
                                     min="0"
-                                    value={variant.supplyPrice ?? variant.price ?? ""}
+                                    value={variant.supplyPrice ?? variant.purchasePrice ?? ""}
                                     onChange={(e) => {
                                       const val = e.target.value;
                                       const next = [...formData.variants];
@@ -1152,7 +1152,7 @@ const ProductManagement = () => {
                                     <input
                                       type="number"
                                       min="0"
-                                      value={variant.mrp ?? ""}
+                                      value={variant.mrp ?? variant.price ?? ""}
                                       onChange={(e) => {
                                         const val = e.target.value;
                                         const next = [...formData.variants];

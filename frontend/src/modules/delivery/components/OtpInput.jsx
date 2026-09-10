@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle, Banknote, IndianRupee, Coins, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { deliveryApi } from "../services/deliveryApi";
 
@@ -7,23 +7,43 @@ import { deliveryApi } from "../services/deliveryApi";
  * OtpInput Component
  * 
  * A 4-digit OTP input component for delivery personnel to validate delivery completion.
- * Features auto-focus, numeric keyboard on mobile, validation error handling, and
- * attempts remaining counter.
+ * Features auto-focus, numeric keyboard on mobile, validation error handling, COD cash collection
+ * confirmation, and attempts remaining counter.
  * 
  * Requirements: 5.1, 5.2, 6.5
  * 
  * @param {Object} props
  * @param {string} props.orderId - The order ID for OTP validation
+ * @param {Object} [props.order] - The full order object
+ * @param {boolean} [props.isCod=false] - Whether this order is Cash on Delivery
+ * @param {number} [props.orderAmount=0] - Total order cash amount to collect
+ * @param {string|number} [props.cashReceived=""] - Cash amount entered by rider
+ * @param {boolean} [props.cashConfirmed=false] - Pre-confirmed cash status
  * @param {Function} props.onSuccess - Callback when OTP is successfully validated
  * @param {Function} props.onError - Callback when validation fails
  * @param {Function} props.onCancel - Optional callback for cancel action
  */
-const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
+const OtpInput = ({
+  orderId,
+  order = null,
+  isCod = false,
+  orderAmount = 0,
+  cashReceived = "",
+  cashConfirmed = false,
+  onSuccess,
+  onError,
+  onCancel,
+}) => {
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState(3);
+  const [localCashConfirmed, setLocalCashConfirmed] = useState(cashConfirmed);
   const inputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+
+  useEffect(() => {
+    setLocalCashConfirmed(cashConfirmed);
+  }, [cashConfirmed]);
 
   // Auto-focus first input on mount
   useEffect(() => {
@@ -126,13 +146,21 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
       return;
     }
 
+    // If Cash on Delivery, ensure the delivery person acknowledges cash collection
+    if (isCod && !localCashConfirmed) {
+      setError(`Please confirm that you have collected ₹${orderAmount} in cash from the customer.`);
+      toast.error(`Please collect ₹${orderAmount} in cash and check the confirmation box.`);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Call validate-otp endpoint
+      // Call validate-otp endpoint with cash collection metadata
       const response = await deliveryApi.validateDeliveryOtp(orderId, {
         otp: otpString,
+        cashCollected: isCod ? Number(cashReceived || orderAmount) : 0,
       });
 
       // Success - navigate to success screen
@@ -190,14 +218,62 @@ const OtpInput = ({ orderId, onSuccess, onError, onCancel }) => {
   const isComplete = otp.every((digit) => digit !== "");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Cash on Delivery / Prepaid Banner */}
+      {isCod ? (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 rounded-2xl p-4">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
+                <Banknote size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400 leading-none">
+                  Cash on Delivery
+                </p>
+                <h4 className="text-lg font-black text-amber-950 dark:text-amber-100 mt-0.5">
+                  Collect ₹{orderAmount}
+                </h4>
+              </div>
+            </div>
+            <span className="text-[10px] font-black bg-orange-600 text-white px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm animate-pulse">
+              Cash Required
+            </span>
+          </div>
+
+          <label className="flex items-center gap-2.5 mt-2.5 cursor-pointer bg-white dark:bg-gray-800 p-2.5 rounded-xl border border-amber-200 dark:border-amber-700/50 select-none">
+            <input
+              type="checkbox"
+              checked={localCashConfirmed}
+              onChange={(e) => setLocalCashConfirmed(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+            />
+            <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+              I confirm I have collected ₹{orderAmount} cash from customer
+            </span>
+          </label>
+        </div>
+      ) : (
+        orderAmount > 0 && (
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+              <CheckCircle size={18} className="text-emerald-600 shrink-0" />
+              <span className="text-xs font-bold">Prepaid Order (₹{orderAmount}) — No cash to collect</span>
+            </div>
+            <span className="text-[10px] font-extrabold uppercase bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-full">
+              Paid Online
+            </span>
+          </div>
+        )
+      )}
+
       {/* Header */}
       <div className="text-center">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
           Enter Delivery OTP
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Ask the customer for the 4-digit code
+          Ask the customer for the 4-digit code {isCod ? "after collecting cash" : ""}
         </p>
       </div>
 

@@ -47,6 +47,9 @@ const deliverySettingsSchema = new mongoose.Schema(
     // Slot delivery configuration
     slotEnabled: { type: Boolean, default: true },
     slotTitle: { type: String, default: "Slot Delivery", trim: true },
+    // Order acceptance window duration (in minutes) after slot start.
+    // e.g. 60 mins: for 09:00-12:00 slot, orders are accepted from 09:00 to 10:00, then removed.
+    slotAcceptanceWindowMinutes: { type: Number, default: 60, min: 1 },
 
     // Weekday availability for slot delivery
     availableDays: availableDaysShape,

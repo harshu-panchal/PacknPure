@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import PurchaseRequest from "../models/purchaseRequest.js";
 import { processPickupBroadcastTimeoutJob } from "../controller/purchaseRequestController.js";
 
@@ -15,6 +16,7 @@ const PICKUP_BROADCAST_MONITOR_INTERVAL_MS = parseInt(
 );
 
 const processExpiredPickupBroadcasts = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   try {
     const now = new Date();
     const expired = await PurchaseRequest.find({

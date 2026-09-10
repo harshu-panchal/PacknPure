@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Admin from "../models/admin.js";
 import {
   fallbackPurchaseRequest,
@@ -33,6 +34,7 @@ const notifyAdmins = async (title, message, data = {}) => {
 };
 
 export const processExpirations = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   const now = new Date();
   try {
     const expiredPRs = await findPurchaseRequests({
@@ -147,10 +149,12 @@ export const processExpirations = async () => {
 };
 
 const processPickupTimeouts = async () => {
-  const timeoutMs = await getPickupTimeoutMs();
-  const timeoutMins = Math.round(timeoutMs / 60000);
-  const cutoff = new Date(Date.now() - timeoutMs);
+  if (mongoose.connection.readyState !== 1) return;
   try {
+    const timeoutMs = await getPickupTimeoutMs();
+    const timeoutMins = Math.round(timeoutMs / 60000);
+    const cutoff = new Date(Date.now() - timeoutMs);
+
     const stalledPRs = await findPurchaseRequests({
       status: "pickup_assigned",
       updatedAt: { $lte: cutoff }, // Proxy for when it was assigned
@@ -177,10 +181,12 @@ const processPickupTimeouts = async () => {
 };
 
 const processHubReceiveTimeouts = async () => {
-  const timeoutMs = await getHubReceiveTimeoutMs();
-  const timeoutMins = Math.round(timeoutMs / 60000);
-  const cutoff = new Date(Date.now() - timeoutMs);
+  if (mongoose.connection.readyState !== 1) return;
   try {
+    const timeoutMs = await getHubReceiveTimeoutMs();
+    const timeoutMins = Math.round(timeoutMs / 60000);
+    const cutoff = new Date(Date.now() - timeoutMs);
+
     const stalledPRs = await findPurchaseRequests({
       status: "picked",
       "pickupProof.pickedAt": { $lte: cutoff },
@@ -209,12 +215,12 @@ export const startProcurementMonitorJob = () => {
   console.log(`[ProcurementMonitorJob] Started with interval ${MONITOR_INTERVAL_MS}ms`);
   
   setInterval(() => {
-    void processExpirations();
-    void processPickupTimeouts();
-    void processHubReceiveTimeouts();
+    void processExpirations().catch((err) => console.error("[ProcurementMonitor] Expirations err:", err.message));
+    void processPickupTimeouts().catch((err) => console.error("[ProcurementMonitor] Pickup timeouts err:", err.message));
+    void processHubReceiveTimeouts().catch((err) => console.error("[ProcurementMonitor] Hub receive timeouts err:", err.message));
   }, MONITOR_INTERVAL_MS);
   
-  void processExpirations();
+  void processExpirations().catch((err) => console.error("[ProcurementMonitor] Expirations init err:", err.message));
 };
 
 export default startProcurementMonitorJob;

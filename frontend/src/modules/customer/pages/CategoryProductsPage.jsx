@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -136,6 +136,7 @@ const CategoryProductsPage = () => {
 
   const initialSub = location.state?.activeSubcategoryId || 'all';
 
+  const mobileProductsRef = useRef(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState(initialSub);
   const [category, setCategory] = useState(null);
   const [subCategories, setSubCategories] = useState([
@@ -525,10 +526,10 @@ const CategoryProductsPage = () => {
   );
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-white font-sans md:bg-slate-50">
+    <div className="relative flex flex-col bg-white font-sans md:bg-slate-50 h-[calc(100dvh-4rem)] md:h-auto md:min-h-screen overflow-hidden md:overflow-visible">
       <header
         className={cn(
-          'sticky top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur-md md:hidden',
+          'shrink-0 border-b border-slate-100 bg-white/95 backdrop-blur-md md:hidden z-40',
           isProductDetailOpen && 'hidden'
         )}
       >
@@ -587,23 +588,29 @@ const CategoryProductsPage = () => {
         </div>
       </header>
 
-      {/* Mobile: sidebar + list */}
-      <div className="flex min-h-0 flex-1 md:hidden">
-        <aside className="w-[76px] shrink-0 border-r border-slate-100 bg-white pb-28">
+      {/* Mobile: independent sidebar + independent product list */}
+      <div className="flex min-h-0 flex-1 overflow-hidden md:hidden">
+        <aside className="w-[76px] shrink-0 border-r border-slate-100 bg-white h-full overflow-y-auto overscroll-contain hide-scrollbar pb-24 select-none">
           {subCategories.map((sub) => (
             <SubcategoryButton
               key={sub.id}
               sub={sub}
               active={selectedSubCategory === sub.id}
-              onClick={() => setSelectedSubCategory(sub.id)}
+              onClick={() => {
+                setSelectedSubCategory(sub.id);
+                mobileProductsRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               variant="mobile"
             />
           ))}
         </aside>
 
-        <main className="min-w-0 flex-1 bg-white">
+        <main
+          ref={mobileProductsRef}
+          className="min-w-0 flex-1 bg-white h-full overflow-y-auto overscroll-contain pb-28"
+        >
           {experienceSections.length > 0 && (
-              <div className="pt-8 pb-4">
+              <div className="pt-4 pb-2">
                  <SectionRenderer 
                     sections={experienceSections} 
                     productsById={productsById} 
@@ -612,10 +619,10 @@ const CategoryProductsPage = () => {
                  />
               </div>
           )}
-          <div className="sticky top-[72px] z-40 border-b border-slate-50 bg-white px-2 py-2">
+          <div className="sticky top-0 z-30 border-b border-slate-50 bg-white/95 backdrop-blur-sm px-2 py-2 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
             {filterBar}
           </div>
-          <div className="pb-28">{productsBody}</div>
+          <div>{productsBody}</div>
         </main>
       </div>
 
@@ -649,7 +656,7 @@ const CategoryProductsPage = () => {
 
       {/* Desktop: sidebar + grid */}
       <div className={cn(PAGE_CONTAINER, 'hidden flex-1 gap-6 py-4 pb-12 md:flex')}>
-        <aside className="sticky top-4 hidden h-fit w-56 shrink-0 md:block lg:w-60">
+        <aside className="sticky top-4 hidden h-fit max-h-[calc(100vh-2rem)] overflow-y-auto hide-scrollbar w-56 shrink-0 md:block lg:w-60">
           <p className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-500">
             Subcategories
           </p>

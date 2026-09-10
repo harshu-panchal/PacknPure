@@ -1241,6 +1241,31 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
   });
   emitOrderStatusUpdate(orderId, { otpSent: true }, order.customer);
 
+  try {
+    const { createNotification } = await import('./notificationService.js');
+    await createNotification({
+      recipient: order.customer,
+      recipientModel: "User",
+      title: `Delivery OTP: ${code}`,
+      message: `Your OTP for Order #${order.orderId} is ${code}. Share this code with the delivery partner to receive your order.`,
+      type: "order",
+      category: "order",
+      priority: 10,
+      channel: "both",
+      deepLink: `/orders/${order.orderId}`,
+      data: {
+        orderId: order.orderId,
+        mongoOrderId: order._id ? order._id.toString() : "",
+        otp: String(code),
+        type: "delivery_otp",
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+    console.log(`[requestHandoffOtpAtomic] Dispatched push notification OTP (${code}) to customer ${order.customer}`);
+  } catch (notifyErr) {
+    console.warn('[requestHandoffOtpAtomic] Push notification dispatch failed:', notifyErr.message);
+  }
+
   return { expiresAt, message: "OTP sent to customer" };
 }
 

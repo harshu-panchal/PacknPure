@@ -15,6 +15,8 @@ import {
   maybeRecordGpsSnapshot,
 } from "../services/deliveryAuditService.js";
 import { advanceTripOnOrderDelivered } from "../services/deliveryTripService.js";
+import { calculateDeliveryBoyEarning } from "../utils/deliveryFeeUtil.js";
+import { getSettings } from "../services/settingsService.js";
 import {
   computeEarningsWalletBalance,
   computeCashWalletBalance,
@@ -439,6 +441,11 @@ export const getMyDeliveryOrders = async (req, res) => {
             .populate("customer", "name phone")
             .lean();
 
+        const settings = await getSettings();
+        for (const o of orders) {
+            o.deliveryBoyPayout = await calculateDeliveryBoyEarning(o, settings);
+        }
+
         return handleResponse(res, 200, "Delivery orders fetched", orders);
     } catch (error) {
         return handleResponse(res, 500, error.message);
@@ -608,7 +615,7 @@ export const updateDeliveryLocation = async (req, res) => {
             return handleResponse(res, 404, "Delivery partner not found");
         }
 
-        // Optional: if orderId is provided, ensure this rider is assigned to that order
+        // If orderId is provided, verify this rider is assigned; otherwise auto-detect active order
         let activeOrderId = orderId || null;
         if (orderId) {
             const orderKey = orderMatchQueryFromRouteParam(orderId);
@@ -621,6 +628,19 @@ export const updateDeliveryLocation = async (req, res) => {
                 activeOrderId = null;
             } else {
                 activeOrderId = order.orderId;
+            }
+        }
+
+        if (!activeOrderId) {
+            const activeOrder = await Order.findOne({
+                deliveryBoy: deliveryId,
+                status: { $in: ["confirmed", "packed", "out_for_delivery", "assigned", "picked"] },
+            })
+            .sort({ updatedAt: -1 })
+            .select("orderId");
+
+            if (activeOrder) {
+                activeOrderId = activeOrder.orderId;
             }
         }
 
@@ -857,6 +877,35 @@ export const generateDeliveryOtp = async (req, res) => {
             // Don't fail the request if socket emission fails
         }
 
+        // Send Push Notification directly to customer so they see OTP on their phone screen even if the app is closed
+        try {
+            const { createNotification } = await import('../services/notificationService.js');
+            const customerId = order.customer?._id || order.customer;
+            if (customerId) {
+                await createNotification({
+                    recipient: customerId,
+                    recipientModel: "User",
+                    title: `Delivery OTP: ${result.otp}`,
+                    message: `Your OTP for Order #${order.orderId} is ${result.otp}. Share this code with the delivery partner to receive your order.`,
+                    type: "order",
+                    category: "order",
+                    priority: 10,
+                    channel: "both",
+                    deepLink: `/orders/${order.orderId}`,
+                    data: {
+                        orderId: order.orderId,
+                        mongoOrderId: order._id ? order._id.toString() : "",
+                        otp: String(result.otp),
+                        type: "delivery_otp",
+                        expiresAt: result.expiresAt ? new Date(result.expiresAt).toISOString() : "",
+                    },
+                });
+                console.log(`[generateDeliveryOtp] Dispatched push notification OTP (${result.otp}) to customer ${customerId}`);
+            }
+        } catch (notifyErr) {
+            console.warn('[generateDeliveryOtp] Push notification dispatch failed:', notifyErr.message);
+        }
+
         await recordDeliveryAudit({
             orderId: order.orderId,
             orderRef: order._id,
@@ -1004,6 +1053,24 @@ export const validateDeliveryOtp = async (req, res) => {
         order.deliveredAt = now;
         order.otpValidatedAt = now;
         order.otpValidationLocation = validationLocation;
+
+        // If Cash on Delivery, mark payment completed and record cash collected
+        const pMethod = (order.payment?.method || "").toLowerCase();
+        const pMode = (order.payment?.paymentMode || "").toLowerCase();
+        const isCodOrder = pMethod === "cash" || pMethod === "cod" || pMode === "cash";
+        if (isCodOrder) {
+            order.payment = order.payment || {};
+            order.payment.status = "completed";
+            order.payment.paidAmount = order.pricing?.total || 0;
+            order.payment.remainingAmount = 0;
+            if (req.body?.cashCollected) {
+                const collected = Number(req.body.cashCollected);
+                if (Number.isFinite(collected) && collected >= (order.pricing?.total || 0)) {
+                    order.payment.changeReturned = Math.max(0, collected - (order.pricing?.total || 0));
+                }
+            }
+        }
+
         const updatedOrder = await order.save();
 
         // Batch delivery trip: mark this stop done and surface the next

@@ -149,6 +149,7 @@ const DeliveryLayout = () => {
     shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(payload.orderId);
     const total = typeof p.total === "number" ? p.total : Number(p.total) || 0;
     const dropLabel = typeof p.drop === "string" ? p.drop : String(p.drop);
+    const orderEarning = payload.deliveryBoyPayout ?? p.deliveryBoyPayout ?? p.deliveryFee ?? 20;
     setActiveOrder({
       id: payload.orderId,
       mongoId: undefined,
@@ -157,13 +158,13 @@ const DeliveryLayout = () => {
       distance: "Nearby",
       estTime: "10-15 min",
       value: total,
-      earnings: Math.max(p.deliveryFee ?? 0, 25), // Ensure minimum ₹25 earning even if delivery is free
+      earnings: orderEarning,
       expiresAt: payload.deliverySearchExpiresAt || null,
     });
     playIncomingOrderAlert();
     showBrowserOrderNotification({
       title: "Packnpure · New delivery",
-      body: `₹${Math.max(p.deliveryFee ?? 0, 25)} · ${p.pickup} → ${dropLabel}`,
+      body: `₹${orderEarning} · ${p.pickup} → ${dropLabel}`,
       orderId: payload.orderId,
     });
     return true;
@@ -186,9 +187,10 @@ const DeliveryLayout = () => {
     shownOrderIdsRef.current = new Set(shownOrderIdsRef.current).add(newOrder.orderId);
     const total = newOrder.pricing?.total || 0;
     const pickupLabel = newOrder.hubFlowEnabled
-      ? newOrder.pickupAddress || (newOrder.hubId ? `Hub ${newOrder.hubId}` : "Hub")
-      : newOrder.seller?.shopName || "Seller";
+      ? newOrder.pickupAddress || (newOrder.hubId ? `Hub ${newOrder.hubId}` : "PacknPure Hub")
+      : newOrder.seller?.shopName || "PacknPure";
     const dropLabel = newOrder.address?.address || "Customer Address";
+    const orderEarning = newOrder.deliveryBoyPayout ?? newOrder.pricing?.deliveryFee ?? 20;
     setActiveOrder({
       id: newOrder.orderId,
       mongoId: newOrder._id,
@@ -197,13 +199,13 @@ const DeliveryLayout = () => {
       distance: "Nearby",
       estTime: "10-15 min",
       value: total,
-      earnings: Math.max(newOrder.pricing?.deliveryFee ?? 0, 25), // Ensure minimum ₹25 earning even if delivery is free
+      earnings: orderEarning,
       expiresAt: newOrder.deliverySearchExpiresAt || null,
     });
     playIncomingOrderAlert();
     showBrowserOrderNotification({
       title: "Packnpure · New delivery",
-      body: `₹${Math.max(newOrder.pricing?.deliveryFee ?? 0, 25)} · ${pickupLabel} → ${dropLabel}`,
+      body: `₹${orderEarning} · ${pickupLabel} → ${dropLabel}`,
       orderId: newOrder.orderId,
     });
   }, []);
@@ -258,7 +260,11 @@ const DeliveryLayout = () => {
 
     const send = (lat, lng) => {
       saveDeliveryPartnerLocation(lat, lng);
-      deliveryApi.postLocation({ lat, lng }).catch(() => {});
+      const payload = { lat, lng };
+      if (activeOrder?.orderId) {
+        payload.orderId = activeOrder.orderId;
+      }
+      deliveryApi.postLocation(payload).catch(() => {});
     };
 
     const watchId = navigator.geolocation.watchPosition(
@@ -280,7 +286,7 @@ const DeliveryLayout = () => {
     return () => {
       navigator.geolocation.clearWatch(watchId);
     };
-  }, [user?.isOnline]);
+  }, [user?.isOnline, activeOrder?.orderId]);
 
   useEffect(() => {
     if (!user?.isOnline) return undefined;

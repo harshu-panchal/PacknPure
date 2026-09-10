@@ -112,9 +112,11 @@ export function buildSelectableDates(availableDays, count = 7) {
 
 /**
  * Slots applicable for a given date: global ("all") slots + day-specific ones.
- * For today, windows that already ended are filtered out.
+ * For today, slots that have passed their 1-hour order acceptance window are filtered out.
+ * E.g. For a 9:00 - 12:00 slot, the admin accepts orders only during the first hour (9:00 - 10:00).
+ * Once the time passes 10:00, it automatically gets removed from slot booking for Today.
  */
-export function slotsForDate(slots, dateEntry) {
+export function slotsForDate(slots, dateEntry, acceptanceWindowMinutes = 60) {
   if (!dateEntry) return [];
   const list = (slots || []).filter(
     (s) => s.day === "all" || s.day === dateEntry.dayKey,
@@ -124,8 +126,22 @@ export function slotsForDate(slots, dateEntry) {
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   return list.filter((s) => {
-    const [h, m] = String(s.endTime).split(":").map(Number);
-    return h * 60 + m > nowMinutes;
+    const [startH, startM] = String(s.startTime || "").split(":").map(Number);
+    const [endH, endM] = String(s.endTime || "").split(":").map(Number);
+    if (!Number.isFinite(startH) || !Number.isFinite(startM)) return false;
+
+    const startMinutes = startH * 60 + startM;
+    const endMinutes =
+      Number.isFinite(endH) && Number.isFinite(endM)
+        ? endH * 60 + endM
+        : startMinutes + 180;
+
+    // Cutoff is 1 hour (acceptanceWindowMinutes) after slot start
+    const cutoffMinutes = Math.min(
+      startMinutes + acceptanceWindowMinutes,
+      endMinutes,
+    );
+    return nowMinutes < cutoffMinutes;
   });
 }
 
@@ -162,9 +178,20 @@ export function useDeliveryMode() {
       let next = prev;
 
       if (next?.mode === "SLOT") {
+        const selectableDates = buildSelectableDates(options.availableDays, 7);
+        const matchingDate = selectableDates.find(
+          (d) => d.dateKey === next.selectedDate,
+        );
+        const validSlots = matchingDate
+          ? slotsForDate(
+              options.slots,
+              matchingDate,
+              options.slotAcceptanceWindowMinutes ?? 60,
+            )
+          : [];
         const stillValid =
           options.slotEnabled &&
-          (options.slots || []).some(
+          validSlots.some(
             (s) => `${s.startTime}-${s.endTime}` === next.selectedSlot,
           );
         if (!stillValid) next = null;

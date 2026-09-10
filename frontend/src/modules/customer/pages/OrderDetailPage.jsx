@@ -340,10 +340,10 @@ const OrderDetailPage = () => {
         : null;
 
     const rider =
-      liveLocation &&
-      typeof liveLocation.lat === "number" &&
-      typeof liveLocation.lng === "number"
-        ? liveLocation
+      effectiveLiveLocation &&
+      typeof effectiveLiveLocation.lat === "number" &&
+      typeof effectiveLiveLocation.lng === "number"
+        ? effectiveLiveLocation
         : null;
 
     if (rider && dest) {
@@ -372,13 +372,29 @@ const OrderDetailPage = () => {
   );
   const orderIsSlot = isSlotDelivery(deliverySnapshot);
   const sellerLocation = coordsToLatLng(order?.seller?.location?.coordinates);
+  const riderLocationFromOrder = useMemo(() => {
+    const coords = order?.deliveryBoy?.location?.coordinates;
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const lng = Number(coords[0]);
+      const lat = Number(coords[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+        return { lat, lng };
+      }
+    }
+    return null;
+  }, [order?.deliveryBoy?.location]);
+
+  const effectiveLiveLocation = liveLocation || riderLocationFromOrder;
+
   const routePhase = getTrackingRoutePhase(order);
   const routeMatchesPhase =
     routePhase === "pickup"
       ? routePolyline?.phase
         ? routePolyline.phase === routePhase
         : !!routePolyline?.polyline
-      : routePolyline?.phase === routePhase;
+      : routePolyline?.phase
+        ? routePolyline.phase === routePhase
+        : !!routePolyline?.polyline;
   const activeRoutePolyline = routeMatchesPhase ? routePolyline : null;
   const estimatedArrival = useMemo(() => {
     if (!order) {
@@ -428,14 +444,14 @@ const OrderDetailPage = () => {
       const routeDistanceMeters = Number(activeRoutePolyline?.distanceMeters);
       liveMinutes =
         estimateMinutesFromDistance(routeDistanceMeters) ??
-        estimateMinutesFromDistance(distanceMeters(liveLocation, targetLocation));
+        estimateMinutesFromDistance(distanceMeters(effectiveLiveLocation, targetLocation));
     }
 
     const routeDistanceMeters = Number(
       activeRoutePolyline?.distanceMeters ?? activeRoutePolyline?.distance,
     );
     const distanceText = formatDistance(
-      routeDistanceMeters || distanceMeters(liveLocation, targetLocation),
+      routeDistanceMeters || distanceMeters(effectiveLiveLocation, targetLocation),
     );
 
     if (Number.isFinite(liveMinutes) && liveMinutes > 0) {
@@ -484,7 +500,7 @@ const OrderDetailPage = () => {
   }, [
     activeRoutePolyline?.distanceMeters,
     activeRoutePolyline?.duration,
-    liveLocation,
+    effectiveLiveLocation,
     order,
     routePhase,
     sellerLocation,
@@ -495,11 +511,11 @@ const OrderDetailPage = () => {
 
   useEffect(() => {
     if (!orderId || status === "delivered" || status === "cancelled") return;
-    if (!hasValidLatLng(liveLocation)) return;
+    if (!hasValidLatLng(effectiveLiveLocation)) return;
 
     const currentOrigin = {
-      lat: liveLocation.lat,
-      lng: liveLocation.lng,
+      lat: effectiveLiveLocation.lat,
+      lng: effectiveLiveLocation.lng,
     };
     const originDrift =
       routeOriginRef.current && hasValidLatLng(routeOriginRef.current)
@@ -528,8 +544,8 @@ const OrderDetailPage = () => {
     customerApi
       .getOrderRoute(orderId, {
         phase: routePhase,
-        originLat: liveLocation.lat,
-        originLng: liveLocation.lng,
+        originLat: effectiveLiveLocation.lat,
+        originLng: effectiveLiveLocation.lng,
         _t: now,
       })
       .then((response) => {
@@ -546,8 +562,9 @@ const OrderDetailPage = () => {
       ignore = true;
     };
   }, [
+    activeRoutePolyline?.phase,
     activeRoutePolyline?.polyline,
-    liveLocation,
+    effectiveLiveLocation,
     orderId,
     routePhase,
     status,
@@ -763,7 +780,7 @@ const OrderDetailPage = () => {
               scheduledSlotText={estimatedArrival.scheduledSlotText}
               scheduledDateText={estimatedArrival.scheduledDateText}
               riderName={order.deliveryBoy?.name || "Delivery Partner"}
-              riderLocation={liveLocation}
+              riderLocation={effectiveLiveLocation}
               sellerLocation={sellerLocation}
               destinationLocation={order.address?.location || null}
               routePhase={routePhase}

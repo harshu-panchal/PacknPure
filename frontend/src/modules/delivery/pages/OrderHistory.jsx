@@ -292,7 +292,7 @@ const OrderHistory = () => {
                       </div>
                       <div className="text-right shrink-0 min-w-[64px]">
                         <span className="block font-bold text-base sm:text-lg text-green-600 leading-tight">
-                          ₹{Math.max(order.pricing?.deliveryFee ?? 0, 25)}
+                          ₹{order.deliveryBoyPayout ?? order.pricing?.deliveryFee ?? 20}
                         </span>
                         <span className="ds-caption text-gray-400 text-[10px] sm:text-xs">Earnings</span>
                       </div>
@@ -304,7 +304,7 @@ const OrderHistory = () => {
                         <div className="min-w-0 flex-1">
                           <p className="ds-caption text-gray-500 dark:text-gray-400 mb-0.5 text-[10px]">Store</p>
                           <p className="text-xs sm:text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                            {order.seller?.shopName || "Unknown Store"}
+                            {order.seller?.shopName || "PacknPure"}
                           </p>
                         </div>
                       </div>

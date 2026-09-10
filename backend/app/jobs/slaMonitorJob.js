@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Admin from "../models/admin.js";
 import Order from "../models/order.js";
 import { createNotificationBatch } from "../services/notificationService.js";
@@ -11,6 +12,7 @@ const SLA_MONITOR_INTERVAL_MS = parseInt(
 const BREACHABLE_STATUSES = ["pending", "confirmed", "packed", "out_for_delivery"];
 
 const processSlaBreaches = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   const now = new Date();
   try {
     const breachedOrders = await Order.find({

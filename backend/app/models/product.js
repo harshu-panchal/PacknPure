@@ -15,16 +15,21 @@ const variantSchema = new mongoose.Schema(
     },
     unit: {
       type: String,
-      enum: PRODUCT_UNITS,
       default: "Pieces",
+      trim: true,
     },
-    /** Admin: MRP. Seller: mirrored supply price (use purchasePrice as canonical). */
+    /** Admin: MRP. Seller: MRP (price / mrp). */
     price: {
       type: Number,
       default: 0,
       min: 0,
     },
-    /** Admin: customer selling price. Seller: mirrored supply price. */
+    mrp: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    /** Admin: customer selling price. Seller: sale price / mrp. */
     salePrice: {
       type: Number,
       default: 0,
@@ -32,6 +37,11 @@ const variantSchema = new mongoose.Schema(
     },
     /** Admin: hub procurement reference. Seller: supply price (what vendor charges hub). */
     purchasePrice: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    supplyPrice: {
       type: Number,
       default: 0,
       min: 0,

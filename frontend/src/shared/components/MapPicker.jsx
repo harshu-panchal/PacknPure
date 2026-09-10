@@ -58,6 +58,7 @@ const MapPicker = ({
   const [marker, setMarker] = useState(initialLocation);
   const [radius, setRadius] = useState(initialRadius);
   const [address, setAddress] = useState(initialAddress || "");
+  const [searchInput, setSearchInput] = useState(initialAddress || "");
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [locationErrorInfo, setLocationErrorInfo] = useState(null);
@@ -79,6 +80,7 @@ const MapPicker = ({
   useEffect(() => {
     if (isOpen) {
       setAddress(initialAddress || "");
+      setSearchInput(initialAddress || "");
       setRadius(initialRadius);
     } else {
       setLocationErrorInfo(null);
@@ -115,8 +117,12 @@ const MapPicker = ({
       setIsGeocoding(true);
       try {
         const resolved = await resolveAddressForMarker(pos);
-        if (resolved) setAddress(resolved);
-        else if (!silent) toast.message("Location set. You can type the address manually.");
+        if (resolved) {
+          setAddress(resolved);
+          setSearchInput(resolved);
+        } else if (!silent) {
+          toast.message("Location set. You can type the address manually.");
+        }
       } catch (err) {
         if (!silent) {
           toast.error(
@@ -157,14 +163,50 @@ const MapPicker = ({
   const handlePlaceChanged = () => {
     if (autocompleteRef.current) {
       const place = autocompleteRef.current.getPlace();
-      if (place.geometry) {
-        const newPos = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-        };
+      if (!place) return;
+
+      const formattedAddress = place.formatted_address || place.name || "";
+      if (place.geometry && place.geometry.location) {
+        const lat =
+          typeof place.geometry.location.lat === "function"
+            ? place.geometry.location.lat()
+            : place.geometry.location.lat;
+        const lng =
+          typeof place.geometry.location.lng === "function"
+            ? place.geometry.location.lng()
+            : place.geometry.location.lng;
+        const newPos = { lat, lng };
         setCenter(newPos);
         setMarker(newPos);
-        setAddress(place.formatted_address || "");
+        if (formattedAddress) {
+          setAddress(formattedAddress);
+          setSearchInput(formattedAddress);
+        }
+      } else if (formattedAddress) {
+        // Fallback: Geocode if geometry wasn't included directly
+        setIsGeocoding(true);
+        if (window.google?.maps?.Geocoder) {
+          const geocoder = new window.google.maps.Geocoder();
+          geocoder.geocode(
+            { address: formattedAddress, componentRestrictions: { country: "IN" } },
+            (results, status) => {
+              setIsGeocoding(false);
+              if (status === "OK" && results?.[0]?.geometry?.location) {
+                const loc = results[0].geometry.location;
+                const newPos = {
+                  lat: typeof loc.lat === "function" ? loc.lat() : loc.lat,
+                  lng: typeof loc.lng === "function" ? loc.lng() : loc.lng,
+                };
+                setCenter(newPos);
+                setMarker(newPos);
+                setAddress(results[0].formatted_address || formattedAddress);
+                setSearchInput(results[0].formatted_address || formattedAddress);
+              }
+            }
+          );
+        } else {
+          setIsGeocoding(false);
+        }
       }
     }
   };
@@ -198,10 +240,10 @@ const MapPicker = ({
     );
   };
 
-  const locateManualAddress = async () => {
-    const query = String(address || "").trim();
-    if (query.length < 5) {
-      toast.error("Enter a complete store address first");
+  const locateManualAddress = async (overrideQuery) => {
+    const query = String(overrideQuery || address || searchInput || "").trim();
+    if (query.length < 3) {
+      toast.error("Enter a complete address or landmark first");
       return;
     }
 
@@ -215,7 +257,9 @@ const MapPicker = ({
             const newPos = { lat: Number(payload.lat), lng: Number(payload.lng) };
             setMarker(newPos);
             setCenter(newPos);
-            setAddress(payload.address || query);
+            const resolvedAddr = payload.address || query;
+            setAddress(resolvedAddr);
+            setSearchInput(resolvedAddr);
             toast.success("Address located on map");
             return;
           }
@@ -246,7 +290,9 @@ const MapPicker = ({
         };
         setMarker(newPos);
         setCenter(newPos);
-        setAddress(result.formatted_address || query);
+        const resolvedAddr = result.formatted_address || query;
+        setAddress(resolvedAddr);
+        setSearchInput(resolvedAddr);
         toast.success("Address located on map");
         return;
       }
@@ -345,7 +391,7 @@ const MapPicker = ({
 
         <div className="flex gap-2">
           <div className="relative flex-1">
-            {isLoaded && (
+            {isLoaded ? (
               <Autocomplete
                 onLoad={(ref) => {
                   autocompleteRef.current = ref;
@@ -353,16 +399,36 @@ const MapPicker = ({
                 onPlaceChanged={handlePlaceChanged}
                 options={{
                   componentRestrictions: { country: "IN" },
-                  fields: ["geometry", "formatted_address"],
+                  fields: ["geometry", "formatted_address", "name", "address_components"],
                 }}>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
                   <Input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (searchInput.trim().length >= 3) {
+                          locateManualAddress(searchInput.trim());
+                        }
+                      }
+                    }}
                     placeholder="Search area or landmark..."
                     className="pl-10"
                   />
                 </div>
               </Autocomplete>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search area or landmark..."
+                  className="pl-10"
+                />
+              </div>
             )}
           </div>
         </div>

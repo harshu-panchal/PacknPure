@@ -85,37 +85,46 @@ export function productToSellerForm(item) {
 
   const variants =
     item.variants?.length > 0
-      ? item.variants.map((v, i) => ({
-        id: v._id || `v-${i}-${Date.now()}`,
-        name: v.name || '',
-        unit: v.unit || item.unit || DEFAULT_PRODUCT_UNIT,
-        supplyPrice:
-          v.supplyPrice ?? v.purchasePrice ?? v.price ?? '',
-        mrp: v.price ?? v.salePrice ?? '',
-        masterSalePrice: v.masterSalePrice || item.masterSalePrice || '',
-        stock: Number.isFinite(Number(v.stock)) ? Number(v.stock) : '',
-        gstEnabled: Boolean(v.gstEnabled),
-        gstRate: Number(v.gstRate) || 0,
-      }))
+      ? item.variants.map((v, i) => {
+        const supplyPrice = v.supplyPrice ?? v.purchasePrice ?? '';
+        const mrp = v.mrp ?? v.price ?? v.salePrice ?? '';
+        return {
+          id: v._id || `v-${i}-${Date.now()}`,
+          name: v.name || '',
+          unit: v.unit || item.unit || DEFAULT_PRODUCT_UNIT,
+          supplyPrice,
+          purchasePrice: supplyPrice,
+          mrp,
+          masterSalePrice: v.masterSalePrice || item.masterSalePrice || '',
+          stock: Number.isFinite(Number(v.stock)) ? Number(v.stock) : '',
+          gstEnabled: Boolean(v.gstEnabled),
+          gstRate: Number(v.gstRate) || 0,
+        };
+      })
       : [
         {
           id: Date.now(),
           name: 'Default',
           unit: item.unit || DEFAULT_PRODUCT_UNIT,
-          supplyPrice:
-            item.supplyPrice ?? item.purchasePrice ?? item.price ?? '',
-          mrp: item.price ?? item.salePrice ?? '',
+          supplyPrice: item.supplyPrice ?? item.purchasePrice ?? '',
+          purchasePrice: item.supplyPrice ?? item.purchasePrice ?? '',
+          mrp: item.mrp ?? item.price ?? item.salePrice ?? '',
           masterSalePrice: item.masterSalePrice || '',
           stock: item.stock ?? '',
+          gstEnabled: false,
+          gstRate: 0,
         },
       ];
 
   const totalStock = totalVariantStock(variants);
+  const firstVariant = variants[0] || {};
 
   return {
     name: item.name || '',
     description: item.description || '',
-    price: resolveSupplyPrice(variants[0]) || resolveSupplyPrice(item) || '',
+    price: firstVariant.supplyPrice || resolveSupplyPrice(item) || '',
+    supplyPrice: firstVariant.supplyPrice || resolveSupplyPrice(item) || '',
+    mrp: firstVariant.mrp || item.mrp || item.price || '',
     salePrice: '',
     stock: totalStock,
     lowStockAlert: item.lowStockAlert ?? 5,
@@ -155,9 +164,9 @@ export function validateSellerProductForm(formData) {
     variants.forEach((v, i) => {
       const label = variants.length > 1 ? `Variant ${i + 1}` : 'Variant';
       if (!String(v.name || '').trim()) missing.push(`${label} name`);
-      const price = Number(v.supplyPrice ?? v.price);
+      const price = Number(v.supplyPrice ?? v.purchasePrice ?? v.price);
       if (!Number.isFinite(price) || price <= 0) missing.push(`${label} supply price`);
-      const mrp = Number(v.mrp);
+      const mrp = Number(v.mrp ?? v.price);
       if (!Number.isFinite(mrp) || mrp <= 0) missing.push(`${label} MRP`);
       const stock = Number(v.stock);
       if (!Number.isFinite(stock) || stock < 0) missing.push(`${label} stock`);
@@ -245,16 +254,18 @@ export function buildSellerProductFormData(formData, { editingItem } = {}) {
   const variants = formData.variants || [];
   const totalStock = totalVariantStock(variants);
   const first = variants[0] || {};
-  const resolvedPrice = Number(first.supplyPrice ?? first.price) || 0;
+  const resolvedSupply = Number(first.supplyPrice ?? first.purchasePrice) || 0;
+  const resolvedMrp = Number(first.mrp ?? first.price) || resolvedSupply;
 
   const cleanVariants = variants.map((v, index) => {
-    const supply = Number(v.supplyPrice ?? v.price) || resolvedPrice;
-    const mrp = Number(v.mrp) || supply;
+    const supply = Number(v.supplyPrice ?? v.purchasePrice) || resolvedSupply;
+    const mrp = Number(v.mrp ?? v.price) || supply;
     const row = {
       name: String(v.name || '').trim() || `Variant ${index + 1}`,
       unit: v.unit || formData.unit || DEFAULT_PRODUCT_UNIT,
       supplyPrice: supply,
       purchasePrice: supply,
+      mrp: mrp,
       price: mrp,
       salePrice: mrp,
       stock: Number(v.stock) || 0,
@@ -271,9 +282,11 @@ export function buildSellerProductFormData(formData, { editingItem } = {}) {
   const fields = {
     name: String(formData.name || '').trim(),
     description: String(formData.description || '').trim(),
-    supplyPrice: resolvedPrice,
-    purchasePrice: resolvedPrice,
-    price: resolvedPrice,
+    supplyPrice: resolvedSupply,
+    purchasePrice: resolvedSupply,
+    mrp: resolvedMrp,
+    price: resolvedMrp,
+    salePrice: resolvedMrp,
     stock: totalStock,
     lowStockAlert: Number(formData.lowStockAlert) || 5,
     unit: formData.unit || DEFAULT_PRODUCT_UNIT,

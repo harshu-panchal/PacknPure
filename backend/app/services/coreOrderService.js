@@ -129,11 +129,15 @@ export const executeCoreOrderFulfillment = async ({
       const [startTimeStr] = selectedSlot.split("-");
       const [startHour, startMin] = startTimeStr.split(":").map(Number);
 
+      const delSettings = await DeliverySettings.getSingleton();
+      const acceptanceMinutes = delSettings?.slotAcceptanceWindowMinutes ?? 60;
+
       const now = new Date();
       const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
+      const slotCutoff = new Date(slotStart.getTime() + acceptanceMinutes * 60 * 1000);
 
-      if (now.getTime() > slotStart.getTime()) {
-        throw new Error("The selected slot has already expired. Please select a valid slot.");
+      if (now.getTime() > slotCutoff.getTime()) {
+        throw new Error("The order acceptance window for this delivery slot has closed (orders are accepted only for the first hour). Please select a different slot.");
       }
     }
 
@@ -172,14 +176,50 @@ export const executeCoreOrderFulfillment = async ({
       });
     }
 
-    // 3. Normalize address.location and address.type
-    let normalizedAddress = { ...address };
+    // 3. Normalize address fields, location and type
+    let normalizedAddress = { ...(address || {}) };
+    if (!normalizedAddress.address) {
+      normalizedAddress.address =
+        address?.fullAddress ||
+        address?.completeAddress ||
+        address?.full ||
+        address?.street ||
+        customer?.addresses?.[0]?.fullAddress ||
+        customer?.businessAddress ||
+        "";
+    }
+    if (!normalizedAddress.name) {
+      normalizedAddress.name = customer?.name || "Customer";
+    }
+    if (!normalizedAddress.phone) {
+      normalizedAddress.phone = customer?.phone || "";
+    }
+    if (!normalizedAddress.city && customer?.addresses?.[0]?.city) {
+      normalizedAddress.city = customer.addresses[0].city;
+    }
+    if (!normalizedAddress.landmark && customer?.addresses?.[0]?.landmark) {
+      normalizedAddress.landmark = customer.addresses[0].landmark;
+    }
+
     if (address?.location) {
       const { lat, lng } = address.location;
       if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng)) {
         normalizedAddress.location = undefined;
       }
+    } else if (
+      typeof address?.lat === "number" &&
+      typeof address?.lng === "number" &&
+      Number.isFinite(address.lat) &&
+      Number.isFinite(address.lng)
+    ) {
+      normalizedAddress.location = { lat: address.lat, lng: address.lng };
+    } else if (customer?.addresses?.[0]?.location?.lat && customer?.addresses?.[0]?.location?.lng) {
+      normalizedAddress.location = {
+        lat: customer.addresses[0].location.lat,
+        lng: customer.addresses[0].location.lng,
+      };
     }
+
     if (normalizedAddress.type) {
       const typeStr = String(normalizedAddress.type).trim().toLowerCase();
       if (typeStr === "home") {

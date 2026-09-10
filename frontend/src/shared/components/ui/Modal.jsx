@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from '@/lib/utils';
 
-const Modal = ({ isOpen, onClose, title, children, footer, size = 'md', description }) => {
+const Modal = ({ isOpen, onClose, title, children, footer, size = 'md', description, className }) => {
     const sizes = {
         sm: 'sm:max-w-md',
         md: 'sm:max-w-lg',
@@ -20,7 +20,34 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md', descript
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className={cn("overflow-hidden p-0 w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] sm:w-full flex flex-col gap-0 max-h-[80dvh] sm:max-h-[85vh] my-auto rounded-2xl sm:rounded-3xl shadow-2xl bg-white border border-slate-200/80", sizes[size])}>
+            <DialogContent
+                onPointerDownOutside={(e) => {
+                    const target = e.target;
+                    if (
+                        target &&
+                        (target.closest?.('.pac-container') ||
+                            target.classList?.contains('pac-item') ||
+                            target.classList?.contains('pac-item-query') ||
+                            target.classList?.contains('pac-matched') ||
+                            target.classList?.contains('pac-icon'))
+                    ) {
+                        e.preventDefault();
+                    }
+                }}
+                onInteractOutside={(e) => {
+                    const target = e.target;
+                    if (
+                        target &&
+                        (target.closest?.('.pac-container') ||
+                            target.classList?.contains('pac-item') ||
+                            target.classList?.contains('pac-item-query') ||
+                            target.classList?.contains('pac-matched') ||
+                            target.classList?.contains('pac-icon'))
+                    ) {
+                        e.preventDefault();
+                    }
+                }}
+                className={cn("overflow-hidden p-0 w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] sm:w-full flex flex-col gap-0 max-h-[80dvh] sm:max-h-[85vh] my-auto rounded-2xl sm:rounded-3xl shadow-2xl bg-white border border-slate-200/80", sizes[size], className)}>
                 <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-white shrink-0 z-20 relative">
                     <DialogTitle className="text-base sm:text-xl font-bold text-slate-900 pr-8 leading-snug break-words">
                         {title}

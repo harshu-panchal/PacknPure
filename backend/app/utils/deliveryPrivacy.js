@@ -32,6 +32,15 @@ export function sanitizeOrderForRole(order, role) {
     if (next.address && typeof next.address === "object") {
       next.address = { ...next.address };
       delete next.address.phone;
+    } else if (!next.address && next.customer) {
+      const custAddr = Array.isArray(next.customer?.addresses) && next.customer.addresses[0];
+      next.address = {
+        name: next.customer?.name || next.customer?.businessName || "Customer",
+        address: custAddr?.fullAddress || next.customer?.businessAddress || next.customer?.address || "",
+        city: custAddr?.city || "",
+        landmark: custAddr?.landmark || "",
+        type: custAddr?.label || "Home",
+      };
     }
     next.maskedCallingReady = true;
   }

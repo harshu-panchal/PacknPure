@@ -133,6 +133,15 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Handle unexpected global errors to prevent server crash on transient network/database drops
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UnhandledRejection]", reason?.message || reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[UncaughtException]", err?.message || err);
+});
+
 // Connect to Database and Start Server
 const startServer = async () => {
   try {

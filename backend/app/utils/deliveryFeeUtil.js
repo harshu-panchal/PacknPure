@@ -103,3 +103,59 @@ export function applyExpressDeliveryCharge(pricing, deliveryMode, delSettings) {
 
   return pricing;
 }
+
+/**
+ * Calculates delivery boy (rider) trip earning dynamically based on platform settings.
+ * @param {Object} order - Order document or plain object
+ * @param {Object} [customSettings] - Optional preloaded settings object
+ * @returns {Promise<number>} - Calculated payout amount (INR)
+ */
+export async function calculateDeliveryBoyEarning(order, customSettings = null) {
+  try {
+    const settings = customSettings || (await getSettings());
+    const payoutMode = settings?.deliveryBoyPayoutMode || "distance_matrix";
+    const basePayout = Number(settings?.deliveryBoyBasePayout ?? 20);
+    const baseCoverageKm = Number(settings?.deliveryBoyBaseCoverageKm ?? 1);
+    const perKmPayout = Number(settings?.deliveryBoyPerKmPayout ?? 10);
+    const minPayout = Number(settings?.deliveryBoyMinPayout ?? 20);
+
+    let earning = basePayout;
+
+    if (payoutMode === "fixed") {
+      earning = basePayout;
+    } else if (payoutMode === "pass_through") {
+      earning = Number(order?.pricing?.deliveryFee || 0);
+    } else {
+      // distance_matrix mode
+      let distanceKm = Number(order?.pricing?.distanceKm);
+      if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+        const custCoords = order?.address?.location?.coordinates || [order?.address?.location?.lng, order?.address?.location?.lat];
+        const hubCoords = settings?.hubLocation?.coordinates || [75.8975, 22.7533];
+        if (Array.isArray(custCoords) && custCoords.length >= 2 && Array.isArray(hubCoords) && hubCoords.length >= 2) {
+          const [hubLng, hubLat] = hubCoords;
+          const [cLng, cLat] = custCoords;
+          if (Number.isFinite(cLng) && Number.isFinite(cLat) && Number.isFinite(hubLng) && Number.isFinite(hubLat)) {
+            const distM = distanceMeters(hubLat, hubLng, cLat, cLng);
+            distanceKm = Number((distM / 1000).toFixed(2));
+          }
+        }
+      }
+
+      if (Number.isFinite(distanceKm) && distanceKm > baseCoverageKm) {
+        earning = basePayout + (distanceKm - baseCoverageKm) * perKmPayout;
+      } else {
+        earning = basePayout;
+      }
+    }
+
+    // Apply minimum guaranteed floor
+    if (minPayout > 0 && earning < minPayout) {
+      earning = minPayout;
+    }
+
+    return Math.round(earning);
+  } catch (err) {
+    console.error("Error calculating delivery boy earning:", err);
+    return Math.max(Number(order?.pricing?.deliveryFee || 0), 20);
+  }
+}

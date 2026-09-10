@@ -55,10 +55,19 @@ const paymentIntentSchema = new mongoose.Schema(
     // === Address & delivery ===
     address: {
       addressId: mongoose.Schema.Types.ObjectId,
+      type: { type: String, default: "Home" },
+      name: String,
+      address: String,
+      landmark: String,
+      city: String,
+      phone: String,
       full: String,
       lat: Number,
       lng: Number,
-      city: String,
+      location: {
+        lat: Number,
+        lng: Number,
+      },
     },
     
     deliverySlot: {

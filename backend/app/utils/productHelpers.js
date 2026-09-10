@@ -49,7 +49,9 @@ export const PRODUCT_UNITS = [
 
 export function normalizeUnit(unit, fallback = "Pieces") {
   const u = String(unit || "").trim();
-  return PRODUCT_UNITS.includes(u) ? u : fallback;
+  if (!u) return fallback;
+  const matched = PRODUCT_UNITS.find((p) => p.toLowerCase() === u.toLowerCase());
+  return matched || u;
 }
 
 export function normalizeVariantMatchKey(value) {
@@ -172,7 +174,7 @@ export const PRICING_MODE_SUPPLY = "supply";
  * Ignores salePrice — that field is customer pricing on admin masters.
  */
 export function resolveSupplyPriceFromInput(input = {}) {
-  for (const key of ["supplyPrice", "purchasePrice", "price"]) {
+  for (const key of ["supplyPrice", "purchasePrice"]) {
     const n = Number(input[key]);
     if (Number.isFinite(n) && n > 0) return n;
   }
@@ -183,16 +185,20 @@ export function resolveSupplyPriceFromInput(input = {}) {
       if (p > 0) return p;
     }
   }
+  const rootP = Number(input?.price);
+  if (Number.isFinite(rootP) && rootP > 0) return rootP;
   return 0;
 }
 
 export function resolveSupplyPriceFromVariantRow(variant = {}, fallback = 0) {
-  for (const key of ["supplyPrice", "purchasePrice", "price"]) {
+  for (const key of ["supplyPrice", "purchasePrice"]) {
     const n = Number(variant[key]);
     if (Number.isFinite(n) && n > 0) return n;
   }
   const fb = Number(fallback);
-  return Number.isFinite(fb) && fb > 0 ? fb : 0;
+  if (Number.isFinite(fb) && fb > 0) return fb;
+  const p = Number(variant?.price);
+  return Number.isFinite(p) && p > 0 ? p : 0;
 }
 
 /** Mirror supply price on all stored price fields for seller listings. */
@@ -286,7 +292,7 @@ export function normalizeSellerVariants(variants, opts = {}) {
     // cost. Falls back to supply price so callers that never send one (e.g. the
     // catalog-linked merge path, which intentionally mirrors supply for price/stock
     // only) keep their existing behavior unchanged.
-    const submittedMrp = Number(v?.price);
+    const submittedMrp = Number(v?.mrp ?? v?.price);
     const mrp = Number.isFinite(submittedMrp) && submittedMrp > 0 ? submittedMrp : supply;
     const stock = Number(v?.stock);
     const variantId = v?._id || v?.id;
@@ -299,9 +305,11 @@ export function normalizeSellerVariants(variants, opts = {}) {
     const row = {
       name,
       unit: normalizeUnit(v?.unit, defaultUnit),
+      mrp,
       price: mrp,
       salePrice: mrp,
       purchasePrice: supply,
+      supplyPrice: supply,
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       gstEnabled,
       gstRate,
@@ -421,13 +429,15 @@ export function mapSellerVariantsForResponse(variants = []) {
   return (variants || []).map((v) => {
     const row = typeof v?.toObject === "function" ? v.toObject() : { ...v };
     const supplyPrice = resolveSupplyPriceFromVariantRow(row);
+    const mrp = Number(row.mrp ?? row.price) || supplyPrice;
     return {
       ...row,
       unit: normalizeUnit(row.unit),
       supplyPrice,
-      price: supplyPrice,
-      salePrice: supplyPrice,
       purchasePrice: supplyPrice,
+      mrp,
+      price: mrp,
+      salePrice: mrp,
       stock: Math.max(0, Number(row.stock) || 0),
     };
   });
@@ -466,7 +476,9 @@ export function resolveVariantIndex(product, opts = {}) {
 
   if (variantId !== undefined && variantId !== null && String(variantId).trim() !== "") {
     const idStr = String(variantId).trim();
-    const byId = variants.findIndex((v) => String(v?._id) === idStr);
+    const byId = variants.findIndex(
+      (v) => String(v?._id || (v?.toObject && v.toObject()?._id) || "") === idStr,
+    );
     if (byId >= 0) return byId;
   }
 
@@ -476,12 +488,53 @@ export function resolveVariantIndex(product, opts = {}) {
   }
 
   if (variantName !== undefined && variantName !== null && String(variantName).trim() !== "") {
-    const target = normalizeVariantMatchKey(variantName);
-    const byName = variants.findIndex((v) => normalizeVariantMatchKey(v?.name) === target);
+    const target = String(variantName).trim().toLowerCase();
+    const byName = variants.findIndex((v) => {
+      const plain = typeof v?.toObject === "function" ? v.toObject() : v;
+      return String(plain?.name || "").trim().toLowerCase() === target;
+    });
     if (byName >= 0) return byName;
   }
 
   return -1;
+}
+
+/** Immutable variant barcodes: carry existing values forward when variants array is replaced. */
+export function preserveVariantBarcodes(previousVariants = [], nextVariants = []) {
+  if (!Array.isArray(nextVariants) || !nextVariants.length) return nextVariants;
+  const BARCODE_KEYS = [
+    "barcodeId",
+    "barcodeValue",
+    "barcodeGeneratedAt",
+    "sellerBarcodeId",
+    "sellerBarcodeValue",
+    "sellerBarcodeGeneratedAt",
+  ];
+  return nextVariants.map((raw, index) => {
+    const next = typeof raw?.toObject === "function" ? raw.toObject() : { ...raw };
+    const nextId = next?._id || next?.id;
+    let prev = null;
+    if (nextId) {
+      prev = previousVariants.find(
+        (v) => (v?._id && String(v._id) === String(nextId)) || (v?.id && String(v.id) === String(nextId)),
+      );
+    }
+    if (!prev) {
+      const nextName = String(next?.name || "").trim().toLowerCase();
+      if (nextName) {
+        prev = previousVariants.find(
+          (v) => String(v?.name || "").trim().toLowerCase() === nextName,
+        );
+      }
+    }
+    if (!prev) prev = previousVariants[index] || null;
+    if (prev) {
+      for (const key of BARCODE_KEYS) {
+        if (prev[key] != null && next[key] == null) next[key] = prev[key];
+      }
+    }
+    return next;
+  });
 }
 
 /** Clone variant subdocs and set stock on one row; returns plain variant objects. */
@@ -503,13 +556,21 @@ export function variantStockRequiresSelection(product) {
 /** Customer-facing sell amount (prefers salePrice over list/MRP). */
 export function effectiveSellingPrice(productData) {
   const first = productData?.variants?.[0];
-  if (!first) return 0;
+  if (!first) {
+    const sale = Number(productData?.salePrice);
+    if (Number.isFinite(sale) && sale > 0) return sale;
+    const price = Number(productData?.price);
+    if (Number.isFinite(price) && price > 0) return price;
+    return 0;
+  }
   const vSale = Number(first.salePrice);
   const vMrp = Number(first.price);
   if (Number.isFinite(vSale) && vSale > 0) return vSale;
   if (Number.isFinite(vMrp) && vMrp > 0) return vMrp;
   return 0;
 }
+
+export const customerSellPrice = effectiveSellingPrice;
 
 export function totalVariantStock(variants) {
   if (!Array.isArray(variants) || !variants.length) return 0;
@@ -661,6 +722,8 @@ export function enrichSellerProductRow(product) {
 
   const supplyPrice = resolveSupplyPriceFromInput(product);
   const variants = mapSellerVariantsForResponse(product.variants);
+  const firstVariant = variants[0] || {};
+  const firstMrp = Number(firstVariant.mrp ?? firstVariant.price ?? product.mrp ?? product.price) || supplyPrice;
 
   return {
     ...product,
@@ -672,9 +735,10 @@ export function enrichSellerProductRow(product) {
     totalFulfillmentQty: resolved.availableQty,
     pricingMode: PRICING_MODE_SUPPLY,
     supplyPrice,
-    price: supplyPrice,
-    salePrice: supplyPrice,
     purchasePrice: supplyPrice,
+    mrp: firstMrp,
+    price: firstMrp,
+    salePrice: firstMrp,
     variants,
   };
 }
@@ -949,28 +1013,35 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
     if (incomingOffered.length > 0) {
       const merged = incomingOffered.map((iv, idx) => {
         const supply = resolveSupplyPriceFromVariantRow(iv);
+        const submittedMrp = Number(iv.mrp ?? iv.price);
+        const mrp = Number.isFinite(submittedMrp) && submittedMrp > 0 ? submittedMrp : supply;
         return {
           name: String(iv.name || "").trim() || `Variant ${idx + 1}`,
           unit: normalizeUnit(iv.unit, product.unit),
-          price: supply,
-          salePrice: supply,
+          mrp,
+          price: mrp,
+          salePrice: mrp,
           purchasePrice: supply,
+          supplyPrice: supply,
           stock: Math.max(0, Number(iv.stock) || 0),
           gstEnabled: Boolean(iv.gstEnabled),
           gstRate: iv.gstEnabled ? Math.max(0, Number(iv.gstRate) || 0) : 0,
         };
       });
-      const firstPrice = Number(merged[0]?.price) || 0;
+      const firstSupply = Number(merged[0]?.purchasePrice) || 0;
+      const firstMrp = Number(merged[0]?.mrp) || firstSupply;
       return {
         ok: true,
         data: {
-          price: firstPrice,
-          salePrice: firstPrice,
-          purchasePrice: firstPrice,
+          mrp: firstMrp,
+          price: firstMrp,
+          salePrice: firstMrp,
+          purchasePrice: firstSupply,
+          supplyPrice: firstSupply,
           stock: totalVariantStock(merged),
           variants: normalizeSellerVariants(merged, {
             defaultUnit: product.unit,
-            baseSupply: firstPrice,
+            baseSupply: firstSupply,
           }),
         },
       };
@@ -978,7 +1049,8 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
 
     const iv = incoming[0] || {};
     const price =
-      resolveSupplyPriceFromVariantRow(iv, rootFields.price) || 0;
+      resolveSupplyPriceFromVariantRow(iv, rootFields.purchasePrice ?? rootFields.supplyPrice ?? rootFields.price) || 0;
+    const mrp = Number(iv.mrp ?? iv.price ?? rootFields.mrp ?? rootFields.price) || price;
     const stock = Math.max(
       0,
       Number(iv.stock ?? rootFields.stock ?? product.stock) || 0,
@@ -989,9 +1061,11 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
     return {
       ok: true,
       data: {
-        price,
-        salePrice: price,
+        mrp,
+        price: mrp,
+        salePrice: mrp,
         purchasePrice: price,
+        supplyPrice: price,
         stock,
         variants: [],
       },
@@ -1014,6 +1088,8 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
           (ev) => String(ev?.name || "").trim().toLowerCase() === norm,
         ) || null;
       const supply = resolveSupplyPriceFromVariantRow(iv);
+      const submittedMrp = Number(iv.mrp ?? iv.price ?? existing?.mrp ?? existing?.price);
+      const mrp = Number.isFinite(submittedMrp) && submittedMrp > 0 ? submittedMrp : supply;
       const stock = Math.max(0, Number(iv.stock ?? existing?.stock) || 0);
       const unit = iv.unit || existing?.unit || product.unit;
       const row = {
@@ -1024,9 +1100,11 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
           : { name: iv.name, unit }),
         name: String(iv.name || existing?.name || "").trim() || existing?.name,
         unit,
-        price: supply,
-        salePrice: supply,
+        mrp,
+        price: mrp,
+        salePrice: mrp,
         purchasePrice: supply,
+        supplyPrice: supply,
         stock,
       };
       if (iv.gstEnabled !== undefined) {
@@ -1040,22 +1118,26 @@ export function mergeSellerCatalogListingPricing(product, rawVariants, rootField
     const merged = [...mergedById.values()].filter(
       (v) => resolveSupplyPriceFromVariantRow(v) > 0,
     );
-    const firstPrice =
-      merged.find((v) => resolveSupplyPriceFromVariantRow(v) > 0)?.price || 0;
-    if (firstPrice <= 0) {
+    const firstSupply =
+      merged.find((v) => resolveSupplyPriceFromVariantRow(v) > 0)?.purchasePrice || 0;
+    const firstMrp =
+      merged.find((v) => Number(v.mrp || v.price) > 0)?.price || firstSupply;
+    if (firstSupply <= 0) {
       return { ok: false, message: "Supply price must be greater than 0 for at least one variant" };
     }
 
     return {
       ok: true,
       data: {
-        price: firstPrice,
-        salePrice: firstPrice,
-        purchasePrice: firstPrice,
+        mrp: firstMrp,
+        price: firstMrp,
+        salePrice: firstMrp,
+        purchasePrice: firstSupply,
+        supplyPrice: firstSupply,
         stock: totalVariantStock(merged),
         variants: normalizeSellerVariants(merged, {
           defaultUnit: product.unit,
-          baseSupply: firstPrice,
+          baseSupply: firstSupply,
         }),
       },
     };
@@ -1162,7 +1244,10 @@ export function sanitizeSellerSupplyListingUpdate(product, productData, reqBody 
  */
 export function sanitizeSellerPendingSubmissionUpdate(product, productData, reqBody = {}) {
   const allowed = {};
-  const textKeys = ["name", "description", "brand", "weight", "categoryId", "subcategoryId", "unit", "tags"];
+  const textKeys = [
+    "name", "description", "brand", "weight", "categoryId", "subcategoryId",
+    "unit", "tags", "shelfLife", "countryOfOrigin", "fssaiLicense", "customerCare"
+  ];
   for (const key of textKeys) {
     if (productData[key] !== undefined) allowed[key] = productData[key];
   }
@@ -1173,9 +1258,8 @@ export function sanitizeSellerPendingSubmissionUpdate(product, productData, reqB
 
   const supply = resolveSupplyPriceFromInput({ ...reqBody, ...productData });
   if (Number.isFinite(supply) && supply > 0) {
-    allowed.price = supply;
-    allowed.salePrice = supply;
     allowed.purchasePrice = supply;
+    allowed.supplyPrice = supply;
   }
 
   if (productData.stock !== undefined || reqBody.stock !== undefined) {
@@ -1194,24 +1278,29 @@ export function sanitizeSellerPendingSubmissionUpdate(product, productData, reqB
         baseSupply,
       });
       allowed.stock = totalVariantStock(allowed.variants);
+      if (allowed.variants[0]) {
+        allowed.mrp = allowed.variants[0].mrp;
+        allowed.price = allowed.variants[0].price;
+        allowed.salePrice = allowed.variants[0].salePrice;
+        allowed.purchasePrice = allowed.variants[0].purchasePrice;
+        allowed.supplyPrice = allowed.variants[0].supplyPrice;
+      }
     }
   }
 
   return { ok: true, data: allowed, allowImages: true };
 }
 
-/** Route seller updates: catalog-linked / live = supply only; pending = submission fields. */
+/** Route seller updates: catalog-linked / live = supply only; pending/own = submission fields. */
 export function sanitizeSellerProductUpdate(product, productData, reqBody = {}) {
-  const isPendingOwn =
-    product?.ownerType === "seller" &&
-    !product?.masterProductId &&
-    String(product?.status || "") === "pending_approval";
+  const isCatalogLinked =
+    isSellerCatalogLinkedListing(product) || Boolean(product?.masterProductId);
 
-  if (isPendingOwn) {
+  if (!isCatalogLinked) {
     return sanitizeSellerPendingSubmissionUpdate(product, productData, reqBody);
   }
 
-  return sanitizeSellerSupplyListingUpdate(product, productData, reqBody);
+  return sanitizeSellerCatalogListingUpdate(product, productData, reqBody);
 }
 
 /** Copy master catalog presentation fields onto a seller listing payload. */

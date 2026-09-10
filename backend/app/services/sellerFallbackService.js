@@ -15,6 +15,7 @@
  * • Idempotent timeout sweep: only advances if status + seller + index still match.
  */
 
+import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Admin from "../models/admin.js";
 import { createNotification, createNotificationBatch } from "./notificationService.js";
@@ -256,6 +257,7 @@ export async function rejectSellerOffer(orderId, sellerId) {
  * offerExpiresAt <= now.
  */
 export async function processSellerFallbackTimeouts() {
+  if (mongoose.connection.readyState !== 1) return;
   const now = new Date();
 
   try {

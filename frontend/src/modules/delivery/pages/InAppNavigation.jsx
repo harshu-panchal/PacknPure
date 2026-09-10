@@ -296,12 +296,19 @@ export default function InAppNavigation() {
               Deliver to
             </p>
             <h3 className="truncate text-lg font-black text-slate-900">
-              {order?.address?.name || "Customer"}
+              {order?.address?.name || order?.customer?.name || "Customer"}
             </h3>
             <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-              {[order?.address?.address, order?.address?.landmark, order?.address?.city]
+              {[
+                order?.address?.address ||
+                  order?.address?.fullAddress ||
+                  order?.address?.full ||
+                  order?.customer?.businessAddress,
+                order?.address?.landmark ? `Landmark: ${order.address.landmark}` : null,
+                order?.address?.city,
+              ]
                 .filter(Boolean)
-                .join(", ")}
+                .join(", ") || "Delivery Address"}
             </p>
             {order?.notes ? (
               <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">

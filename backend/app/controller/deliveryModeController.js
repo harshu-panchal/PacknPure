@@ -40,6 +40,11 @@ const sanitizeSettingsPayload = (raw = {}) => {
   if (typeof raw.slotTitle === "string" && raw.slotTitle.trim()) {
     payload.slotTitle = raw.slotTitle.trim();
   }
+  if (raw.slotAcceptanceWindowMinutes !== undefined) {
+    const v = Number(raw.slotAcceptanceWindowMinutes);
+    if (!Number.isFinite(v) || v < 1) throw new Error("slotAcceptanceWindowMinutes must be a positive number of minutes");
+    payload.slotAcceptanceWindowMinutes = Math.round(v);
+  }
   if (raw.expressCharge !== undefined) {
     const v = Number(raw.expressCharge);
     if (!Number.isFinite(v) || v < 0) throw new Error("expressCharge must be a non-negative number");
@@ -282,6 +287,7 @@ export const getAvailableDeliveryModes = async (req, res) => {
       expressCharge: settings.expressCharge ?? 0,
       expressFreeDeliveryMaxDistanceKm: settings.expressFreeDeliveryMaxDistanceKm ?? null,
       slotTitle: settings.slotTitle,
+      slotAcceptanceWindowMinutes: settings.slotAcceptanceWindowMinutes ?? 60,
       availableDays,
       slots,
     });

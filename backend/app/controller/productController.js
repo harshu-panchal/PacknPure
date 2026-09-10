@@ -242,12 +242,19 @@ function applyVariantsToProductData(productData, ownerType = "admin") {
   if (rawVariants.length > 0) {
     if (role === "seller") {
       normalizeSellerProductBody(productData);
-      const baseSupply = Number(productData.purchasePrice) || Number(productData.price) || 0;
+      const baseSupply = Number(productData.purchasePrice) || Number(productData.supplyPrice) || 0;
       productData.variants = normalizeSellerVariants(rawVariants, {
         defaultUnit,
         baseSupply,
       });
       syncRootFromFirstVariant(productData, "seller");
+      if (productData.variants[0]) {
+        productData.mrp = productData.variants[0].mrp;
+        productData.price = productData.variants[0].price;
+        productData.salePrice = productData.variants[0].salePrice;
+        productData.purchasePrice = productData.variants[0].purchasePrice;
+        productData.supplyPrice = productData.variants[0].supplyPrice;
+      }
     } else {
       const basePrice = Number(productData.price) || 0;
       const baseSale = Number(productData.salePrice) || basePrice;
@@ -1157,13 +1164,21 @@ export const updateProduct = async (req, res) => {
           const baseSupply =
             Number(productData.purchasePrice) ||
             Number(product.purchasePrice) ||
-            Number(productData.price) ||
+            Number(productData.supplyPrice) ||
             0;
           productData.variants = normalizeSellerVariants(rawVariants, {
             defaultUnit,
             baseSupply,
           });
           syncRootFromFirstVariant(productData, "seller");
+          if (productData.variants[0]) {
+            productData.mrp = productData.variants[0].mrp;
+            productData.price = productData.variants[0].price;
+            productData.salePrice = productData.variants[0].salePrice;
+            productData.purchasePrice = productData.variants[0].purchasePrice;
+            productData.supplyPrice = productData.variants[0].supplyPrice;
+          }
+        } else {
           const basePrice = Number(req.body.price ?? productData.price ?? product.price) || 0;
           const baseSale = Number(req.body.salePrice ?? productData.salePrice ?? product.salePrice) || basePrice;
           const basePurchase = Number(req.body.purchasePrice ?? productData.purchasePrice ?? product.purchasePrice) || 0;
@@ -1182,7 +1197,7 @@ export const updateProduct = async (req, res) => {
         }
         
         // Preserve variant review fields from the old product
-        if (Array.isArray(product.variants) && product.variants.length > 0) {
+        if (Array.isArray(product.variants) && product.variants.length > 0 && Array.isArray(productData.variants)) {
           productData.variants.forEach((newV) => {
             const oldV = product.variants.find(
               (old) =>

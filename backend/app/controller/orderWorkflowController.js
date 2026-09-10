@@ -103,22 +103,34 @@ export const getOrderRoute = async (req, res) => {
   try {
     const { orderId } = req.params;
     const phase = (req.query.phase || "pickup").toLowerCase();
-    const originLat = parseFloat(req.query.originLat);
-    const originLng = parseFloat(req.query.originLng);
-
-    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
-      return handleResponse(res, 400, "originLat and originLng required");
-    }
+    let originLat = parseFloat(req.query.originLat);
+    let originLng = parseFloat(req.query.originLng);
 
     const orderKey = orderMatchQueryFromRouteParam(orderId);
     if (!orderKey) {
       return handleResponse(res, 404, "Order not found");
     }
 
-    const order = await Order.findOne(orderKey).populate("seller").lean();
+    const order = await Order.findOne(orderKey)
+      .populate("seller")
+      .populate("deliveryBoy", "location")
+      .lean();
 
     if (!order) {
       return handleResponse(res, 404, "Order not found");
+    }
+
+    // Fall back to deliveryBoy coordinates if origin not provided in query
+    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
+      const riderCoords = order.deliveryBoy?.location?.coordinates;
+      if (Array.isArray(riderCoords) && riderCoords.length >= 2) {
+        originLat = Number(riderCoords[1]);
+        originLng = Number(riderCoords[0]);
+      }
+    }
+
+    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
+      return handleResponse(res, 400, "originLat and originLng required");
     }
 
     const origin = { lat: originLat, lng: originLng };
@@ -126,8 +138,16 @@ export const getOrderRoute = async (req, res) => {
 
     if (phase === "pickup") {
       if (order.hubFlowEnabled) {
-        const hubLat = parseHubCoordinate("HUB_LOCATION_LAT", "HUB_LAT", "DEFAULT_HUB_LAT");
-        const hubLng = parseHubCoordinate("HUB_LOCATION_LNG", "HUB_LNG", "DEFAULT_HUB_LNG");
+        let hubLat = parseHubCoordinate("HUB_LOCATION_LAT", "HUB_LAT", "DEFAULT_HUB_LAT");
+        let hubLng = parseHubCoordinate("HUB_LOCATION_LNG", "HUB_LNG", "DEFAULT_HUB_LNG");
+        if (!Number.isFinite(hubLat) || !Number.isFinite(hubLng)) {
+          const { default: Setting } = await import("../models/setting.js");
+          const settings = await Setting.findOne().lean();
+          if (settings?.hubLocation?.lat && settings?.hubLocation?.lng) {
+            hubLat = Number(settings.hubLocation.lat);
+            hubLng = Number(settings.hubLocation.lng);
+          }
+        }
         if (!Number.isFinite(hubLat) || !Number.isFinite(hubLng)) {
           return handleResponse(res, 400, "Hub pickup location missing");
         }

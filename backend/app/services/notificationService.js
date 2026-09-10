@@ -14,6 +14,8 @@ import {
   getNotificationCategoryFromType,
   NOTIFICATION_CHANNELS,
 } from "./notificationTypes.js";
+import { isRedisEnabled } from "../config/redis.js";
+import { processNotificationOutboxJob } from "../queues/notificationQueueProcessors.js";
 
 const persistNotifications = async (records) => {
   if (!records.length) return [];
@@ -115,6 +117,13 @@ export const createNotificationBatch = async (items = [], options = {}) => {
     if (jobs.length) {
       try {
         await enqueueNotificationJobs(jobs);
+        if (!isRedisEnabled()) {
+          for (const job of jobs) {
+            processNotificationOutboxJob(job.outboxId).catch((err) =>
+              console.warn("[notificationService] instant direct delivery failed:", err.message),
+            );
+          }
+        }
       } catch (queueError) {
         console.warn("[notificationService] enqueue failed:", queueError.message);
       }

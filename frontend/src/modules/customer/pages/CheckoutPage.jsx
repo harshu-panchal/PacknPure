@@ -129,11 +129,14 @@ const CheckoutPage = () => {
     const [startTimeStr] = selectedSlot.split("-");
     const [startHour, startMin] = startTimeStr.split(":").map(Number);
 
+    const acceptanceMinutes = deliveryModeOptions?.slotAcceptanceWindowMinutes ?? 60;
+
     const now = new Date();
     const slotStart = new Date(year, month - 1, day, startHour, startMin, 0, 0);
+    const slotCutoff = new Date(slotStart.getTime() + acceptanceMinutes * 60 * 1000);
 
-    return now.getTime() > slotStart.getTime();
-  }, [isCheckoutSlot, deliverySelection]);
+    return now.getTime() > slotCutoff.getTime();
+  }, [isCheckoutSlot, deliverySelection, deliveryModeOptions]);
 
   // State management
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");

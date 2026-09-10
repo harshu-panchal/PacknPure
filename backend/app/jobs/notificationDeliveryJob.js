@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import NotificationOutbox from "../models/notificationOutbox.js";
 import { processNotificationOutboxJob } from "../queues/notificationQueueProcessors.js";
 
@@ -18,6 +19,7 @@ const NOTIFICATION_DELIVERY_INTERVAL_MS = parseInt(
 const BATCH_SIZE = parseInt(process.env.NOTIFICATION_DELIVERY_BATCH_SIZE || "50", 10);
 
 const processPendingOutbox = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   try {
     const pending = await NotificationOutbox.find({
       status: { $in: ["queued", "failed"] },

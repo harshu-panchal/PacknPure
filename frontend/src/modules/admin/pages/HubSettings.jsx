@@ -38,6 +38,11 @@ const HubSettings = () => {
     baseFreeKm: 1,
     perKmDeliveryCharge: 10,
     freeDeliveryThreshold: 500,
+    deliveryBoyPayoutMode: "distance_matrix",
+    deliveryBoyBasePayout: 20,
+    deliveryBoyBaseCoverageKm: 1,
+    deliveryBoyPerKmPayout: 10,
+    deliveryBoyMinPayout: 20,
     platformFee: 3,
     gstPercentage: 5,
     gstRates: [0, 5, 12, 18, 28],
@@ -52,6 +57,8 @@ const HubSettings = () => {
     deliveryOtpProximityThreshold: 5000,
   });
 
+  const [matrixTab, setMatrixTab] = useState("customer");
+  const [simDistance, setSimDistance] = useState(5);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -75,6 +82,11 @@ const HubSettings = () => {
           baseFreeKm: data.result.baseFreeKm ?? 1,
           perKmDeliveryCharge: data.result.perKmDeliveryCharge ?? 10,
           freeDeliveryThreshold: data.result.freeDeliveryThreshold ?? 500,
+          deliveryBoyPayoutMode: data.result.deliveryBoyPayoutMode || "distance_matrix",
+          deliveryBoyBasePayout: data.result.deliveryBoyBasePayout ?? 20,
+          deliveryBoyBaseCoverageKm: data.result.deliveryBoyBaseCoverageKm ?? 1,
+          deliveryBoyPerKmPayout: data.result.deliveryBoyPerKmPayout ?? 10,
+          deliveryBoyMinPayout: data.result.deliveryBoyMinPayout ?? 20,
           platformFee: data.result.platformFee ?? 3,
           gstPercentage: data.result.gstPercentage ?? 5,
           gstRates: Array.isArray(data.result.gstRates) ? data.result.gstRates : [0, 5, 12, 18, 28],
@@ -665,133 +677,351 @@ const HubSettings = () => {
         {/* Pricing Side */}
         <div className="space-y-6">
           <Card className="p-8 border-none shadow-2xl ring-1 ring-slate-200 rounded-3xl bg-white h-full">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="h-12 w-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-xl shadow-slate-900/20">
-                <HiOutlineAdjustmentsVertical className="h-7 w-7" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                  Pricing Matrix
-                </h3>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  Live Unit Economy
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-8">
-              {/* Base Fee */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <HiOutlineCurrencyRupee className="h-4 w-4" />
-                    Base Delivery Fee
-                  </label>
+            <div className="flex items-center justify-between gap-3 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-xl shadow-slate-900/20">
+                  <HiOutlineAdjustmentsVertical className="h-7 w-7" />
                 </div>
-                <div className="relative group">
-                  <input
-                    type="number"
-                    value={settings.baseDeliveryFee}
-                    onChange={(e) => setSettings({ ...settings, baseDeliveryFee: Number(e.target.value) })}
-                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
-                    INR
-                  </div>
-                </div>
-              </div>
-
-              {/* Base Free KM */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <HiOutlineMapPin className="h-4 w-4" />
-                    Base Coverage (km)
-                  </label>
-                </div>
-                <div className="relative group">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={settings.baseFreeKm}
-                    onChange={(e) => setSettings({ ...settings, baseFreeKm: Number(e.target.value) })}
-                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
-                    KM
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium italic">
-                  Distance covered under flat base fee. Per-km charges start after this.
-                </p>
-              </div>
-
-              {/* Per KM Charge */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <HiOutlineTruck className="h-4 w-4" />
-                    Distance Rate
-                  </label>
-                </div>
-                <div className="relative group">
-                  <input
-                    type="number"
-                    value={settings.perKmDeliveryCharge}
-                    onChange={(e) => setSettings({ ...settings, perKmDeliveryCharge: Number(e.target.value) })}
-                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
-                    / KM
-                  </div>
-                </div>
-              </div>
-
-              {/* Free Threshold */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <HiOutlineShieldCheck className="h-4 w-4" />
-                    Free Delivery Min
-                  </label>
-                </div>
-                <div className="relative group">
-                  <input
-                    type="number"
-                    value={settings.freeDeliveryThreshold}
-                    onChange={(e) => setSettings({ ...settings, freeDeliveryThreshold: Number(e.target.value) })}
-                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
-                    MIN
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 p-5 bg-slate-900 rounded-3xl space-y-4">
-                <div className="flex items-center gap-3">
-                  <HiOutlineExclamationCircle className="h-5 w-5 text-amber-400" />
-                  <p className="text-[10px] font-black text-white uppercase tracking-widest">
-                    Economy Simulation
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-[11px] font-medium text-white/70">
-                    <span>5km Delivery Total</span>
-                    <span className="font-black text-white">₹{settings.baseDeliveryFee + (5 * settings.perKmDeliveryCharge) + settings.platformFee}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[11px] font-medium text-white/70">
-                    <span>GST Applied</span>
-                    <span className="font-black text-emerald-400">{settings.gstPercentage}%</span>
-                  </div>
-                  <div className="h-px bg-white/10 my-2" />
-                  <p className="text-[9px] text-white/40 leading-relaxed font-medium">
-                    Pricing is validated server-side based on straight-line Haversine distance from the hub marker shown on map.
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                    Fare & Pricing Matrix
+                  </h3>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    Live Unit Economy
                   </p>
                 </div>
               </div>
             </div>
+
+            {/* Tab Switcher: Customer vs Delivery Partner */}
+            <div className="flex p-1 bg-slate-100 rounded-2xl mb-6">
+              <button
+                type="button"
+                onClick={() => setMatrixTab("customer")}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                  matrixTab === "customer"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900",
+                )}
+              >
+                <HiOutlineReceiptTax className="h-4 w-4" />
+                Customer Delivery Fee
+              </button>
+              <button
+                type="button"
+                onClick={() => setMatrixTab("rider")}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                  matrixTab === "rider"
+                    ? "bg-white text-emerald-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900",
+                )}
+              >
+                <HiOutlineTruck className="h-4 w-4" />
+                Rider Payout (Delivery Boy)
+              </button>
+            </div>
+
+            {matrixTab === "customer" ? (
+              <div className="space-y-6">
+                {/* Base Fee */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineCurrencyRupee className="h-4 w-4" />
+                      Base Delivery Fee (Customer)
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={settings.baseDeliveryFee}
+                      onChange={(e) => setSettings({ ...settings, baseDeliveryFee: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      INR
+                    </div>
+                  </div>
+                </div>
+
+                {/* Base Free KM */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineMapPin className="h-4 w-4" />
+                      Base Coverage (km)
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={settings.baseFreeKm}
+                      onChange={(e) => setSettings({ ...settings, baseFreeKm: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      KM
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium italic">
+                    Distance covered under flat base fee. Per-km charges start after this.
+                  </p>
+                </div>
+
+                {/* Per KM Charge */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineTruck className="h-4 w-4" />
+                      Distance Rate
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={settings.perKmDeliveryCharge}
+                      onChange={(e) => setSettings({ ...settings, perKmDeliveryCharge: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      / KM
+                    </div>
+                  </div>
+                </div>
+
+                {/* Free Threshold */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineShieldCheck className="h-4 w-4" />
+                      Free Delivery Minimum Order
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={settings.freeDeliveryThreshold}
+                      onChange={(e) => setSettings({ ...settings, freeDeliveryThreshold: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      INR
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Payout Calculation Mode */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Rider Payout Calculation Mode
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: "distance_matrix", label: "Distance Matrix", desc: "Base + ₹/km" },
+                      { key: "pass_through", label: "Pass Customer Fee", desc: "Equal to cust fee" },
+                      { key: "fixed", label: "Fixed Flat Rate", desc: "Flat per order" },
+                    ].map((mode) => (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, deliveryBoyPayoutMode: mode.key })}
+                        className={cn(
+                          "p-3 rounded-2xl border text-left transition-all",
+                          settings.deliveryBoyPayoutMode === mode.key
+                            ? "bg-emerald-50 border-emerald-500 text-emerald-900 shadow-sm"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100",
+                        )}
+                      >
+                        <p className="text-xs font-bold leading-tight">{mode.label}</p>
+                        <p className="text-[9px] text-slate-400 mt-0.5">{mode.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Base Rider Payout */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineCurrencyRupee className="h-4 w-4" />
+                      Rider Base Trip Payout
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={settings.deliveryBoyBasePayout}
+                      onChange={(e) => setSettings({ ...settings, deliveryBoyBasePayout: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      INR
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium italic">
+                    Base earning credited to the rider per delivery trip.
+                  </p>
+                </div>
+
+                {settings.deliveryBoyPayoutMode === "distance_matrix" && (
+                  <>
+                    {/* Rider Base Coverage KM */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                          <HiOutlineMapPin className="h-4 w-4" />
+                          Rider Base Coverage (km)
+                        </label>
+                      </div>
+                      <div className="relative group">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={settings.deliveryBoyBaseCoverageKm}
+                          onChange={(e) => setSettings({ ...settings, deliveryBoyBaseCoverageKm: Number(e.target.value) })}
+                          className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                        />
+                        <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                          KM
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium italic">
+                        Distance included in base payout. Additional per-km pay starts after this.
+                      </p>
+                    </div>
+
+                    {/* Rider Distance Rate */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                          <HiOutlineTruck className="h-4 w-4" />
+                          Rider Distance Pay Rate
+                        </label>
+                      </div>
+                      <div className="relative group">
+                        <input
+                          type="number"
+                          value={settings.deliveryBoyPerKmPayout}
+                          onChange={(e) => setSettings({ ...settings, deliveryBoyPerKmPayout: Number(e.target.value) })}
+                          className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                        />
+                        <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                          / KM
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Minimum Guaranteed Payout Floor */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <HiOutlineShieldCheck className="h-4 w-4" />
+                      Minimum Guaranteed Payout (Floor)
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={settings.deliveryBoyMinPayout}
+                      onChange={(e) => setSettings({ ...settings, deliveryBoyMinPayout: Number(e.target.value) })}
+                      className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 font-bold">
+                      INR
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium italic">
+                    Rider will never earn less than this on any trip (even on free/short deliveries). Set to 0 to disable floor.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Economy Simulation Card */}
+            {(() => {
+              const custFee = Math.round(
+                settings.baseDeliveryFee +
+                  Math.max(0, simDistance - settings.baseFreeKm) * settings.perKmDeliveryCharge,
+              );
+              let riderPay = settings.deliveryBoyBasePayout;
+              if (settings.deliveryBoyPayoutMode === "fixed") {
+                riderPay = settings.deliveryBoyBasePayout;
+              } else if (settings.deliveryBoyPayoutMode === "pass_through") {
+                riderPay = custFee;
+              } else {
+                riderPay = Math.round(
+                  settings.deliveryBoyBasePayout +
+                    Math.max(0, simDistance - settings.deliveryBoyBaseCoverageKm) *
+                      settings.deliveryBoyPerKmPayout,
+                );
+              }
+              if (settings.deliveryBoyMinPayout > 0 && riderPay < settings.deliveryBoyMinPayout) {
+                riderPay = settings.deliveryBoyMinPayout;
+              }
+              const netMargin = custFee + settings.platformFee - riderPay;
+
+              return (
+                <div className="mt-8 pt-5 p-5 bg-slate-900 rounded-3xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <HiOutlineExclamationCircle className="h-5 w-5 text-amber-400" />
+                      <p className="text-[10px] font-black text-white uppercase tracking-widest">
+                        Live Economy Simulation
+                      </p>
+                    </div>
+                    {/* Distance Selector */}
+                    <div className="flex gap-1">
+                      {[2, 5, 8].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setSimDistance(d)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all",
+                            simDistance === d
+                              ? "bg-white text-slate-900"
+                              : "bg-white/10 text-white/70 hover:bg-white/20",
+                          )}
+                        >
+                          {d} km
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 pt-1">
+                    <div className="flex justify-between items-center text-[11px] font-medium text-white/70">
+                      <span>Customer Delivery Fee ({simDistance}km)</span>
+                      <span className="font-black text-white">₹{custFee}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] font-medium text-white/70">
+                      <span>Customer Platform Fee</span>
+                      <span className="font-black text-white">₹{settings.platformFee}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] font-medium text-emerald-400">
+                      <span>Rider Payout (Delivery Boy)</span>
+                      <span className="font-black text-emerald-400">₹{riderPay}</span>
+                    </div>
+                    <div className="h-px bg-white/10 my-1" />
+                    <div className="flex justify-between items-center text-xs font-bold text-white">
+                      <span>Platform Net Logistics Balance</span>
+                      <span className={cn(netMargin >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                        {netMargin >= 0 ? `+₹${netMargin}` : `-₹${Math.abs(netMargin)}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
         </div>
       </div>

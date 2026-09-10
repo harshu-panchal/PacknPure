@@ -44,8 +44,13 @@ export default function SlotSelectionSheet({
 
   const activeDate = dates.find((d) => d.dateKey === activeDateKey) || null;
   const availableSlots = useMemo(
-    () => slotsForDate(options?.slots, activeDate),
-    [options?.slots, activeDate],
+    () =>
+      slotsForDate(
+        options?.slots,
+        activeDate,
+        options?.slotAcceptanceWindowMinutes ?? 60,
+      ),
+    [options?.slots, options?.slotAcceptanceWindowMinutes, activeDate],
   );
 
   const handleConfirm = () => {

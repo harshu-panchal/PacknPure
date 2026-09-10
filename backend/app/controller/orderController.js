@@ -32,7 +32,7 @@ import {
 } from "../services/purchaseRequestService.js";
 import { emitToAdminOrdersRoom, emitToSeller } from "../services/orderSocketEmitter.js";
 import { distanceMeters } from "../utils/geoUtils.js";
-import { calculateDeliveryFee } from "../utils/deliveryFeeUtil.js";
+import { calculateDeliveryFee, calculateDeliveryBoyEarning } from "../utils/deliveryFeeUtil.js";
 import {
   orderMatchQueryFromRouteParam,
   orderMatchQueryFlexible,
@@ -254,11 +254,11 @@ export const getOrderDetails = async (req, res) => {
     }
 
     const order = await Order.findOne(orderKey)
-      .populate("customer", "name email phone")
+      .populate("customer", "name email phone addresses businessAddress businessName")
       .populate("items.product", ORDER_ITEM_PRODUCT_POPULATE)
       .populate(
         "deliveryBoy",
-        "name phone vehicleType vehicleNumber documents.profileImage averageRating",
+        "name phone vehicleType vehicleNumber documents.profileImage averageRating location lastLocationAt",
       )
       .populate("returnDeliveryBoy", "name phone")
       .populate("seller", "shopName name address phone location")
@@ -266,6 +266,30 @@ export const getOrderDetails = async (req, res) => {
 
     if (!order) {
       return handleResponse(res, 404, "Order not found");
+    }
+
+    // Fallback resolution for order address if missing or empty on legacy orders
+    if (order.address && (!order.address.address || !order.address.address.trim()) && order.customer) {
+      const custAddr = Array.isArray(order.customer?.addresses) && order.customer.addresses[0];
+      order.address.address = custAddr?.fullAddress || order.customer?.businessAddress || order.customer?.address || "";
+      if (!order.address.name) {
+        order.address.name = order.customer?.name || order.customer?.businessName || "Customer";
+      }
+      if (!order.address.city && custAddr?.city) {
+        order.address.city = custAddr.city;
+      }
+      if (!order.address.landmark && custAddr?.landmark) {
+        order.address.landmark = custAddr.landmark;
+      }
+    } else if (!order.address && order.customer) {
+      const custAddr = Array.isArray(order.customer?.addresses) && order.customer.addresses[0];
+      order.address = {
+        name: order.customer?.name || order.customer?.businessName || "Customer",
+        address: custAddr?.fullAddress || order.customer?.businessAddress || order.customer?.address || "",
+        city: custAddr?.city || "",
+        landmark: custAddr?.landmark || "",
+        type: custAddr?.label || "Home",
+      };
     }
 
     // BUGFIX: Defensive check for customer reference integrity
@@ -1687,6 +1711,7 @@ export const getAvailableOrders = async (req, res) => {
       if (o.hubFlowEnabled) {
         o.pickupAddress = hubAddress;
       }
+      o.deliveryBoyPayout = await calculateDeliveryBoyEarning(o, settings);
       
       merged.push(o);
       if (merged.length >= limit) break;

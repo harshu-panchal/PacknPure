@@ -111,6 +111,37 @@ export const sendFcmMulticast = async (tokens = [], payload = {}) => {
       body: String(payload.body || payload.notification?.body || "You have a new update."),
     },
     data: normalizeNotificationDataForPush(payload.data || {}),
+    android: {
+      priority: "high",
+      notification: {
+        sound: "default",
+        channelId: "default",
+        priority: "high",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+      },
+    },
+    webpush: {
+      headers: {
+        Urgency: "high",
+      },
+      notification: {
+        icon: payload.data?.imageUrl || "/packnpure-icon.svg",
+        badge: "/packnpure-icon.svg",
+        requireInteraction: true,
+      },
+    },
+    apns: {
+      headers: {
+        "apns-priority": "10",
+      },
+      payload: {
+        aps: {
+          sound: "default",
+          contentAvailable: true,
+        },
+      },
+    },
   };
 
   try {
@@ -139,6 +170,37 @@ export const sendFcmToToken = async (token, payload = {}) => {
         body: String(payload.body || payload.notification?.body || "You have a new update."),
       },
       data: normalizeNotificationDataForPush(payload.data || {}),
+      android: {
+        priority: "high",
+        notification: {
+          sound: "default",
+          channelId: "default",
+          priority: "high",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      webpush: {
+        headers: {
+          Urgency: "high",
+        },
+        notification: {
+          icon: payload.data?.imageUrl || "/packnpure-icon.svg",
+          badge: "/packnpure-icon.svg",
+          requireInteraction: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            contentAvailable: true,
+          },
+        },
+      },
     });
   } catch (error) {
     console.error("sendFcmToToken error:", error.message);

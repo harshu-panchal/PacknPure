@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 import Order from "../models/order.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
@@ -19,6 +20,7 @@ const AUTO_CANCEL_INTERVAL_MS = parseInt(
  * Legacy v1 orders use status + expiresAt only.
  */
 const autoCancelExpiredOrders = async () => {
+  if (mongoose.connection.readyState !== 1) return;
   try {
     const now = new Date();
 

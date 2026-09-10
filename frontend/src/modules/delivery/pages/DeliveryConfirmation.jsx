@@ -178,12 +178,37 @@ const DeliveryConfirmation = () => {
                     type="number"
                     inputMode="decimal"
                     className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 pl-8 pr-4 py-3 min-h-12 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/40 text-lg font-bold bg-gray-100 dark:bg-gray-900 focus:bg-white dark:focus:bg-gray-800 transition-all outline-none"
-                    placeholder="0.00"
+                    placeholder={String(orderAmount)}
                     value={cashCollected}
                     onChange={(e) => setCashCollected(e.target.value)}
                     aria-label="Cash received amount"
                   />
                 </div>
+
+                {/* Quick denomination buttons */}
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-[11px] font-bold text-gray-400">Quick fill:</span>
+                  <button
+                    type="button"
+                    onClick={() => setCashCollected(String(orderAmount))}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-900 dark:bg-orange-900/50 dark:text-orange-200 border border-orange-300/60 transition-all active:scale-95"
+                  >
+                    Exact (₹{orderAmount})
+                  </button>
+                  {[500, 1000, 2000]
+                    .filter((amt) => amt > orderAmount && amt <= orderAmount + 1500)
+                    .map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setCashCollected(String(amt))}
+                        className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-gray-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 transition-all active:scale-95"
+                      >
+                        ₹{amt}
+                      </button>
+                    ))}
+                </div>
+
                 {Number(cashCollected) > orderAmount && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
@@ -231,6 +256,11 @@ const DeliveryConfirmation = () => {
             <Card className="p-6">
               <OtpInput
                 orderId={orderId}
+                order={order}
+                isCod={!isPrepaid}
+                orderAmount={orderAmount}
+                cashReceived={cashCollected}
+                cashConfirmed={Number(cashCollected) >= orderAmount}
                 onSuccess={handleOtpValidationSuccess}
                 onError={handleOtpValidationError}
               />
