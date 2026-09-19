@@ -8,13 +8,14 @@ import {
     Truck, 
     CheckCircle2, 
     XCircle, 
-    CornerUpLeft 
+    CornerUpLeft,
+    Store
 } from 'lucide-react';
 
 const OrderTabs = () => {
     const tabs = [
         { label: 'All Orders', path: '/admin/orders/all', icon: List },
-
+        { label: 'Seller Orders', path: '/admin/orders/seller', icon: Store },
         { label: 'Being Prepared', path: '/admin/orders/processed', icon: Package },
         { label: 'On the Way', path: '/admin/orders/out-for-delivery', icon: Truck },
         { label: 'Delivered', path: '/admin/orders/delivered', icon: CheckCircle2 },

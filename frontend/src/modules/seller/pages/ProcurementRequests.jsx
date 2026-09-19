@@ -361,14 +361,21 @@ const ProcurementRequests = () => {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {row.requestType === "manual" ? (
                         <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold animate-pulse">Manual</span>
                       ) : (
-                        <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold">Automated</span>
+                        <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs uppercase tracking-tighter font-bold">Auto</span>
                       )}
-                      {prDisplayCode(row)}
-                    </p>
+                      <span className="text-sm font-black text-slate-900 font-mono">
+                        {prDisplayCode(row)}
+                      </span>
+                      {(row.orderCode || row.orderNumber) && (
+                        <span className="bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">
+                          Order #{row.orderCode || row.orderNumber}
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       Hub: <span className="font-semibold text-indigo-600">{row.hubId}</span>
                       {" · "}Requested {formatPrDate(row.createdAt)}

@@ -529,7 +529,7 @@ const WalletPage = () => {
                                 to={`/orders/${tx.orderId}`}
                                 className="mt-0.5 inline-block text-[11px] font-semibold text-[#E23744] hover:underline"
                               >
-                                Order #{String(tx.orderId).slice(-6)}
+                                Order #{tx.displayOrderNumber || tx.orderId}
                               </Link>
                             ) : null}
                           </div>

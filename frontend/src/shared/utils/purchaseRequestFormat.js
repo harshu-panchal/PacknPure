@@ -21,17 +21,19 @@ export const formatInr = (n) =>
   Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 /**
- * Human-friendly PR label — "PR0195" for the same numeric sequence as the
- * order's own display number ("HUBORD0195"), so a purchase request is
- * instantly recognizable as belonging to that order, in the same short/
- * zero-padded style admin already uses for orders. Falls back to the raw
- * requestId for manual/admin-created PRs that aren't tied to any order.
+ * Human-friendly PR label — e.g. "PNP-ORD0042-S1" for the purchase request
+ * tied to master order "PNP-ORD0042".
  */
 export const prDisplayCode = (row) => {
+  if (row?.displayCode) return row.displayCode;
+  if (row?.requestId && (row.requestId.startsWith("PNP-ORD") || row.requestId.startsWith("ORD") || row.requestId.startsWith("HUBORD") || row.requestId.startsWith("SLRORD"))) {
+    return row.requestId;
+  }
   const orderNumber = row?.orderNumber || row?.orderCode || "";
-  const digits = String(orderNumber).replace(/^[A-Za-z]+/, "");
-  if (digits) return `PR${digits}`;
-  return row?.requestId || "";
+  if (orderNumber) {
+    return `${orderNumber}-S1`;
+  }
+  return row?.requestId || "—";
 };
 
 export const prStatusLabel = (status) => {

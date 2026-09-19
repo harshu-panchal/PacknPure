@@ -51,10 +51,16 @@ const DEFAULT_PROCUREMENT_MARGIN_VALUE = Math.max(
   Number(process.env.DEFAULT_PROCUREMENT_MARGIN_VALUE || 15),
 );
 
-const buildRequestId = () =>
-  `PR-${Date.now()}-${Math.floor(Math.random() * 1000)
+export const buildRequestId = (order = null, sellerIndex = 1, retryNumber = 0) => {
+  const baseOrderNo = order?.displayOrderNumber || order?.orderId;
+  if (baseOrderNo) {
+    const retrySuffix = retryNumber > 0 ? `-R${retryNumber}` : "";
+    return `${baseOrderNo}-S${sellerIndex}${retrySuffix}`;
+  }
+  return `PR-${Date.now()}-${Math.floor(Math.random() * 1000)
     .toString()
     .padStart(3, "0")}`;
+};
 
 export const HUB_ORDER_MODE = () =>
   String(process.env.HUB_FIRST_ORDER_ROUTING || "false").toLowerCase() === "true";
@@ -679,7 +685,7 @@ export const createAutoPurchaseRequests = async ({
     }
 
     const doc = await createPurchaseRequest({
-      requestId: buildRequestId(),
+      requestId: buildRequestId(order, insertedDocs.length + 1, Number(reserved?.allocation?.retryNumber || 0)),
       orderId: order._id,
       procurementSessionId: procurementSession?._id || undefined,
       allocationId: allocationId || undefined,

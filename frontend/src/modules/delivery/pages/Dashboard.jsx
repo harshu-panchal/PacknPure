@@ -497,7 +497,7 @@ const Dashboard = () => {
                     // any remaining stop is tappable, the rider picks the order.
                     const isSuggested = stop.sequence === activeTrip.currentStopSequence && !isDone;
                     const isSelectable = hubReached && !isDone;
-                    const orderCode = stop.order?.orderId || stop.orderCode;
+                    const orderCode = stop.order?.displayOrderNumber || stop.order?.orderId || stop.orderCode;
                     return (
                       <button
                         key={orderCode}

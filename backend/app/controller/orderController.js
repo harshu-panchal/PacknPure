@@ -1502,6 +1502,11 @@ export const getSellerOrders = async (req, res) => {
         query.status = "cancelled";
       } else if (statusParam === "returned") {
         query.returnStatus = { $ne: "none" };
+      } else if (statusParam === "seller") {
+        query.$or = [
+          { fulfillmentType: { $in: ["SELLER_PROCURED", "SPLIT"] } },
+          { seller: { $ne: null } },
+        ];
       }
     }
 

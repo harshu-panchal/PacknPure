@@ -167,7 +167,7 @@ function OrderDetailHeader({ order, statusLabel, statusPill }) {
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-bold text-slate-900">Order details</h1>
           <p className="truncate text-[11px] font-medium text-slate-500">
-            #{String(order.orderId).slice(-10)}
+            #{order.displayOrderNumber || order.orderId}
           </p>
         </div>
         <span

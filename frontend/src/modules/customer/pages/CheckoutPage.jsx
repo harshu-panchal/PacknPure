@@ -1795,8 +1795,7 @@ const CheckoutPage = () => {
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.3 }}
               className="text-slate-500 font-medium mb-8">
-              #{orderId?.slice(-6)} — waiting for the seller to accept (60s). If
-              they don&apos;t, the order will cancel automatically.
+              {orderId ? `Order #${orderId} placed successfully.` : "Your order has been placed successfully."}
               <br />
               Redirecting to order details…
             </motion.p>

@@ -27,11 +27,13 @@ export function orderMatchQueryFromRouteParam(routeParam) {
   if (isStrictObjectIdString(raw)) {
     return { _id: new mongoose.Types.ObjectId(raw) };
   }
-  return { orderId: raw };
+  return {
+    $or: [{ orderId: raw }, { displayOrderNumber: raw }],
+  };
 }
 
 /**
- * Same as {@link orderMatchQueryFromRouteParam} but tolerates orderId case drift (e.g. ORD vs ord)
+ * Same as {@link orderMatchQueryFromRouteParam} but tolerates orderId / displayOrderNumber case drift
  * by matching case-insensitively when the exact string is not found.
  * Use for read endpoints (e.g. customer order detail); keep strict matching for mutating flows when needed.
  */
@@ -43,7 +45,12 @@ export function orderMatchQueryFlexible(routeParam) {
   }
   const esc = escapeRegex(raw);
   return {
-    $or: [{ orderId: raw }, { orderId: new RegExp(`^${esc}$`, "i") }],
+    $or: [
+      { orderId: raw },
+      { orderId: new RegExp(`^${esc}$`, "i") },
+      { displayOrderNumber: raw },
+      { displayOrderNumber: new RegExp(`^${esc}$`, "i") },
+    ],
   };
 }
 

@@ -580,10 +580,11 @@ const mapRow = (reqDoc, extras = {}) => {
   return {
     _id: reqDoc._id,
     requestId: reqDoc.requestId,
+    displayCode: reqDoc.requestId,
     orderId: reqDoc.orderId?._id || reqDoc.orderId || null,
-    // Human-readable order number (e.g. "HUBORD0195") — same one shown on the admin
-    // Orders list and sent to the seller, so a PR can be traced back to its order.
-    orderNumber: reqDoc.orderId?.displayOrderNumber || null,
+    // Human-readable order number (e.g. "PNP-ORD0001") — same one shown on admin, customer, delivery
+    orderNumber: reqDoc.orderId?.displayOrderNumber || reqDoc.orderId?.orderId || null,
+    orderCode: reqDoc.orderId?.displayOrderNumber || reqDoc.orderId?.orderId || "",
     hubId: reqDoc.hubId || DEFAULT_HUB_ID,
     vendorId: reqDoc.vendorId?._id || reqDoc.vendorId || null,
     vendorName:
@@ -641,10 +642,11 @@ const mapSellerRow = (reqDoc, extras = {}) => {
   return {
     _id: reqDoc._id,
     requestId: reqDoc.requestId,
+    displayCode: reqDoc.requestId,
     orderId: reqDoc.orderId?._id || reqDoc.orderId || null,
-    // Same human-readable order number the customer/admin sees (e.g. "HUBORD0195"),
-    // not the internal long orderId — this is what should reach the seller.
+    // Same human-readable order number the customer/admin sees (e.g. "PNP-ORD0001")
     orderCode: reqDoc.orderId?.displayOrderNumber || reqDoc.orderId?.orderId || "",
+    orderNumber: reqDoc.orderId?.displayOrderNumber || reqDoc.orderId?.orderId || "",
     hubId: reqDoc.hubId,
     status: reqDoc.status,
     statusLabel: prStatusLabel(reqDoc.status),

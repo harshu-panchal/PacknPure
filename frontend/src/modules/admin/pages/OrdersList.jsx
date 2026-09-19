@@ -25,7 +25,13 @@ import {
     CheckCircle2,
     XCircle,
     Route,
-    Zap
+    Zap,
+    Store,
+    Phone,
+    ExternalLink,
+    AlertTriangle,
+    RefreshCw,
+    Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -151,8 +157,32 @@ const OrdersList = () => {
     // (not just what's on the currently loaded page).
     const [slotOnly, setSlotOnly] = useState(false);
     const [expressOnly, setExpressOnly] = useState(false);
+    const [sellerOnly, setSellerOnly] = useState(false);
     const [deliveryModeCounts, setDeliveryModeCounts] = useState({ express: 0, slot: 0 });
     const [activeStatModal, setActiveStatModal] = useState(null);
+
+    // Seller Procurement Requests & Acceptance Tracking
+    const [sellerRequests, setSellerRequests] = useState([]);
+    const [sellerRequestsLoading, setSellerRequestsLoading] = useState(false);
+    const [selectedSellerFilter, setSelectedSellerFilter] = useState('all');
+    const [sellerAcceptanceFilter, setSellerAcceptanceFilter] = useState('all');
+
+    const isSellerMode = status === 'seller' || sellerOnly;
+
+    const fetchSellerRequests = async () => {
+        setSellerRequestsLoading(true);
+        try {
+            const res = await adminApi.getPurchaseRequests({ page: 1, limit: 500 });
+            const payload = res?.data?.result || res?.data?.results || {};
+            const items = Array.isArray(payload) ? payload : Array.isArray(payload.items) ? payload.items : [];
+            setSellerRequests(items);
+        } catch (e) {
+            console.error("Failed to load seller requests:", e);
+            setSellerRequests([]);
+        } finally {
+            setSellerRequestsLoading(false);
+        }
+    };
 
     const fetchOrders = async (requestedPage = 1) => {
         setIsLoading(true);
@@ -183,6 +213,8 @@ const OrdersList = () => {
                         _id: o._id,
                         customer: o.customer?.name || 'Unknown',
                         seller: o.seller?.shopName || 'Unknown',
+                        fulfillmentSummary: o.fulfillmentSummary || null,
+                        fulfillmentType: o.fulfillmentType || o.fulfillmentSummary?.type || 'HUB_DIRECT',
                         items: o.items?.length || 0,
                         amount: o.pricing?.total || 0,
                         earning: adminEarning,
@@ -245,24 +277,125 @@ const OrdersList = () => {
 
     useEffect(() => {
         fetchOrders(1);
+        fetchSellerRequests();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageSize, status, expressOnly, slotOnly]);
 
-    // The two toggles are mutually exclusive filters — turning one on turns the other off.
+    // Toolbar toggles
+    const handleToggleSellerOnly = () => {
+        if (status === 'seller') {
+            navigate('/admin/orders/all');
+        } else {
+            setSellerOnly((v) => {
+                const next = !v;
+                if (next) {
+                    setExpressOnly(false);
+                    setSlotOnly(false);
+                }
+                return next;
+            });
+        }
+    };
+
     const handleToggleExpressOnly = () => {
+        setSellerOnly(false);
+        if (status === 'seller') navigate('/admin/orders/all');
         setExpressOnly((v) => {
             const next = !v;
             if (next) setSlotOnly(false);
             return next;
         });
     };
+
     const handleToggleSlotOnly = () => {
+        setSellerOnly(false);
+        if (status === 'seller') navigate('/admin/orders/all');
         setSlotOnly((v) => {
             const next = !v;
             if (next) setExpressOnly(false);
             return next;
         });
     };
+
+    // Grouping sellers and their acceptance statuses
+    const sellerGroups = useMemo(() => {
+        const map = new Map();
+        sellerRequests.forEach(req => {
+            const sId = String(req.vendorId?._id || req.vendorId || req.vendorName || 'unassigned');
+            const sName = req.vendorName || req.vendorId?.shopName || req.vendorId?.name || 'Unassigned Seller';
+            const sPhone = req.vendorPhone || req.vendorId?.phone || '';
+            if (!map.has(sId)) {
+                map.set(sId, {
+                    id: sId,
+                    name: sName,
+                    phone: sPhone,
+                    total: 0,
+                    accepted: 0,
+                    pending: 0,
+                    ready: 0,
+                    inTransit: 0,
+                    hubReceived: 0,
+                    rejected: 0,
+                });
+            }
+            const group = map.get(sId);
+            group.total += 1;
+            const st = String(req.status || '').toLowerCase();
+            const resp = String(req.vendorResponse?.status || req.vendorResponse || '').toLowerCase();
+            
+            const isAccepted = resp === 'accepted' || ['seller_confirmed', 'vendor_confirmed', 'pickup_assigned', 'picked', 'hub_delivered', 'received_at_hub', 'verified'].includes(st);
+            const isRejected = resp === 'rejected' || ['cancelled', 'seller_rejected'].includes(st);
+
+            if (isAccepted) {
+                group.accepted += 1;
+            } else if (isRejected) {
+                group.rejected += 1;
+            } else {
+                group.pending += 1;
+            }
+
+            if (['ready_for_pickup', 'packed'].includes(st)) group.ready += 1;
+            if (['pickup_assigned', 'picked'].includes(st)) group.inTransit += 1;
+            if (['hub_delivered', 'received_at_hub', 'verified'].includes(st)) group.hubReceived += 1;
+        });
+        return Array.from(map.values()).sort((a, b) => b.total - a.total);
+    }, [sellerRequests]);
+
+    const filteredSellerRequests = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        return sellerRequests.filter(req => {
+            const sId = String(req.vendorId?._id || req.vendorId || req.vendorName || 'unassigned');
+            if (selectedSellerFilter !== 'all' && sId !== selectedSellerFilter) {
+                return false;
+            }
+            const st = String(req.status || '').toLowerCase();
+            const resp = String(req.vendorResponse?.status || req.vendorResponse || '').toLowerCase();
+            const isAccepted = resp === 'accepted' || ['seller_confirmed', 'vendor_confirmed', 'pickup_assigned', 'picked', 'hub_delivered', 'received_at_hub', 'verified'].includes(st);
+            const isPending = !isAccepted && !['cancelled', 'seller_rejected'].includes(st);
+            const isRejected = resp === 'rejected' || ['cancelled', 'seller_rejected'].includes(st);
+
+            if (sellerAcceptanceFilter === 'accepted' && !isAccepted) return false;
+            if (sellerAcceptanceFilter === 'pending' && !isPending) return false;
+            if (sellerAcceptanceFilter === 'ready' && !['ready_for_pickup', 'packed'].includes(st)) return false;
+            if (sellerAcceptanceFilter === 'in_transit' && !['pickup_assigned', 'picked'].includes(st)) return false;
+            if (sellerAcceptanceFilter === 'hub_received' && !['hub_delivered', 'received_at_hub', 'verified'].includes(st)) return false;
+            if (sellerAcceptanceFilter === 'rejected' && !isRejected) return false;
+
+            const matchesDateRange = orderMatchesDateRange(req.createdAt, dateRange);
+            if (!matchesDateRange) return false;
+
+            if (!q) return true;
+            return (
+                String(req.requestId || '').toLowerCase().includes(q) ||
+                String(req.displayCode || '').toLowerCase().includes(q) ||
+                String(req.orderNumber || '').toLowerCase().includes(q) ||
+                String(req.orderCode || '').toLowerCase().includes(q) ||
+                String(req.vendorName || '').toLowerCase().includes(q) ||
+                String(req.product || '').toLowerCase().includes(q) ||
+                (Array.isArray(req.items) && req.items.some(it => String(it.productName || '').toLowerCase().includes(q)))
+            );
+        });
+    }, [sellerRequests, selectedSellerFilter, sellerAcceptanceFilter, searchTerm, dateRange]);
 
     const safeOrders = useMemo(
         () => (Array.isArray(orders) ? orders : []),
@@ -527,7 +660,11 @@ const OrdersList = () => {
         }
     };
 
-    const pageTitle = status === 'all' ? 'All Orders' : status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    const pageTitle = isSellerMode
+        ? 'Seller Orders & Acceptance Tracker'
+        : status === 'all'
+        ? 'All Orders'
+        : status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
     return (
         <div className="ds-section-spacing animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -537,13 +674,32 @@ const OrdersList = () => {
                 <div>
                     <h1 className="ds-h1 flex items-center gap-3">
                         {pageTitle}
-                        <div className="p-2 bg-fuchsia-100 rounded-xl">
-                            <ShoppingBag className="h-5 w-5 text-fuchsia-600" />
+                        <div className={cn("p-2 rounded-xl", isSellerMode ? "bg-amber-100" : "bg-fuchsia-100")}>
+                            {isSellerMode ? (
+                                <Store className="h-5 w-5 text-amber-600" />
+                            ) : (
+                                <ShoppingBag className="h-5 w-5 text-fuchsia-600" />
+                            )}
                         </div>
                     </h1>
-                    <p className="ds-description mt-1">View and manage all orders.</p>
+                    <p className="ds-description mt-1">
+                        {isSellerMode 
+                            ? "Track seller order acceptance, procurement packages, and pickup status in real-time."
+                            : "View and manage all orders."}
+                    </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                    {isSellerMode && (
+                        <button
+                            onClick={fetchSellerRequests}
+                            disabled={sellerRequestsLoading}
+                            className="flex items-center gap-2 px-4 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
+                            title="Refresh Seller Requests"
+                        >
+                            <RefreshCw className={cn("h-4 w-4 text-amber-600", sellerRequestsLoading && "animate-spin")} />
+                            REFRESH
+                        </button>
+                    )}
                     <button
                         onClick={openBatchModal}
                         className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm"
@@ -611,20 +767,20 @@ const OrdersList = () => {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 group-focus-within:text-fuchsia-500 transition-colors" />
                         <input
                             type="text"
-                            placeholder="Search by Order ID, Customer, or Shop..."
+                            placeholder={isSellerMode ? "Search by Order #, Sub-code, Seller, or Product..." : "Search by Order ID, Customer, or Shop..."}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-xs font-semibold outline-none focus:ring-2 focus:ring-fuchsia-500/10 transition-all"
                         />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <button
                             onClick={handleToggleExpressOnly}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all bg-red-600 text-white hover:bg-red-700",
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
                                 expressOnly
-                                    ? "shadow-sm ring-2 ring-red-300 ring-offset-1"
-                                    : "shadow-sm"
+                                    ? "bg-red-600 text-white shadow-sm ring-2 ring-red-300 ring-offset-1"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
                             )}
                             title="Show only express-delivery orders"
                         >
@@ -636,7 +792,7 @@ const OrdersList = () => {
                             className={cn(
                                 "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
                                 slotOnly
-                                    ? "bg-indigo-600 text-white shadow-sm"
+                                    ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300 ring-offset-1"
                                     : "bg-slate-50 text-slate-500 hover:bg-slate-100"
                             )}
                             title="Show only slot-booking orders"
@@ -644,189 +800,546 @@ const OrdersList = () => {
                             <Route className="h-4 w-4" />
                             Slot Bookings ({slotOrderCount})
                         </button>
-                        <div className="relative group">
-                            <select
-                                value={status}
-                                onChange={(e) => navigate(`/admin/orders/${e.target.value}`)}
-                                className="appearance-none pl-10 pr-8 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-fuchsia-500/10 transition-all cursor-pointer"
-                            >
-                                <option value="all">All Statuses</option>
-                                <option value="pending">Pending</option>
-                                <option value="processed">Being Prepared</option>
-                                <option value="out-for-delivery">On the Way</option>
-                                <option value="delivered">Delivered</option>
-                                <option value="cancelled">Cancelled</option>
-                                <option value="returned">Returned</option>
-                            </select>
-                            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                        </div>
+                        <button
+                            onClick={handleToggleSellerOnly}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+                                isSellerMode
+                                    ? "bg-amber-600 text-white shadow-sm ring-2 ring-amber-300 ring-offset-1"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            )}
+                            title="Open Seller Orders and live acceptance status tracker"
+                        >
+                            <Store className="h-4 w-4" />
+                            Seller Orders ({sellerRequests.length})
+                        </button>
+                        {!isSellerMode && (
+                            <div className="relative group">
+                                <select
+                                    value={status}
+                                    onChange={(e) => navigate(`/admin/orders/${e.target.value}`)}
+                                    className="appearance-none pl-10 pr-8 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-fuchsia-500/10 transition-all cursor-pointer"
+                                >
+                                    <option value="all">All Statuses</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="processed">Being Prepared</option>
+                                    <option value="out-for-delivery">On the Way</option>
+                                    <option value="delivered">Delivered</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="returned">Returned</option>
+                                </select>
+                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Details</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Seller</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">Admin Earning</th>
-                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan="6" className="px-4 py-20 text-center">
-                                        <div className="flex justify-center flex-col items-center gap-2">
-                                            <div className="h-8 w-8 border-4 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
-                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Orders...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredOrders.length > 0 ? filteredOrders.map((order) => (
-                                <tr
-                                    key={order.id}
+                {isSellerMode ? (
+                    <div className="p-6 bg-slate-50/40 border-b border-slate-100">
+                        {/* Seller Directory Header / Filter Pills */}
+                        <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                    <Store className="h-4 w-4 text-amber-500" />
+                                    Select Seller to View Orders & Acceptance
+                                </h3>
+                                <span className="text-[11px] font-bold text-slate-500">
+                                    {sellerGroups.length} Active {sellerGroups.length === 1 ? 'Seller' : 'Sellers'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+                                <button
+                                    onClick={() => setSelectedSellerFilter('all')}
                                     className={cn(
-                                        "group hover:bg-slate-50/30 transition-all cursor-pointer",
-                                        order.deliveryMode === 'SLOT' && "bg-indigo-50/40 border-l-4 border-indigo-400 hover:bg-indigo-50/60"
+                                        "px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 shrink-0 shadow-sm",
+                                        selectedSellerFilter === 'all'
+                                            ? "bg-slate-900 text-white ring-2 ring-slate-900/20"
+                                            : "bg-white text-slate-600 hover:bg-slate-100 ring-1 ring-slate-200"
                                     )}
-                                    onClick={() => navigate(`/admin/orders/view/${order.id}`)}
                                 >
-                                    <td className="px-4 py-5">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all text-slate-400 group-hover:text-fuchsia-500 font-bold text-xs">
-                                                <Package className="h-5 w-5" />
+                                    <span>All Sellers</span>
+                                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-bold", selectedSellerFilter === 'all' ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700")}>
+                                        {sellerRequests.length}
+                                    </span>
+                                </button>
+                                {sellerGroups.map((seller) => (
+                                    <button
+                                        key={seller.id}
+                                        onClick={() => setSelectedSellerFilter(seller.id)}
+                                        className={cn(
+                                            "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 shadow-sm text-left",
+                                            selectedSellerFilter === seller.id
+                                                ? "bg-amber-600 text-white ring-2 ring-amber-400/40"
+                                                : "bg-white text-slate-700 hover:bg-amber-50/50 ring-1 ring-slate-200"
+                                        )}
+                                    >
+                                        <Store className="h-3.5 w-3.5 opacity-80" />
+                                        <div>
+                                            <span className="font-black">{seller.name}</span>
+                                            <div className="flex items-center gap-1 text-[9px] opacity-90 mt-0.5 font-semibold">
+                                                <span>{seller.total} Total</span>
+                                                <span>•</span>
+                                                <span className={selectedSellerFilter === seller.id ? "text-emerald-200" : "text-emerald-600 font-bold"}>
+                                                    {seller.accepted} Accepted
+                                                </span>
+                                                {seller.pending > 0 && (
+                                                    <>
+                                                        <span>•</span>
+                                                        <span className={selectedSellerFilter === seller.id ? "text-amber-200" : "text-amber-600 font-bold"}>
+                                                            {seller.pending} Pending
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
-                                            <div>
-                                                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                                                    #{order.displayOrderNumber || order.id}
-                                                    <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all text-slate-400" />
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Acceptance Status Quick Filters */}
+                        <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-slate-200/60 pb-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mr-1">Status:</span>
+                            {[
+                                { id: 'all', label: 'All Requests', count: sellerRequests.length },
+                                { id: 'accepted', label: 'Accepted by Seller', count: sellerGroups.reduce((s, g) => s + g.accepted, 0), color: 'emerald' },
+                                { id: 'pending', label: 'Awaiting Acceptance', count: sellerGroups.reduce((s, g) => s + g.pending, 0), color: 'amber' },
+                                { id: 'ready', label: 'Ready for Pickup', count: sellerGroups.reduce((s, g) => s + g.ready, 0), color: 'sky' },
+                                { id: 'in_transit', label: 'In Transit / Picked', count: sellerGroups.reduce((s, g) => s + g.inTransit, 0), color: 'indigo' },
+                                { id: 'hub_received', label: 'Received at Hub', count: sellerGroups.reduce((s, g) => s + g.hubReceived, 0), color: 'violet' },
+                                { id: 'rejected', label: 'Rejected / Cancelled', count: sellerGroups.reduce((s, g) => s + g.rejected, 0), color: 'rose' },
+                            ].map((f) => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setSellerAcceptanceFilter(f.id)}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5",
+                                        sellerAcceptanceFilter === f.id
+                                            ? "bg-slate-900 text-white shadow-sm"
+                                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                                    )}
+                                >
+                                    <span>{f.label}</span>
+                                    <span className={cn(
+                                        "text-[10px] font-mono px-1 rounded",
+                                        sellerAcceptanceFilter === f.id ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+                                    )}>
+                                        {f.count}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                {/* Table Content */}
+                <div className="overflow-x-auto">
+                    {isSellerMode ? (
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-slate-50/50">
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Order & Task Code</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Seller Details</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Seller Acceptance Status</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Items Procured</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Cost Amount</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {sellerRequestsLoading ? (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-20 text-center">
+                                            <div className="flex justify-center flex-col items-center gap-2">
+                                                <div className="h-8 w-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Seller Orders...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredSellerRequests.length > 0 ? (
+                                    filteredSellerRequests.map((req) => {
+                                        const st = String(req.status || '').toLowerCase();
+                                        const resp = String(req.vendorResponse?.status || req.vendorResponse || '').toLowerCase();
+                                        const isAccepted = resp === 'accepted' || ['seller_confirmed', 'vendor_confirmed', 'pickup_assigned', 'picked', 'hub_delivered', 'received_at_hub', 'verified'].includes(st);
+                                        const isRejected = resp === 'rejected' || ['cancelled', 'seller_rejected'].includes(st);
+                                        const isPending = !isAccepted && !isRejected;
+
+                                        const masterOrderCode = req.orderNumber || req.orderCode || 'N/A';
+                                        const subCode = req.displayCode || req.requestId || 'S1';
+                                        const formattedDate = req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+                                        return (
+                                            <tr
+                                                key={req._id}
+                                                className="group hover:bg-slate-50/40 transition-all cursor-pointer"
+                                                onClick={() => {
+                                                    if (req.orderId) navigate(`/admin/orders/view/${req.orderId}`);
+                                                }}
+                                            >
+                                                <td className="px-4 py-5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl group-hover:bg-amber-100 transition-all font-bold text-xs">
+                                                            <Store className="h-5 w-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                                                                Order #{masterOrderCode}
+                                                                <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all text-slate-400" />
+                                                            </h4>
+                                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                                <span className="inline-flex items-center gap-1 font-mono text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200">
+                                                                    Task: {subCode}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-300">•</span>
+                                                                <span className="text-[10px] font-bold text-slate-400">{formattedDate}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-5">
+                                                    <div>
+                                                        <span className="text-xs font-black text-slate-800 block">
+                                                            {req.vendorName || req.vendorId?.shopName || 'Unassigned Seller'}
+                                                        </span>
+                                                        {(req.vendorPhone || req.vendorId?.phone) && (
+                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 mt-0.5">
+                                                                <Phone className="h-3 w-3 text-slate-400" />
+                                                                {req.vendorPhone || req.vendorId?.phone}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-5">
+                                                    <div className="space-y-1">
+                                                        {isAccepted ? (
+                                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                                                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                                                <span>Accepted by Seller</span>
+                                                            </div>
+                                                        ) : isRejected ? (
+                                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 ring-1 ring-rose-200">
+                                                                <XCircle className="h-3.5 w-3.5 text-rose-600" />
+                                                                <span>Seller Rejected</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 ring-1 ring-amber-200 animate-pulse">
+                                                                <Clock className="h-3.5 w-3.5 text-amber-600" />
+                                                                <span>Awaiting Seller Acceptance</span>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Sub-status pills for logistics progression */}
+                                                        <div className="text-[9px] font-bold text-slate-500 flex items-center gap-1 mt-1">
+                                                            {st === 'ready_for_pickup' && (
+                                                                <span className="text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
+                                                                    📦 Ready for Pickup
+                                                                </span>
+                                                            )}
+                                                            {['pickup_assigned', 'picked'].includes(st) && (
+                                                                <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-mono">
+                                                                    🛵 In Transit {req.pickupPartnerName ? `(${req.pickupPartnerName})` : ''}
+                                                                </span>
+                                                            )}
+                                                            {['hub_delivered', 'received_at_hub', 'verified'].includes(st) && (
+                                                                <span className="text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded font-mono">
+                                                                    🏢 Received at Hub
+                                                                </span>
+                                                            )}
+                                                            {req.confirmedAt && (
+                                                                <span className="text-slate-400">
+                                                                    • Confirmed: {new Date(req.confirmedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-5">
+                                                    <div>
+                                                        {Array.isArray(req.items) && req.items.length > 0 ? (
+                                                            <div className="space-y-0.5">
+                                                                {req.items.map((it, idx) => (
+                                                                    <div key={idx} className="text-xs font-semibold text-slate-700">
+                                                                        <span className="font-bold text-slate-900">{it.productName || req.product || 'Item'}</span>
+                                                                        <span className="text-slate-400 text-[10px] ml-1.5">x {it.quantity || req.quantity || 1}</span>
+                                                                        {it.unitCost > 0 && (
+                                                                            <span className="text-slate-400 text-[10px] ml-1.5 font-mono">(₹{it.unitCost}/unit)</span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-xs font-bold text-slate-800">
+                                                                {req.product || 'Procurement Package'} • {req.quantity || 1} pcs
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-5 text-right">
+                                                    <span className="text-sm font-black text-slate-900">
+                                                        ₹{Number(req.totalCost || req.subtotal || 0).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold text-slate-400 block mt-0.5">
+                                                        SELLER COST
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (req.orderId) navigate(`/admin/orders/view/${req.orderId}`);
+                                                        }}
+                                                        className="px-3 py-1.5 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-800 rounded-xl text-xs font-black transition-all inline-flex items-center gap-1.5"
+                                                        title="View full Master Order"
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                        <span>View Order</span>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-20 text-center">
+                                            <div className="flex flex-col items-center gap-3">
+                                                <div className="h-16 w-16 bg-amber-50 rounded-full flex items-center justify-center">
+                                                    <Store className="h-8 w-8 text-amber-300" />
+                                                </div>
+                                                <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">
+                                                    No Seller Orders Found
                                                 </h4>
-                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                    <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400 py-0.5">
-                                                        {order.items} {order.items > 1 ? 'Items' : 'Item'}
-                                                    </Badge>
-                                                    <span className="text-[10px] font-bold text-slate-300">•</span>
-                                                    <span className="text-[10px] font-bold text-slate-400">{order.date}</span>
-                                                    {order.deliveryMode === 'SLOT' && (
-                                                        <button
-                                                            onClick={(e) => openSlotGroupForOrder(e, order)}
-                                                            title={`Slot booking${order.slotDisplayText ? ` — ${order.slotDisplayText}` : ''} — click to view every order in this same slot`}
-                                                            className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg hover:bg-indigo-200 transition-colors"
-                                                        >
-                                                            <Route className="h-3 w-3" />
-                                                            Slot{order.tripId ? ' • Assigned' : ''}
-                                                        </button>
-                                                    )}
+                                                <p className="text-xs text-slate-400">
+                                                    No seller procurement requests match your current filter criteria.
+                                                </p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-slate-50/50">
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Details</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fulfillment / Seller</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">Admin Earning</th>
+                                    <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan="7" className="px-4 py-20 text-center">
+                                            <div className="flex justify-center flex-col items-center gap-2">
+                                                <div className="h-8 w-8 border-4 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Orders...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredOrders.length > 0 ? filteredOrders.map((order) => (
+                                    <tr
+                                        key={order.id}
+                                        className={cn(
+                                            "group hover:bg-slate-50/30 transition-all cursor-pointer",
+                                            order.deliveryMode === 'SLOT' && "bg-indigo-50/40 border-l-4 border-indigo-400 hover:bg-indigo-50/60"
+                                        )}
+                                        onClick={() => navigate(`/admin/orders/view/${order.id}`)}
+                                    >
+                                        <td className="px-4 py-5">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all text-slate-400 group-hover:text-fuchsia-500 font-bold text-xs">
+                                                    <Package className="h-5 w-5" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                                                        #{order.displayOrderNumber || order.id}
+                                                        <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all text-slate-400" />
+                                                    </h4>
+                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                        <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400 py-0.5">
+                                                            {order.items} {order.items > 1 ? 'Items' : 'Item'}
+                                                        </Badge>
+                                                        {order.fulfillmentSummary && (
+                                                            <span
+                                                                className={cn(
+                                                                    "inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg",
+                                                                    order.fulfillmentSummary.type === "HUB_DIRECT" && "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+                                                                    order.fulfillmentSummary.type === "SELLER_PROCURED" && "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+                                                                    order.fulfillmentSummary.type === "SPLIT" && "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200",
+                                                                    order.fulfillmentSummary.type === "POS" && "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                                                                )}
+                                                                title={order.fulfillmentSummary.code}
+                                                            >
+                                                                {order.fulfillmentSummary.type === "HUB_DIRECT" && `🏢 Hub Direct`}
+                                                                {order.fulfillmentSummary.type === "SELLER_PROCURED" && `🏬 ${order.fulfillmentSummary.code || 'Seller S1'}`}
+                                                                {order.fulfillmentSummary.type === "SPLIT" && `🔀 Split (Hub + Seller)`}
+                                                                {order.fulfillmentSummary.type === "POS" && `🏪 POS`}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] font-bold text-slate-300">•</span>
+                                                        <span className="text-[10px] font-bold text-slate-400">{order.date}</span>
+                                                        {order.deliveryMode === 'SLOT' && (
+                                                            <button
+                                                                onClick={(e) => openSlotGroupForOrder(e, order)}
+                                                                title={`Slot booking${order.slotDisplayText ? ` — ${order.slotDisplayText}` : ''} — click to view every order in this same slot`}
+                                                                className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg hover:bg-indigo-200 transition-colors"
+                                                            >
+                                                                <Route className="h-3 w-3" />
+                                                                Slot{order.tripId ? ' • Assigned' : ''}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-blue-500" />
-                                            <span className="text-xs font-black text-slate-700">{order.customer}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                                            <span className="text-xs font-black text-slate-700">{order.seller}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
-                                        <div className="relative inline-block w-40">
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
-                                                className={cn(
-                                                    "w-full text-[10px] pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
-                                                    getStatusStyles(order.status)
-                                                )}
-                                            >
-                                                <option value="pending">Pending</option>
-                                                <option value="confirmed">Confirmed</option>
-                                                <option value="packed">Packed</option>
-                                                <option value="out_for_delivery">Out for Delivery</option>
-                                                <option value="delivered">Delivered</option>
-                                                <option value="cancelled">Cancelled</option>
-                                            </select>
-                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none opacity-60" />
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5 text-right">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-sm font-black text-slate-900">₹{order.amount.toLocaleString()}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 mt-0.5">{order.payment}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5 text-right">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">₹{order.earning.toLocaleString()}</span>
-                                            <span className="text-[9px] font-bold text-emerald-400 mt-0.5">NET PROFIT</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5 text-right">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigate(`/admin/orders/view/${order.id}`);
-                                            }}
-                                            className="p-2.5 bg-slate-50 text-slate-400 hover:text-fuchsia-600 hover:bg-fuchsia-50 rounded-xl transition-all"
-                                        >
-                                            <Eye className="h-4 w-4" />
-                                        </button>
-                                        {!order.deliveryBoyId && order.status !== 'cancelled' && order.status !== 'delivered' && (
+                                        </td>
+                                        <td className="px-4 py-5">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-2 w-2 rounded-full bg-blue-500" />
+                                                <span className="text-xs font-black text-slate-700">{order.customer}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-5">
+                                            {order.fulfillmentSummary?.type === "HUB_DIRECT" ? (
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                                                        <span className="text-xs font-black text-slate-800">Main Logistics Hub</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
+                                                        <span className="font-mono bg-emerald-50 px-1 py-0.2 rounded text-[9px]">{order.displayOrderNumber || order.id}-HUB</span>
+                                                        <span>• 100% Hub Stock</span>
+                                                    </p>
+                                                </div>
+                                            ) : order.fulfillmentSummary?.type === "SPLIT" ? (
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-2 w-2 rounded-full bg-indigo-500" />
+                                                        <span className="text-xs font-black text-slate-800">{order.seller !== 'Unknown' ? order.seller : 'Hub + Seller(s)'}</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-indigo-600 mt-0.5 flex items-center gap-1">
+                                                        <span className="font-mono bg-indigo-50 px-1 py-0.2 rounded text-[9px]">{order.fulfillmentSummary.code}</span>
+                                                        <span>• {order.fulfillmentSummary.hubItemsCount} Hub + {order.fulfillmentSummary.sellerItemsCount} Seller</span>
+                                                    </p>
+                                                </div>
+                                            ) : order.fulfillmentSummary?.type === "SELLER_PROCURED" ? (
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-2 w-2 rounded-full bg-amber-500" />
+                                                        <span className="text-xs font-black text-slate-800">{order.seller}</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-amber-600 mt-0.5 flex items-center gap-1">
+                                                        <span className="font-mono bg-amber-50 px-1 py-0.2 rounded text-[9px]">{order.fulfillmentSummary.code || `${order.displayOrderNumber || order.id}-S1`}</span>
+                                                        <span>• Procured (Hub Shortage)</span>
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-2 w-2 rounded-full bg-slate-500" />
+                                                        <span className="text-xs font-black text-slate-800">{order.seller}</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-slate-500 mt-0.5">
+                                                        {order.fulfillmentSummary?.label || 'Direct Order'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
+                                            <div className="relative inline-block w-40">
+                                                <select
+                                                    value={order.status}
+                                                    onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
+                                                    className={cn(
+                                                        "w-full text-[10px] pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
+                                                        getStatusStyles(order.status)
+                                                    )}
+                                                >
+                                                    <option value="pending">Pending</option>
+                                                    <option value="confirmed">Confirmed</option>
+                                                    <option value="packed">Packed</option>
+                                                    <option value="out_for_delivery">Out for Delivery</option>
+                                                    <option value="delivered">Delivered</option>
+                                                    <option value="cancelled">Cancelled</option>
+                                                </select>
+                                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none opacity-60" />
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-5 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-sm font-black text-slate-900">₹{order.amount.toLocaleString()}</span>
+                                                <span className="text-[10px] font-bold text-slate-400 mt-0.5">{order.payment}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-5 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">₹{order.earning.toLocaleString()}</span>
+                                                <span className="text-[9px] font-bold text-emerald-400 mt-0.5">NET PROFIT</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-5 text-right">
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    openAssignModal(order);
+                                                    navigate(`/admin/orders/view/${order.id}`);
                                                 }}
-                                                className="ml-2 p-2.5 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
-                                                title="Assign Delivery Partner"
+                                                className="p-2.5 bg-slate-50 text-slate-400 hover:text-fuchsia-600 hover:bg-fuchsia-50 rounded-xl transition-all"
                                             >
-                                                <Truck className="h-4 w-4" />
+                                                <Eye className="h-4 w-4" />
                                             </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            )) : (
-                                <tr>
-                                    <td colSpan="6" className="px-4 py-20 text-center">
-                                        <div className="flex flex-col items-center gap-4">
-                                            <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center">
-                                                <Search className="h-10 w-10 text-slate-200" />
+                                            {!order.deliveryBoyId && order.status !== 'cancelled' && order.status !== 'delivered' && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openAssignModal(order);
+                                                    }}
+                                                    className="ml-2 p-2.5 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                                                    title="Assign Delivery Partner"
+                                                >
+                                                    <Truck className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-20 text-center">
+                                            <div className="flex flex-col items-center gap-4">
+                                                <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center">
+                                                    <Search className="h-10 w-10 text-slate-200" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-lg font-black text-slate-300 uppercase tracking-tight">No Orders Found</h4>
+                                                    <p className="text-sm font-bold text-slate-300 mt-1">We couldn't find any orders matching your search.</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <h4 className="text-lg font-black text-slate-300 uppercase tracking-tight">No Orders Found</h4>
-                                                <p className="text-sm font-bold text-slate-300 mt-1">We couldn't find any orders matching your search.</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
 
-                <div className="p-4 border-t border-slate-50">
-                    <Pagination
-                        page={page}
-                        totalPages={Math.ceil(total / pageSize) || 1}
-                        total={total}
-                        pageSize={pageSize}
-                        onPageChange={(p) => fetchOrders(p)}
-                        onPageSizeChange={(newSize) => {
-                            setPageSize(newSize);
-                            setPage(1);
-                        }}
-                        loading={isLoading}
-                    />
-                </div>
+                {!isSellerMode && (
+                    <div className="p-4 border-t border-slate-50">
+                        <Pagination
+                            page={page}
+                            totalPages={Math.ceil(total / pageSize) || 1}
+                            total={total}
+                            pageSize={pageSize}
+                            onPageChange={(p) => fetchOrders(p)}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize);
+                                setPage(1);
+                            }}
+                            loading={isLoading}
+                        />
+                    </div>
+                )}
             </Card>
 
             <Modal

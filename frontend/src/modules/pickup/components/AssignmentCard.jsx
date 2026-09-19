@@ -338,9 +338,9 @@ const AssignmentCard = function AssignmentCard({
             <p className="truncate text-[0.95rem] font-black tracking-tight text-slate-900">
               {row.vendor?.name || "Seller"}
             </p>
-            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-              {row.requestId}
-              {row.orderId ? ` · Order ${String(row.orderId).slice(-6)}` : ""}
+            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 font-mono">
+              {row.displayCode || row.requestId}
+              {row.orderNumber ? ` · Order #${row.orderNumber}` : (row.orderId ? ` · Order #${row.orderId}` : "")}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <PickupBadge variant="info">{statusLabel(row.status)}</PickupBadge>

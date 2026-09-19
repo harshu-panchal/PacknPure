@@ -62,12 +62,124 @@ export function enrichOrderItems(items) {
 
 import { legacyDeliverySnapshotFromOrder } from "../services/deliverySnapshotService.js";
 
+export function computeFulfillmentSummary(order) {
+  const displayNo = order.displayOrderNumber || order.orderId || "";
+  const items = Array.isArray(order.items) ? order.items : [];
+  
+  if (order.orderSource === "POS") {
+    const isSellerPos = Boolean(order.posDetails?.sellerId);
+    return {
+      type: "POS",
+      label: isSellerPos ? "Seller POS" : "Hub POS",
+      code: isSellerPos ? `${displayNo}-S1` : `${displayNo}-POS`,
+      hubCode: null,
+      sellerCodes: isSellerPos ? [`${displayNo}-S1`] : [],
+      hubItemsCount: isSellerPos ? 0 : items.length,
+      sellerItemsCount: isSellerPos ? items.length : 0,
+      badgeVariant: "slate",
+    };
+  }
+
+  if (order.hubFlowEnabled) {
+    let hubCount = 0;
+    let sellerCount = 0;
+
+    for (const item of items) {
+      const required = Number(item.quantity || 1);
+      const hubAvailable = Number(item.hubReservedQty || 0) + Number(item.qaAcceptedQty || 0);
+      const vendorNeeded = Number(item.vendorProcuredQty || 0);
+
+      if (hubAvailable >= required && vendorNeeded === 0) {
+        hubCount += 1;
+      } else if (vendorNeeded > 0) {
+        sellerCount += 1;
+        if (hubAvailable > 0) hubCount += 1;
+      } else if (order.hubStatus === "inventory_reserved" && !order.procurementRequired) {
+        hubCount += 1;
+      } else if (order.procurementRequired || order.hubStatus === "procurement_required") {
+        sellerCount += 1;
+      } else {
+        hubCount += 1;
+      }
+    }
+
+    if (sellerCount > 0 && hubCount > 0) {
+      return {
+        type: "SPLIT",
+        label: "Split (Hub + Seller)",
+        code: `${displayNo}-HUB + S1`,
+        hubCode: `${displayNo}-HUB`,
+        sellerCodes: [`${displayNo}-S1`],
+        hubItemsCount: hubCount,
+        sellerItemsCount: sellerCount,
+        badgeVariant: "indigo",
+      };
+    }
+
+    if (sellerCount > 0 && hubCount === 0) {
+      return {
+        type: "SELLER_PROCURED",
+        label: "Seller Procured",
+        code: `${displayNo}-S1`,
+        hubCode: null,
+        sellerCodes: [`${displayNo}-S1`],
+        hubItemsCount: 0,
+        sellerItemsCount: sellerCount || items.length,
+        badgeVariant: "amber",
+      };
+    }
+
+    return {
+      type: "HUB_DIRECT",
+      label: "Hub Direct",
+      code: `${displayNo}-HUB`,
+      hubCode: `${displayNo}-HUB`,
+      sellerCodes: [],
+      hubItemsCount: items.length,
+      sellerItemsCount: 0,
+      badgeVariant: "emerald",
+    };
+  }
+
+  // Legacy direct seller
+  if (order.seller) {
+    return {
+      type: "SELLER_DIRECT",
+      label: "Seller Direct",
+      code: `${displayNo}-S1`,
+      hubCode: null,
+      sellerCodes: [`${displayNo}-S1`],
+      hubItemsCount: 0,
+      sellerItemsCount: items.length,
+      badgeVariant: "sky",
+    };
+  }
+
+  return {
+    type: "HUB_DIRECT",
+    label: "Hub Direct",
+    code: `${displayNo}-HUB`,
+    hubCode: `${displayNo}-HUB`,
+    sellerCodes: [],
+    hubItemsCount: items.length,
+    sellerItemsCount: 0,
+    badgeVariant: "emerald",
+  };
+}
+
 export function enrichOrderDoc(order) {
   if (!order || typeof order !== "object") return order;
   const next = { ...order };
+  if (!next.displayOrderNumber) {
+    next.displayOrderNumber = next.orderId;
+  }
   if (Array.isArray(order.items)) {
     next.items = enrichOrderItems(order.items);
   }
+  // Compute fulfillment metadata (Hub vs Seller breakdown)
+  next.fulfillmentSummary = computeFulfillmentSummary(next);
+  next.fulfillmentType = next.fulfillmentSummary.type;
+
   // Ensure every order response exposes a deliverySnapshot (legacy-safe)
   if (!next.deliverySnapshot?.deliveryMode) {
     next.deliverySnapshot = legacyDeliverySnapshotFromOrder(next);

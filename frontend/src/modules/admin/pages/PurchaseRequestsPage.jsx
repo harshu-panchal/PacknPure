@@ -331,8 +331,12 @@ const PurchaseRequestsPage = () => {
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">{row.requestId}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{formatPrDate(row.createdAt)}</p>
+                {row.orderNumber && (
+                  <p className="text-[11px] font-bold text-indigo-600 mt-0.5">
+                    Order #{row.orderNumber}
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-400 mt-0.5">{formatPrDate(row.createdAt)}</p>
               </div>
             ),
           },

@@ -698,7 +698,7 @@ const ProductManagement = () => {
     const initGoLivePrices = (preview) => {
         const sp = preview?.sellerProduct;
         const master = preview?.linkedMaster;
-        const rootSupply = Number(sp?.purchasePrice ?? sp?.supplyPrice ?? sp?.price ?? 0);
+        const rootSupply = Number(sp?.purchasePrice ?? sp?.supplyPrice ?? 0);
         const sellerRows =
             sp?.variants?.length > 0
                 ? sp.variants
@@ -708,7 +708,7 @@ const ProductManagement = () => {
         setVariantSellPrices(
             sellerRows.map((v, idx) => {
                 const variantSupply = Number(
-                    v.purchasePrice ?? v.supplyPrice ?? v.price ?? rootSupply,
+                    v.purchasePrice ?? v.supplyPrice ?? rootSupply ?? v.price,
                 );
                 const masterMatch =
                     masterRows.find(
@@ -720,13 +720,20 @@ const ProductManagement = () => {
                 const sellerGstAmt = v?.gstEnabled ? (variantSupply * (Number(v?.gstRate) || 0)) / 100 : 0;
                 const sellerFinalSupplyCost = Number(v?.finalSupplyPrice) || (variantSupply + sellerGstAmt);
 
+                // Extract seller-defined MRP
+                const sellerMrp = Number(v?.mrp ?? (v?.price && v.price !== variantSupply ? v.price : 0) ?? sp?.mrp ?? 0);
+
                 const suggestedSale =
                     sellerFinalSupplyCost > 0 ? Math.ceil(sellerFinalSupplyCost * 1.15) : '';
-                const sale =
-                    masterMatch?.salePrice ??
-                    masterMatch?.price ??
-                    (suggestedSale || '');
-                const mrp = masterMatch?.price ?? sale ?? suggestedSale ?? '';
+
+                // Sale price: master sale price > master price > suggested sale (capped at seller MRP if seller MRP is specified and lower)
+                let sale = masterMatch?.salePrice ?? masterMatch?.price ?? suggestedSale ?? '';
+                if (!masterMatch && sellerMrp > 0 && Number(sale) > sellerMrp) {
+                    sale = sellerMrp;
+                }
+
+                // MRP: master price > seller MRP > sale price > suggested sale
+                const mrp = masterMatch?.price ?? (sellerMrp > 0 ? sellerMrp : (sale || suggestedSale || ''));
                 const purchase =
                     masterMatch?.purchasePrice || sellerFinalSupplyCost || rootSupply || '';
 
@@ -806,6 +813,10 @@ const ProductManagement = () => {
             }
             if (sell - purchase < 0) {
                 toast.error(`Negative margin detected for variant: ${row.name}. Customer sale price cannot be lower than hub purchase cost.`);
+                return;
+            }
+            if (sell > mrp) {
+                toast.error(`Sale Price (₹${sell}) cannot exceed MRP (₹${mrp}) for variant: ${row.name}`);
                 return;
             }
         }

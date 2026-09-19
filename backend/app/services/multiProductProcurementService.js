@@ -222,7 +222,7 @@ export const createSellerGroupedPurchaseRequests = async ({
     const sellerResponseTimeoutMs = (sellerResponseTimeout || 15) * 60 * 1000;
 
     const doc = await createPurchaseRequest({
-      requestId: buildRequestId(),
+      requestId: buildRequestId(order, insertedDocs.length + 1, preparedLines[0].retryNumber),
       orderId: order._id,
       procurementSessionId: procurementSession?._id || undefined,
       allocationId: preparedLines[0].allocationId || undefined,

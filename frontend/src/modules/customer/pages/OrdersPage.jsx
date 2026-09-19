@@ -179,7 +179,7 @@ function OrderCard({ order }) {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-bold text-slate-900">
-                Order #{String(order.orderId).slice(-8)}
+                Order #{order.displayOrderNumber || order.orderId}
               </p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-500">
                 {stampLabel} {dateStr} · {timeStr}

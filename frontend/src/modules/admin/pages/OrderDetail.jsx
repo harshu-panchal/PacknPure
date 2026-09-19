@@ -203,6 +203,74 @@ const OrderDetail = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Fulfillment Origin & Supply Chain Breakdown Card */}
+                    <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                                    <Building2 className="h-4 w-4 text-indigo-600" />
+                                    Fulfillment Origin & Supply Chain Architecture
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Master Reference: <span className="font-mono font-bold text-slate-800">#{order.displayOrderNumber || order.orderId}</span>
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className={cn(
+                                    "px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider",
+                                    order.fulfillmentSummary?.type === "HUB_DIRECT" && "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+                                    order.fulfillmentSummary?.type === "SELLER_PROCURED" && "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+                                    order.fulfillmentSummary?.type === "SPLIT" && "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200",
+                                    order.fulfillmentSummary?.type === "POS" && "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                                )}>
+                                    {order.fulfillmentSummary?.type === "HUB_DIRECT" && "🏢 100% Hub Stock Fulfilled"}
+                                    {order.fulfillmentSummary?.type === "SELLER_PROCURED" && `🏬 Seller Procured (${order.fulfillmentSummary.code})`}
+                                    {order.fulfillmentSummary?.type === "SPLIT" && `🔀 Split (${order.fulfillmentSummary.hubItemsCount} Hub + ${order.fulfillmentSummary.sellerItemsCount} Seller)`}
+                                    {order.fulfillmentSummary?.type === "POS" && `🏪 POS Direct`}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Hub Component */}
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                                        <Store className="h-3.5 w-3.5 text-emerald-600" />
+                                        Main Hub Stock
+                                    </span>
+                                    <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-lg">
+                                        {order.displayOrderNumber || order.orderId}-HUB
+                                    </span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-700">
+                                    {order.fulfillmentSummary?.hubItemsCount ?? order.items?.length ?? 0} item(s) allocated from Hub Inventory
+                                </p>
+                                <div className="text-[11px] text-slate-500">
+                                    Status: <span className="font-bold text-emerald-600 capitalize">{order.hubStatus || "Ready / Reserved"}</span>
+                                </div>
+                            </div>
+
+                            {/* Seller Component */}
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                                        <Building2 className="h-3.5 w-3.5 text-amber-600" />
+                                        Seller Procurement
+                                    </span>
+                                    <span className="font-mono text-[10px] font-bold text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded-lg">
+                                        {order.fulfillmentSummary?.sellerCodes?.[0] || `${order.displayOrderNumber || order.orderId}-S1`}
+                                    </span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-700">
+                                    Seller: <span className="font-bold text-slate-900">{order.seller?.shopName || order.seller?.name || "Direct / Unassigned"}</span>
+                                </p>
+                                <div className="text-[11px] text-slate-500">
+                                    Supply Chain: <span className="font-bold text-amber-600 uppercase">{order.supplyChainStatus?.replace(/_/g, " ") || "NONE"}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
                     {/* Items Section */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
                         <div className="p-6 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between">

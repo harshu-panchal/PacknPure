@@ -134,7 +134,7 @@ const OrderTransactionsPage = () => {
                                                     {isRefund ? 'Refund' : 'Order Payment'}
                                                 </h4>
                                                 <p className="text-[11px] text-slate-500 capitalize">
-                                                    #{order.orderId || order._id?.slice(-8)} •{' '}
+                                                    #{order.displayOrderNumber || order.orderId || order._id} •{' '}
                                                     {paymentMethod}
                                                 </p>
                                                 {createdAt && (

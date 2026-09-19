@@ -598,7 +598,7 @@ const OrderDetails = () => {
   if (!order) return null;
 
   const orderShortId =
-    typeof order.orderId === "string" ? order.orderId.slice(-8) : order.orderId;
+    order.displayOrderNumber || order.orderId;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-gray-900 dark:to-gray-900 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] font-sans">
